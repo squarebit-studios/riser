@@ -454,12 +454,22 @@ class ModelViewer {
         renderer.addEventListener('click', (event) => {
             // Only apply for left mouse button clicks without Alt key
             if (event.button === 0 && !isAltDown && this.model) {
-                const raycaster = new THREE.Raycaster();
+                // Store the camera position and orientation before any changes
+                const cameraPosition = this.camera.position.clone();
+                const cameraQuaternion = this.camera.quaternion.clone();
+
+                // Get accurate client coordinates relative to the renderer
+                const rect = renderer.getBoundingClientRect();
+                const mouseX = event.clientX - rect.left;
+                const mouseY = event.clientY - rect.top;
+
+                // Convert to normalized device coordinates (-1 to +1)
                 const mousePosition = new THREE.Vector2(
-                    (event.clientX / renderer.clientWidth) * 2 - 1,
-                    -(event.clientY / renderer.clientHeight) * 2 + 1
+                    (mouseX / renderer.clientWidth) * 2 - 1,
+                    -(mouseY / renderer.clientHeight) * 2 + 1
                 );
 
+                const raycaster = new THREE.Raycaster();
                 raycaster.setFromCamera(mousePosition, this.camera);
 
                 // Get all meshes in the model
@@ -475,19 +485,21 @@ class ModelViewer {
 
                 // If we hit something, update the orbit controls target
                 if (intersects.length > 0) {
-                    // Store the camera position before changing the target
-                    const cameraPosition = this.camera.position.clone();
-
                     // Set the orbit target to the intersection point
                     this.controls.target.copy(intersects[0].point);
 
-                    // Restore the camera position to prevent automatic movement
+                    // Restore the camera position and orientation exactly as before
                     this.camera.position.copy(cameraPosition);
+                    this.camera.quaternion.copy(cameraQuaternion);
 
-                    // Update the controls
+                    // Update the controls without allowing it to move the camera
                     this.controls.update();
 
-                    // Update the pivot indicator
+                    // Ensure camera position and orientation remain exactly the same
+                    this.camera.position.copy(cameraPosition);
+                    this.camera.quaternion.copy(cameraQuaternion);
+
+                    // Update the pivot indicator position
                     this.updatePivotIndicator();
                 }
             }
@@ -496,9 +508,14 @@ class ModelViewer {
         // Handle mousedown for all Maya control modes
         renderer.addEventListener('mousedown', (event) => {
             if (isAltDown) {
+                // Get accurate client coordinates relative to the renderer
+                const rect = renderer.getBoundingClientRect();
+                const mouseX = event.clientX - rect.left;
+                const mouseY = event.clientY - rect.top;
+
                 // Store initial position for all types of movement
-                prevMouse.x = event.clientX;
-                prevMouse.y = event.clientY;
+                prevMouse.x = mouseX;
+                prevMouse.y = mouseY;
 
                 // Determine which control to activate based on the mouse button
                 if (event.button === 0) { // Left button - Tumble/Orbit
@@ -512,8 +529,8 @@ class ModelViewer {
                     // Compute a panning plane that's perpendicular to the camera direction
                     const raycaster = new THREE.Raycaster();
                     const mousePosition = new THREE.Vector2(
-                        (event.clientX / renderer.clientWidth) * 2 - 1,
-                        -(event.clientY / renderer.clientHeight) * 2 + 1
+                        (mouseX / renderer.clientWidth) * 2 - 1,
+                        -(mouseY / renderer.clientHeight) * 2 + 1
                     );
 
                     raycaster.setFromCamera(mousePosition, this.camera);
@@ -539,8 +556,10 @@ class ModelViewer {
         renderer.addEventListener('mousemove', (event) => {
             if (!isAltDown || !activeControl) return;
 
-            mouse.x = event.clientX;
-            mouse.y = event.clientY;
+            // Get accurate client coordinates relative to the renderer
+            const rect = renderer.getBoundingClientRect();
+            mouse.x = event.clientX - rect.left;
+            mouse.y = event.clientY - rect.top;
 
             const deltaX = mouse.x - prevMouse.x;
             const deltaY = mouse.y - prevMouse.y;
@@ -572,8 +591,8 @@ class ModelViewer {
                 // Get the new ray under the cursor
                 const raycaster = new THREE.Raycaster();
                 const mousePosition = new THREE.Vector2(
-                    (event.clientX / renderer.clientWidth) * 2 - 1,
-                    -(event.clientY / renderer.clientHeight) * 2 + 1
+                    (mouse.x / renderer.clientWidth) * 2 - 1,
+                    -(mouse.y / renderer.clientHeight) * 2 + 1
                 );
 
                 raycaster.setFromCamera(mousePosition, this.camera);
@@ -588,6 +607,9 @@ class ModelViewer {
                 // Move both camera and target by this translation to maintain relative positions
                 this.camera.position.add(translation);
                 this.controls.target.add(translation);
+
+                // Update the pivot indicator position
+                this.updatePivotIndicator();
             }
             else if (activeControl === 'zoom') {
                 // Maya-style zoom: move right to zoom in, left to zoom out
