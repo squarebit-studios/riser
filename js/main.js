@@ -3,8 +3,30 @@ class ModelViewer {
         // DOM elements
         this.container = document.getElementById('canvas-container');
         this.fileInput = document.getElementById('file-input');
-        this.rotationSpeedInput = document.getElementById('rotation-speed');
         this.resetCameraButton = document.getElementById('reset-camera');
+        this.resetTransformButton = document.getElementById('reset-transform');
+
+        // Transform controls
+        this.translateX = document.getElementById('translate-x');
+        this.translateY = document.getElementById('translate-y');
+        this.translateZ = document.getElementById('translate-z');
+        this.rotateX = document.getElementById('rotate-x');
+        this.rotateY = document.getElementById('rotate-y');
+        this.rotateZ = document.getElementById('rotate-z');
+        this.scaleX = document.getElementById('scale-x');
+        this.scaleY = document.getElementById('scale-y');
+        this.scaleZ = document.getElementById('scale-z');
+
+        // Value displays
+        this.translateXValue = document.getElementById('translate-x-value');
+        this.translateYValue = document.getElementById('translate-y-value');
+        this.translateZValue = document.getElementById('translate-z-value');
+        this.rotateXValue = document.getElementById('rotate-x-value');
+        this.rotateYValue = document.getElementById('rotate-y-value');
+        this.rotateZValue = document.getElementById('rotate-z-value');
+        this.scaleXValue = document.getElementById('scale-x-value');
+        this.scaleYValue = document.getElementById('scale-y-value');
+        this.scaleZValue = document.getElementById('scale-z-value');
 
         // Three.js variables
         this.scene = null;
@@ -13,9 +35,16 @@ class ModelViewer {
         this.controls = null;
         this.model = null;
         this.lights = [];
-        this.rotationSpeed = 0.5;
         this.clock = new THREE.Clock();
         this.grid = null;
+
+        // Transform values
+        this.modelTransform = {
+            translate: { x: 0, y: 0, z: 0 },
+            rotate: { x: 0, y: Math.PI, z: 0 },
+            scale: { x: 1, y: 1, z: 1 },
+            baseScale: 1 // Base scale to normalize model size
+        };
 
         // Initialize the viewer
         this.init();
@@ -63,6 +92,9 @@ class ModelViewer {
 
         // Start animation
         this.animate();
+
+        // Initialize slider values
+        this.updateSliders();
     }
 
     setupLights() {
@@ -101,15 +133,129 @@ class ModelViewer {
             }
         });
 
-        // Rotation speed input change event
-        this.rotationSpeedInput.addEventListener('input', (event) => {
-            this.rotationSpeed = parseFloat(event.target.value);
-        });
-
         // Reset camera button click event
         this.resetCameraButton.addEventListener('click', () => {
             this.resetCamera();
         });
+
+        // Reset transform button click event
+        this.resetTransformButton.addEventListener('click', () => {
+            this.resetTransform();
+        });
+
+        // Translation events
+        this.translateX.addEventListener('input', (e) => {
+            this.modelTransform.translate.x = parseFloat(e.target.value);
+            this.translateXValue.textContent = this.modelTransform.translate.x.toFixed(1);
+            this.updateModelTransform();
+        });
+
+        this.translateY.addEventListener('input', (e) => {
+            this.modelTransform.translate.y = parseFloat(e.target.value);
+            this.translateYValue.textContent = this.modelTransform.translate.y.toFixed(1);
+            this.updateModelTransform();
+        });
+
+        this.translateZ.addEventListener('input', (e) => {
+            this.modelTransform.translate.z = parseFloat(e.target.value);
+            this.translateZValue.textContent = this.modelTransform.translate.z.toFixed(1);
+            this.updateModelTransform();
+        });
+
+        // Rotation events
+        this.rotateX.addEventListener('input', (e) => {
+            this.modelTransform.rotate.x = parseFloat(e.target.value);
+            this.rotateXValue.textContent = this.modelTransform.rotate.x.toFixed(2);
+            this.updateModelTransform();
+        });
+
+        this.rotateY.addEventListener('input', (e) => {
+            this.modelTransform.rotate.y = parseFloat(e.target.value);
+            this.rotateYValue.textContent = this.modelTransform.rotate.y.toFixed(2);
+            this.updateModelTransform();
+        });
+
+        this.rotateZ.addEventListener('input', (e) => {
+            this.modelTransform.rotate.z = parseFloat(e.target.value);
+            this.rotateZValue.textContent = this.modelTransform.rotate.z.toFixed(2);
+            this.updateModelTransform();
+        });
+
+        // Scale events
+        this.scaleX.addEventListener('input', (e) => {
+            this.modelTransform.scale.x = parseFloat(e.target.value);
+            this.scaleXValue.textContent = this.modelTransform.scale.x.toFixed(1);
+            this.updateModelTransform();
+        });
+
+        this.scaleY.addEventListener('input', (e) => {
+            this.modelTransform.scale.y = parseFloat(e.target.value);
+            this.scaleYValue.textContent = this.modelTransform.scale.y.toFixed(1);
+            this.updateModelTransform();
+        });
+
+        this.scaleZ.addEventListener('input', (e) => {
+            this.modelTransform.scale.z = parseFloat(e.target.value);
+            this.scaleZValue.textContent = this.modelTransform.scale.z.toFixed(1);
+            this.updateModelTransform();
+        });
+    }
+
+    updateSliders() {
+        // Update translation sliders
+        this.translateX.value = this.modelTransform.translate.x;
+        this.translateY.value = this.modelTransform.translate.y;
+        this.translateZ.value = this.modelTransform.translate.z;
+        this.translateXValue.textContent = this.modelTransform.translate.x.toFixed(1);
+        this.translateYValue.textContent = this.modelTransform.translate.y.toFixed(1);
+        this.translateZValue.textContent = this.modelTransform.translate.z.toFixed(1);
+
+        // Update rotation sliders
+        this.rotateX.value = this.modelTransform.rotate.x;
+        this.rotateY.value = this.modelTransform.rotate.y;
+        this.rotateZ.value = this.modelTransform.rotate.z;
+        this.rotateXValue.textContent = this.modelTransform.rotate.x.toFixed(2);
+        this.rotateYValue.textContent = this.modelTransform.rotate.y.toFixed(2);
+        this.rotateZValue.textContent = this.modelTransform.rotate.z.toFixed(2);
+
+        // Update scale sliders
+        this.scaleX.value = this.modelTransform.scale.x;
+        this.scaleY.value = this.modelTransform.scale.y;
+        this.scaleZ.value = this.modelTransform.scale.z;
+        this.scaleXValue.textContent = this.modelTransform.scale.x.toFixed(1);
+        this.scaleYValue.textContent = this.modelTransform.scale.y.toFixed(1);
+        this.scaleZValue.textContent = this.modelTransform.scale.z.toFixed(1);
+    }
+
+    updateModelTransform() {
+        if (!this.model) return;
+
+        // Apply translation
+        this.model.position.x = this.modelTransform.translate.x;
+        this.model.position.y = this.modelTransform.translate.y;
+        this.model.position.z = this.modelTransform.translate.z;
+
+        // Apply rotation
+        this.model.rotation.x = this.modelTransform.rotate.x;
+        this.model.rotation.y = this.modelTransform.rotate.y;
+        this.model.rotation.z = this.modelTransform.rotate.z;
+
+        // Apply scale (with base normalization)
+        const baseScale = this.modelTransform.baseScale;
+        this.model.scale.x = baseScale * this.modelTransform.scale.x;
+        this.model.scale.y = baseScale * this.modelTransform.scale.y;
+        this.model.scale.z = baseScale * this.modelTransform.scale.z;
+    }
+
+    resetTransform() {
+        // Reset to initial values
+        this.modelTransform.translate = { x: 0, y: 0, z: 0 };
+        this.modelTransform.rotate = { x: 0, y: Math.PI, z: 0 };
+        this.modelTransform.scale = { x: 1, y: 1, z: 1 };
+
+        // Update sliders and model
+        this.updateSliders();
+        this.updateModelTransform();
     }
 
     loadOBJModel(file) {
@@ -137,21 +283,23 @@ class ModelViewer {
                 const center = box.getCenter(new THREE.Vector3());
                 const size = box.getSize(new THREE.Vector3());
 
-                // Normalize and center the model at the origin (0,0,0)
+                // Calculate normalization scale
                 const maxDim = Math.max(size.x, size.y, size.z);
-                const scale = 5 / maxDim;
-                this.model.scale.set(scale, scale, scale);
+                const baseScale = 5 / maxDim;
+                this.modelTransform.baseScale = baseScale;
 
-                // Move the model so its bottom is at y=0 and it's centered on x and z
-                this.model.position.x = -center.x * scale;
-                this.model.position.z = -center.z * scale;
-                this.model.position.y = -box.min.y * scale; // Place bottom at y=0
+                // Reset transform to defaults except for y-rotation
+                this.modelTransform.translate = { x: 0, y: 0, z: 0 };
+                this.modelTransform.rotate = { x: 0, y: Math.PI, z: 0 };
+                this.modelTransform.scale = { x: 1, y: 1, z: 1 };
 
-                // Set rotation to match Maya's z-axis orientation
-                // Maya's default orientation has models facing the z-axis
-                // In Three.js, the default is facing the negative z-axis
-                // So we rotate 180 degrees to face the positive z-axis
-                this.model.rotation.y = Math.PI; // Rotate 180 degrees to face z-axis
+                // Update model position to have its bottom at y=0
+                const bottomOffset = box.min.y * baseScale;
+                this.modelTransform.translate.y = -bottomOffset;
+
+                // Update the sliders to reflect the new model
+                this.updateSliders();
+                this.updateModelTransform();
 
                 // Enable shadows
                 this.model.traverse((child) => {
@@ -236,12 +384,6 @@ class ModelViewer {
 
         // Update controls
         this.controls.update();
-
-        // Rotate model if exists
-        if (this.model && this.rotationSpeed > 0) {
-            const delta = this.clock.getDelta();
-            this.model.rotation.y += delta * this.rotationSpeed;
-        }
 
         // Render scene
         this.renderer.render(this.scene, this.camera);
