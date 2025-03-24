@@ -37,6 +37,7 @@ class ModelViewer {
         this.lights = [];
         this.clock = new THREE.Clock();
         this.grid = null;
+        this.pivotIndicator = null;
 
         // Transform values
         this.modelTransform = {
@@ -87,6 +88,10 @@ class ModelViewer {
         // Enable damping for smoother movement
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
+
+        // Create pivot indicator
+        this.pivotIndicator = this.createPivotIndicator();
+        this.scene.add(this.pivotIndicator);
 
         // Add Maya-style control handlers
         this.setupMayaControls();
@@ -405,6 +410,9 @@ class ModelViewer {
         // Update controls
         this.controls.update();
 
+        // Update pivot indicator position
+        this.updatePivotIndicator();
+
         // Render scene
         this.renderer.render(this.scene, this.camera);
     }
@@ -467,14 +475,20 @@ class ModelViewer {
 
                 // If we hit something, update the orbit controls target
                 if (intersects.length > 0) {
+                    // Store the camera position before changing the target
+                    const cameraPosition = this.camera.position.clone();
+
                     // Set the orbit target to the intersection point
                     this.controls.target.copy(intersects[0].point);
 
-                    // Ensure the camera is still looking at the target
-                    this.camera.lookAt(this.controls.target);
+                    // Restore the camera position to prevent automatic movement
+                    this.camera.position.copy(cameraPosition);
 
                     // Update the controls
                     this.controls.update();
+
+                    // Update the pivot indicator
+                    this.updatePivotIndicator();
                 }
             }
         });
@@ -633,6 +647,25 @@ class ModelViewer {
 
             event.preventDefault();
         }, { passive: false });
+    }
+
+    createPivotIndicator() {
+        // Create a small yellow sphere to indicate the tumble pivot
+        const geometry = new THREE.SphereGeometry(0.1, 16, 16);
+        const material = new THREE.MeshBasicMaterial({
+            color: 0xffff00,
+            transparent: true,
+            opacity: 0.8,
+            depthTest: false
+        });
+        return new THREE.Mesh(geometry, material);
+    }
+
+    updatePivotIndicator() {
+        // Update the position of the pivot indicator to match the orbit controls target
+        if (this.pivotIndicator && this.controls) {
+            this.pivotIndicator.position.copy(this.controls.target);
+        }
     }
 
     addNavigationHelp() {
