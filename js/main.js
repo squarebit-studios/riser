@@ -493,8 +493,9 @@ class ModelViewer {
                 this.camera.lookAt(this.controls.target);
             }
             else if (activeControl === 'pan') {
-                // Manual pan implementation
-                const panSpeed = 0.01;
+                // Manual pan implementation with corrected horizontal direction and reduced speed
+                // Reduce the overall pan speed by half
+                const panSpeed = 0.005;
                 const distance = this.camera.position.distanceTo(this.controls.target);
 
                 // Calculate how much to pan
@@ -503,8 +504,9 @@ class ModelViewer {
                 this.camera.getWorldDirection(right);
                 right.cross(up).normalize();
 
-                // Pan right/left
-                const moveRight = right.clone().multiplyScalar(deltaX * panSpeed * distance);
+                // Pan right/left - reversed direction to match Maya
+                // Negative sign reversed to positive to correct the direction
+                const moveRight = right.clone().multiplyScalar(-deltaX * panSpeed * distance);
                 this.camera.position.sub(moveRight);
                 this.controls.target.sub(moveRight);
 
