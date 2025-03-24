@@ -69,10 +69,27 @@ class ModelViewer {
         this.renderer.shadowMap.enabled = true;
         this.container.appendChild(this.renderer.domElement);
 
-        // Create orbit controls
+        // Create orbit controls with Maya-style navigation
         this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+
+        // Configure controls to match Maya navigation style
+        // Disable default mouse button mappings
+        this.controls.enableRotate = false;
+        this.controls.enablePan = false;
+        this.controls.enableZoom = false;
+
+        // Disable keyboard controls
+        this.controls.enableKeys = false;
+
+        // Disable automatic rotation
+        this.controls.autoRotate = false;
+
+        // Enable damping for smoother movement
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
+
+        // Add Maya-style control handlers
+        this.setupMayaControls();
 
         // Create lights
         this.setupLights();
@@ -89,6 +106,9 @@ class ModelViewer {
 
         // Handle window resize
         window.addEventListener('resize', () => this.onWindowResize(), false);
+
+        // Add status info for navigation
+        this.addNavigationHelp();
 
         // Start animation
         this.animate();
@@ -387,6 +407,154 @@ class ModelViewer {
 
         // Render scene
         this.renderer.render(this.scene, this.camera);
+    }
+
+    setupMayaControls() {
+        const renderer = this.renderer.domElement;
+        let isAltDown = false;
+
+        // Variables to track previous mouse positions for custom controls
+        const mouse = { x: 0, y: 0 };
+        const prevMouse = { x: 0, y: 0 };
+
+        // Track Alt key state
+        window.addEventListener('keydown', (event) => {
+            if (event.key === 'Alt') {
+                isAltDown = true;
+                // Prevent browser's default Alt key behavior
+                event.preventDefault();
+            }
+        });
+
+        window.addEventListener('keyup', (event) => {
+            if (event.key === 'Alt') {
+                isAltDown = false;
+            }
+        });
+
+        // Maya-style tumble (Alt + Left mouse button)
+        renderer.addEventListener('mousedown', (event) => {
+            if (isAltDown && event.button === 0) { // Left mouse button
+                this.controls.enableRotate = true;
+                event.preventDefault();
+            }
+        });
+
+        // Maya-style pan (Alt + Middle mouse button)
+        renderer.addEventListener('mousedown', (event) => {
+            if (isAltDown && event.button === 1) { // Middle mouse button
+                this.controls.enablePan = true;
+                event.preventDefault();
+            }
+        });
+
+        // Maya-style zoom (Alt + Right mouse button)
+        renderer.addEventListener('mousedown', (event) => {
+            if (isAltDown && event.button === 2) { // Right mouse button
+                // Store the initial position for custom zoom
+                prevMouse.x = event.clientX;
+                prevMouse.y = event.clientY;
+
+                // Prevent context menu on right click
+                event.preventDefault();
+            }
+        });
+
+        // Custom zoom handler (for horizontal movement)
+        renderer.addEventListener('mousemove', (event) => {
+            if (isAltDown && event.buttons === 2) { // Right mouse button
+                mouse.x = event.clientX;
+                mouse.y = event.clientY;
+
+                // Calculate the delta movement
+                const deltaX = mouse.x - prevMouse.x;
+
+                // Maya-style zoom: move right to zoom in, left to zoom out
+                const zoomSpeed = 0.01;
+                const zoomFactor = 1 + (deltaX * zoomSpeed);
+
+                // Apply zoom by changing camera position
+                const zoomDirection = new THREE.Vector3().subVectors(
+                    this.controls.target,
+                    this.camera.position
+                ).normalize();
+
+                // Move camera toward/away from target
+                this.camera.position.addScaledVector(
+                    zoomDirection,
+                    deltaX * zoomSpeed *
+                    this.camera.position.distanceTo(this.controls.target)
+                );
+
+                // Update the previous position
+                prevMouse.x = mouse.x;
+                prevMouse.y = mouse.y;
+
+                event.preventDefault();
+            }
+        });
+
+        // Disable controls when mouse button is released
+        window.addEventListener('mouseup', (event) => {
+            this.controls.enableRotate = false;
+            this.controls.enablePan = false;
+        });
+
+        // Prevent context menu for right click
+        renderer.addEventListener('contextmenu', (event) => {
+            event.preventDefault();
+        });
+
+        // Add mouse wheel zoom (standard behavior, not Maya-specific)
+        renderer.addEventListener('wheel', (event) => {
+            const zoomSpeed = 0.001;
+            const delta = event.deltaY;
+
+            // Get zoom direction
+            const zoomDirection = new THREE.Vector3().subVectors(
+                this.controls.target,
+                this.camera.position
+            ).normalize();
+
+            // Apply zoom by changing camera position
+            this.camera.position.addScaledVector(
+                zoomDirection,
+                delta * zoomSpeed *
+                this.camera.position.distanceTo(this.controls.target)
+            );
+
+            event.preventDefault();
+        }, { passive: false });
+    }
+
+    addNavigationHelp() {
+        // Create navigation help element
+        const navHelp = document.createElement('div');
+        navHelp.id = 'nav-help';
+        navHelp.innerHTML = `
+            <div class="nav-help-content">
+                <h4>Navigation Controls (Maya Style):</h4>
+                <ul>
+                    <li><strong>Alt + Left Click</strong>: Tumble/Orbit</li>
+                    <li><strong>Alt + Middle Click</strong>: Pan</li>
+                    <li><strong>Alt + Right Click</strong>: Zoom</li>
+                </ul>
+            </div>
+        `;
+
+        // Apply styles
+        navHelp.style.position = 'absolute';
+        navHelp.style.bottom = '10px';
+        navHelp.style.right = '10px';
+        navHelp.style.background = 'rgba(0, 0, 0, 0.7)';
+        navHelp.style.color = '#fff';
+        navHelp.style.padding = '10px';
+        navHelp.style.borderRadius = '5px';
+        navHelp.style.fontSize = '12px';
+        navHelp.style.zIndex = '100';
+
+        // Add navigation help to the container
+        this.container.appendChild(navHelp);
     }
 }
 

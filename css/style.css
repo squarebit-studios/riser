@@ -38,6 +38,12 @@ h3 {
     color: #4fc3f7;
 }
 
+h4 {
+    font-size: 14px;
+    margin-bottom: 6px;
+    color: #4fc3f7;
+}
+
 #file-container {
     margin-bottom: 15px;
 }
@@ -132,4 +138,46 @@ canvas {
     display: block;
     width: 100%;
     height: 100%;
+}
+
+/* Navigation Help Styles */
+#nav-help {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: #ffffff;
+    padding: 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    z-index: 100;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    transition: opacity 0.3s;
+}
+
+#nav-help:hover {
+    opacity: 1;
+}
+
+.nav-help-content {
+    opacity: 0.7;
+    transition: opacity 0.3s;
+}
+
+.nav-help-content:hover {
+    opacity: 1;
+}
+
+#nav-help ul {
+    list-style-type: none;
+    margin: 5px 0 0 0;
+    padding: 0;
+}
+
+#nav-help ul li {
+    margin-bottom: 3px;
+}
+
+#nav-help strong {
+    color: #4fc3f7;
 }
