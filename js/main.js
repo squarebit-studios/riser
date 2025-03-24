@@ -147,8 +147,11 @@ class ModelViewer {
                 this.model.position.z = -center.z * scale;
                 this.model.position.y = -box.min.y * scale; // Place bottom at y=0
 
-                // Set initial rotation
-                this.model.rotation.y = Math.PI / 4;
+                // Set rotation to match Maya's z-axis orientation
+                // Maya's default orientation has models facing the z-axis
+                // In Three.js, the default is facing the negative z-axis
+                // So we rotate 180 degrees to face the positive z-axis
+                this.model.rotation.y = Math.PI; // Rotate 180 degrees to face z-axis
 
                 // Enable shadows
                 this.model.traverse((child) => {
