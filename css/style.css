@@ -143,24 +143,27 @@ canvas {
 /* Navigation Help Styles */
 #nav-help {
     position: absolute;
-    bottom: 10px;
-    right: 10px;
-    background-color: rgba(0, 0, 0, 0.7);
+    bottom: 20px;
+    right: 20px;
+    background-color: rgba(0, 0, 0, 0.8);
     color: #ffffff;
-    padding: 10px;
-    border-radius: 5px;
-    font-size: 12px;
+    padding: 12px 15px;
+    border-radius: 6px;
+    font-size: 13px;
     z-index: 100;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-    transition: opacity 0.3s;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
+    transition: all 0.3s ease;
+    border: 1px solid rgba(79, 195, 247, 0.3);
 }
 
 #nav-help:hover {
-    opacity: 1;
+    transform: scale(1.05);
+    background-color: rgba(0, 0, 0, 0.9);
+    border-color: rgba(79, 195, 247, 0.8);
 }
 
 .nav-help-content {
-    opacity: 0.7;
+    opacity: 0.85;
     transition: opacity 0.3s;
 }
 
@@ -170,14 +173,16 @@ canvas {
 
 #nav-help ul {
     list-style-type: none;
-    margin: 5px 0 0 0;
+    margin: 8px 0 0 0;
     padding: 0;
 }
 
 #nav-help ul li {
-    margin-bottom: 3px;
+    margin-bottom: 5px;
+    line-height: 1.4;
 }
 
 #nav-help strong {
     color: #4fc3f7;
+    font-weight: bold;
 }

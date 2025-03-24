@@ -417,10 +417,14 @@ class ModelViewer {
         const mouse = { x: 0, y: 0 };
         const prevMouse = { x: 0, y: 0 };
 
+        // Tracking active control mode
+        let activeControl = null; // 'rotate', 'pan', 'zoom', or null
+
         // Track Alt key state
         window.addEventListener('keydown', (event) => {
             if (event.key === 'Alt') {
                 isAltDown = true;
+                renderer.style.cursor = 'pointer'; // Change cursor to indicate special mode
                 // Prevent browser's default Alt key behavior
                 event.preventDefault();
             }
@@ -429,49 +433,89 @@ class ModelViewer {
         window.addEventListener('keyup', (event) => {
             if (event.key === 'Alt') {
                 isAltDown = false;
+                activeControl = null;
+                renderer.style.cursor = 'auto'; // Reset cursor
             }
         });
 
-        // Maya-style tumble (Alt + Left mouse button)
+        // Handle mousedown for all Maya control modes
         renderer.addEventListener('mousedown', (event) => {
-            if (isAltDown && event.button === 0) { // Left mouse button
-                this.controls.enableRotate = true;
-                event.preventDefault();
-            }
-        });
-
-        // Maya-style pan (Alt + Middle mouse button)
-        renderer.addEventListener('mousedown', (event) => {
-            if (isAltDown && event.button === 1) { // Middle mouse button
-                this.controls.enablePan = true;
-                event.preventDefault();
-            }
-        });
-
-        // Maya-style zoom (Alt + Right mouse button)
-        renderer.addEventListener('mousedown', (event) => {
-            if (isAltDown && event.button === 2) { // Right mouse button
-                // Store the initial position for custom zoom
+            if (isAltDown) {
+                // Store initial position for all types of movement
                 prevMouse.x = event.clientX;
                 prevMouse.y = event.clientY;
 
-                // Prevent context menu on right click
+                // Determine which control to activate based on the mouse button
+                if (event.button === 0) { // Left button - Tumble/Orbit
+                    activeControl = 'rotate';
+                    renderer.style.cursor = 'move';
+                } else if (event.button === 1) { // Middle button - Pan
+                    activeControl = 'pan';
+                    renderer.style.cursor = 'grabbing';
+                } else if (event.button === 2) { // Right button - Zoom
+                    activeControl = 'zoom';
+                    renderer.style.cursor = 'ns-resize';
+                }
+
                 event.preventDefault();
             }
         });
 
-        // Custom zoom handler (for horizontal movement)
+        // Custom handler for all movement types
         renderer.addEventListener('mousemove', (event) => {
-            if (isAltDown && event.buttons === 2) { // Right mouse button
-                mouse.x = event.clientX;
-                mouse.y = event.clientY;
+            if (!isAltDown || !activeControl) return;
 
-                // Calculate the delta movement
-                const deltaX = mouse.x - prevMouse.x;
+            mouse.x = event.clientX;
+            mouse.y = event.clientY;
 
+            const deltaX = mouse.x - prevMouse.x;
+            const deltaY = mouse.y - prevMouse.y;
+
+            if (activeControl === 'rotate') {
+                // Manual tumble/orbit implementation
+                const rotateSpeed = 0.01;
+
+                // Horizontal movement = rotate around vertical axis (y)
+                this.camera.position.sub(this.controls.target);
+                this.camera.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), -deltaX * rotateSpeed);
+
+                // Vertical movement = rotate around horizontal axis (x)
+                // Get the camera's right vector (perpendicular to look direction and up vector)
+                const right = new THREE.Vector3();
+                this.camera.getWorldDirection(right);
+                right.cross(this.camera.up).normalize();
+
+                // Rotate around the right vector
+                this.camera.position.applyAxisAngle(right, -deltaY * rotateSpeed);
+
+                // Move camera back to its position relative to target
+                this.camera.position.add(this.controls.target);
+                this.camera.lookAt(this.controls.target);
+            }
+            else if (activeControl === 'pan') {
+                // Manual pan implementation
+                const panSpeed = 0.01;
+                const distance = this.camera.position.distanceTo(this.controls.target);
+
+                // Calculate how much to pan
+                const right = new THREE.Vector3();
+                const up = new THREE.Vector3(0, 1, 0);
+                this.camera.getWorldDirection(right);
+                right.cross(up).normalize();
+
+                // Pan right/left
+                const moveRight = right.clone().multiplyScalar(deltaX * panSpeed * distance);
+                this.camera.position.sub(moveRight);
+                this.controls.target.sub(moveRight);
+
+                // Pan up/down - use world up vector
+                const moveUp = up.clone().multiplyScalar(deltaY * panSpeed * distance);
+                this.camera.position.sub(moveUp);
+                this.controls.target.sub(moveUp);
+            }
+            else if (activeControl === 'zoom') {
                 // Maya-style zoom: move right to zoom in, left to zoom out
                 const zoomSpeed = 0.01;
-                const zoomFactor = 1 + (deltaX * zoomSpeed);
 
                 // Apply zoom by changing camera position
                 const zoomDirection = new THREE.Vector3().subVectors(
@@ -485,19 +529,19 @@ class ModelViewer {
                     deltaX * zoomSpeed *
                     this.camera.position.distanceTo(this.controls.target)
                 );
-
-                // Update the previous position
-                prevMouse.x = mouse.x;
-                prevMouse.y = mouse.y;
-
-                event.preventDefault();
             }
+
+            // Update for next movement
+            prevMouse.x = mouse.x;
+            prevMouse.y = mouse.y;
+
+            event.preventDefault();
         });
 
-        // Disable controls when mouse button is released
-        window.addEventListener('mouseup', (event) => {
-            this.controls.enableRotate = false;
-            this.controls.enablePan = false;
+        // Reset active control when mouse button is released
+        window.addEventListener('mouseup', () => {
+            activeControl = null;
+            renderer.style.cursor = isAltDown ? 'pointer' : 'auto';
         });
 
         // Prevent context menu for right click
@@ -505,7 +549,7 @@ class ModelViewer {
             event.preventDefault();
         });
 
-        // Add mouse wheel zoom (standard behavior, not Maya-specific)
+        // Add mouse wheel zoom (standard behavior, works without Alt)
         renderer.addEventListener('wheel', (event) => {
             const zoomSpeed = 0.001;
             const delta = event.deltaY;
@@ -533,11 +577,12 @@ class ModelViewer {
         navHelp.id = 'nav-help';
         navHelp.innerHTML = `
             <div class="nav-help-content">
-                <h4>Navigation Controls (Maya Style):</h4>
+                <h4>Maya-Style Navigation Controls:</h4>
                 <ul>
                     <li><strong>Alt + Left Click</strong>: Tumble/Orbit</li>
                     <li><strong>Alt + Middle Click</strong>: Pan</li>
-                    <li><strong>Alt + Right Click</strong>: Zoom</li>
+                    <li><strong>Alt + Right Click</strong>: Zoom (right = in, left = out)</li>
+                    <li><strong>Mouse Wheel</strong>: Zoom in/out</li>
                 </ul>
             </div>
         `;
