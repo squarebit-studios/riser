@@ -15,6 +15,7 @@ class ModelViewer {
         this.lights = [];
         this.rotationSpeed = 0.5;
         this.clock = new THREE.Clock();
+        this.grid = null;
 
         // Initialize the viewer
         this.init();
@@ -47,9 +48,15 @@ class ModelViewer {
         // Create lights
         this.setupLights();
 
-        // Create grid helper
-        const gridHelper = new THREE.GridHelper(20, 20);
-        this.scene.add(gridHelper);
+        // Create grid helper at origin (0,0,0)
+        this.grid = new THREE.GridHelper(20, 20);
+        // Ensure grid is exactly at 0,0,0
+        this.grid.position.set(0, 0, 0);
+        this.scene.add(this.grid);
+
+        // Add axes helper to visualize coordinates
+        const axesHelper = new THREE.AxesHelper(5);
+        this.scene.add(axesHelper);
 
         // Handle window resize
         window.addEventListener('resize', () => this.onWindowResize(), false);
@@ -130,11 +137,15 @@ class ModelViewer {
                 const center = box.getCenter(new THREE.Vector3());
                 const size = box.getSize(new THREE.Vector3());
 
-                // Normalize and center
+                // Normalize and center the model at the origin (0,0,0)
                 const maxDim = Math.max(size.x, size.y, size.z);
                 const scale = 5 / maxDim;
                 this.model.scale.set(scale, scale, scale);
-                this.model.position.sub(center.multiplyScalar(scale));
+
+                // Move the model so its bottom is at y=0 and it's centered on x and z
+                this.model.position.x = -center.x * scale;
+                this.model.position.z = -center.z * scale;
+                this.model.position.y = -box.min.y * scale; // Place bottom at y=0
 
                 // Set initial rotation
                 this.model.rotation.y = Math.PI / 4;
