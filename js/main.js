@@ -420,6 +420,10 @@ class ModelViewer {
         // Tracking active control mode
         let activeControl = null; // 'rotate', 'pan', 'zoom', or null
 
+        // For pan control - store the world point that was clicked
+        let panningPoint = new THREE.Vector3();
+        let panningPlane = new THREE.Plane();
+
         // Track Alt key state
         window.addEventListener('keydown', (event) => {
             if (event.key === 'Alt') {
@@ -452,6 +456,25 @@ class ModelViewer {
                 } else if (event.button === 1) { // Middle button - Pan
                     activeControl = 'pan';
                     renderer.style.cursor = 'grabbing';
+
+                    // For Maya-style panning, we need to get the 3D point under the cursor
+                    // Compute a panning plane that's perpendicular to the camera direction
+                    const raycaster = new THREE.Raycaster();
+                    const mousePosition = new THREE.Vector2(
+                        (event.clientX / renderer.clientWidth) * 2 - 1,
+                        -(event.clientY / renderer.clientHeight) * 2 + 1
+                    );
+
+                    raycaster.setFromCamera(mousePosition, this.camera);
+
+                    // Use the target point for the panning plane
+                    panningPlane.setFromNormalAndCoplanarPoint(
+                        this.camera.getWorldDirection(new THREE.Vector3()).negate(),
+                        this.controls.target
+                    );
+
+                    // Get the point on the plane where the ray intersects
+                    raycaster.ray.intersectPlane(panningPlane, panningPoint);
                 } else if (event.button === 2) { // Right button - Zoom
                     activeControl = 'zoom';
                     renderer.style.cursor = 'ns-resize';
@@ -493,26 +516,27 @@ class ModelViewer {
                 this.camera.lookAt(this.controls.target);
             }
             else if (activeControl === 'pan') {
-                // Manual pan implementation with proper Maya behavior and reduced speed
-                const panSpeed = 0.005;
-                const distance = this.camera.position.distanceTo(this.controls.target);
+                // True Maya-style panning where point under cursor follows the cursor
 
-                // Calculate how much to pan
-                const right = new THREE.Vector3();
-                const up = new THREE.Vector3(0, 1, 0);
-                this.camera.getWorldDirection(right);
-                right.cross(up).normalize();
+                // Get the new ray under the cursor
+                const raycaster = new THREE.Raycaster();
+                const mousePosition = new THREE.Vector2(
+                    (event.clientX / renderer.clientWidth) * 2 - 1,
+                    -(event.clientY / renderer.clientHeight) * 2 + 1
+                );
 
-                // Pan right/left - Using positive deltaX to match Maya's behavior
-                // This moves the camera/scene in the same direction as the mouse movement
-                const moveRight = right.clone().multiplyScalar(deltaX * panSpeed * distance);
-                this.camera.position.sub(moveRight);
-                this.controls.target.sub(moveRight);
+                raycaster.setFromCamera(mousePosition, this.camera);
 
-                // Pan up/down - use world up vector
-                const moveUp = up.clone().multiplyScalar(deltaY * panSpeed * distance);
-                this.camera.position.sub(moveUp);
-                this.controls.target.sub(moveUp);
+                // Find where this ray intersects our panning plane
+                const newPanningPoint = new THREE.Vector3();
+                raycaster.ray.intersectPlane(panningPlane, newPanningPoint);
+
+                // The translation is the difference between the original point and the new point
+                const translation = new THREE.Vector3().subVectors(panningPoint, newPanningPoint);
+
+                // Move both camera and target by this translation to maintain relative positions
+                this.camera.position.add(translation);
+                this.controls.target.add(translation);
             }
             else if (activeControl === 'zoom') {
                 // Maya-style zoom: move right to zoom in, left to zoom out
