@@ -442,6 +442,43 @@ class ModelViewer {
             }
         });
 
+        // Handle direct click on mesh to set tumble pivot point (without Alt)
+        renderer.addEventListener('click', (event) => {
+            // Only apply for left mouse button clicks without Alt key
+            if (event.button === 0 && !isAltDown && this.model) {
+                const raycaster = new THREE.Raycaster();
+                const mousePosition = new THREE.Vector2(
+                    (event.clientX / renderer.clientWidth) * 2 - 1,
+                    -(event.clientY / renderer.clientHeight) * 2 + 1
+                );
+
+                raycaster.setFromCamera(mousePosition, this.camera);
+
+                // Get all meshes in the model
+                const meshes = [];
+                this.model.traverse((child) => {
+                    if (child.isMesh) {
+                        meshes.push(child);
+                    }
+                });
+
+                // Find intersection with model meshes
+                const intersects = raycaster.intersectObjects(meshes, true);
+
+                // If we hit something, update the orbit controls target
+                if (intersects.length > 0) {
+                    // Set the orbit target to the intersection point
+                    this.controls.target.copy(intersects[0].point);
+
+                    // Ensure the camera is still looking at the target
+                    this.camera.lookAt(this.controls.target);
+
+                    // Update the controls
+                    this.controls.update();
+                }
+            }
+        });
+
         // Handle mousedown for all Maya control modes
         renderer.addEventListener('mousedown', (event) => {
             if (isAltDown) {
@@ -540,7 +577,8 @@ class ModelViewer {
             }
             else if (activeControl === 'zoom') {
                 // Maya-style zoom: move right to zoom in, left to zoom out
-                const zoomSpeed = 0.01;
+                // Reduced to 25% of original speed
+                const zoomSpeed = 0.0025; // Original was 0.01, now 0.0025 (25%)
 
                 // Apply zoom by changing camera position
                 const zoomDirection = new THREE.Vector3().subVectors(
@@ -576,7 +614,8 @@ class ModelViewer {
 
         // Add mouse wheel zoom (standard behavior, works without Alt)
         renderer.addEventListener('wheel', (event) => {
-            const zoomSpeed = 0.001;
+            // Reduced to 25% of original speed
+            const zoomSpeed = 0.00025; // Original was 0.001, now 0.00025 (25%)
             const delta = event.deltaY;
 
             // Get zoom direction
@@ -604,6 +643,7 @@ class ModelViewer {
             <div class="nav-help-content">
                 <h4>Maya-Style Navigation Controls:</h4>
                 <ul>
+                    <li><strong>Left Click</strong> on model: Set tumble pivot</li>
                     <li><strong>Alt + Left Click</strong>: Tumble/Orbit</li>
                     <li><strong>Alt + Middle Click</strong>: Pan</li>
                     <li><strong>Alt + Right Click</strong>: Zoom (right = in, left = out)</li>
