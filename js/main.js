@@ -38,6 +38,7 @@ class ModelViewer {
         this.clock = new THREE.Clock();
         this.grid = null;
         this.pivotIndicator = null;
+        this.updatingPivot = false; // Flag to control pivot updates
 
         // Transform values
         this.modelTransform = {
@@ -407,8 +408,10 @@ class ModelViewer {
     animate() {
         requestAnimationFrame(() => this.animate());
 
-        // Update controls
-        this.controls.update();
+        // Only update controls if we're not in the middle of updating the pivot
+        if (!this.updatingPivot) {
+            this.controls.update();
+        }
 
         // Update pivot indicator position
         this.updatePivotIndicator();
@@ -454,9 +457,15 @@ class ModelViewer {
         renderer.addEventListener('click', (event) => {
             // Only apply for left mouse button clicks without Alt key
             if (event.button === 0 && !isAltDown && this.model) {
-                // Store the camera position and orientation before any changes
+                // Set flag to prevent OrbitControls from updating camera
+                this.updatingPivot = true;
+
+                // Store the camera position and orientation
                 const cameraPosition = this.camera.position.clone();
                 const cameraQuaternion = this.camera.quaternion.clone();
+
+                // Store original target position
+                const originalTarget = this.controls.target.clone();
 
                 // Get accurate client coordinates relative to the renderer
                 const rect = renderer.getBoundingClientRect();
@@ -485,23 +494,29 @@ class ModelViewer {
 
                 // If we hit something, update the orbit controls target
                 if (intersects.length > 0) {
-                    // Set the orbit target to the intersection point
+                    // Set the orbit target to the intersection point directly
+                    // without using the OrbitControls API which would move the camera
                     this.controls.target.copy(intersects[0].point);
 
-                    // Restore the camera position and orientation exactly as before
-                    this.camera.position.copy(cameraPosition);
-                    this.camera.quaternion.copy(cameraQuaternion);
+                    // Calculate how much the target moved
+                    const targetDelta = new THREE.Vector3().subVectors(
+                        this.controls.target,
+                        originalTarget
+                    );
 
-                    // Update the controls without allowing it to move the camera
-                    this.controls.update();
+                    // Move the camera by the same amount to maintain relative position
+                    this.camera.position.add(targetDelta);
 
-                    // Ensure camera position and orientation remain exactly the same
+                    // Force the camera to stay at its current position and orientation
                     this.camera.position.copy(cameraPosition);
                     this.camera.quaternion.copy(cameraQuaternion);
 
                     // Update the pivot indicator position
                     this.updatePivotIndicator();
                 }
+
+                // Reset the flag after updating
+                this.updatingPivot = false;
             }
         });
 
