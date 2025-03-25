@@ -2,6 +2,8 @@
  * MayaControls - Maya-style 3D camera controls for Three.js
  * Provides tumbling, panning, and zooming functionality similar to Maya and other professional 3D applications
  */
+import { THREE } from '../utils/ThreeUtils.js';
+
 class MayaControls {
     /**
      * Create a new MayaControls instance
@@ -216,9 +218,6 @@ class MayaControls {
     onClick(event) {
         if (!this.isEnabled || this.isAltDown || event.button !== 0) return;
 
-        // Check if we have a model callback for raycasting
-        if (typeof this.options.getRaycastObjects !== 'function') return;
-
         // Get accurate client coordinates relative to the renderer
         const rect = this.domElement.getBoundingClientRect();
         const mouseX = event.clientX - rect.left;
@@ -227,27 +226,31 @@ class MayaControls {
         // Get raycaster from camera through click point
         const raycaster = this.getMouseRay(mouseX, mouseY);
 
-        // Get objects to test from the callback
-        const objects = this.options.getRaycastObjects();
-        if (!objects || !objects.length) return;
+        // Get all meshes in the model for raycasting
+        let meshes = [];
+        if (this.domElement.parentNode && this.domElement.parentNode.scene) {
+            // Try to get scene from parent element
+            const scene = this.domElement.parentNode.scene;
+            scene.traverse((child) => {
+                if (child.isMesh) {
+                    meshes.push(child);
+                }
+            });
+        }
 
-        // Find intersection with objects
-        const intersects = raycaster.intersectObjects(objects, true);
+        // Find intersection with model meshes
+        const intersects = raycaster.intersectObjects(meshes, true);
 
         // If we hit something, update the pivot point without moving the camera
         if (intersects.length > 0) {
             // Set the new pivot point to the intersection point
             this.pivotPoint.copy(intersects[0].point);
 
-            // DO NOT update camera target - this keeps off-center rotation
-
             // Update the pivot indicator position
             this.updatePivotIndicator();
 
-            // Call the onPivotChanged callback if provided
-            if (typeof this.options.onPivotChanged === 'function') {
-                this.options.onPivotChanged(this.pivotPoint.clone());
-            }
+            // Dispatch pivot changed event
+            this.dispatchEvent({ type: 'pivotChanged', position: this.pivotPoint.clone() });
         }
     }
 
@@ -415,6 +418,8 @@ class MayaControls {
     setPivotPoint(point) {
         this.pivotPoint.copy(point);
         this.updatePivotIndicator();
+        // Dispatch pivot changed event
+        this.dispatchEvent({ type: 'pivotChanged', position: this.pivotPoint.clone() });
     }
 
     /**

@@ -1,6 +1,8 @@
 /**
  * MathUtils - Utility functions for 3D math operations
  */
+import { THREE } from './ThreeUtils.js';
+
 class MathUtils {
     /**
      * Calculate ray from screen coordinates

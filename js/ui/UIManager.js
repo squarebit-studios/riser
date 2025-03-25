@@ -1,6 +1,8 @@
 /**
  * UIManager - Handles UI elements and interactions
  */
+import { THREE } from '../utils/ThreeUtils.js';
+
 class UIManager {
     /**
      * Create a new UI Manager

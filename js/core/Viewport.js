@@ -1,6 +1,8 @@
 /**
  * Viewport - Manages the 3D scene, renderer and camera
  */
+import { THREE } from '../utils/ThreeUtils.js';
+
 class Viewport {
     /**
      * Create a new Viewport

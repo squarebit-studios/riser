@@ -1,6 +1,8 @@
 /**
  * ModelLoader - Handles loading 3D models in various formats
  */
+import { THREE } from '../utils/ThreeUtils.js';
+
 class ModelLoader {
     /**
      * Create a new ModelLoader

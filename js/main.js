@@ -5,11 +5,32 @@
  */
 
 // Import dependencies
+import { THREE } from './utils/ThreeUtils.js';
 import { Viewport } from './core/Viewport.js';
 import { MayaControls } from './controls/MayaControls.js';
 import { ModelLoader } from './loaders/ModelLoader.js';
 import { MathUtils } from './utils/MathUtils.js';
 import { UIManager } from './ui/UIManager.js';
+
+// Add event dispatcher functionality to MayaControls
+MayaControls.prototype.addEventListener = function (type, listener) {
+    if (this._listeners === undefined) this._listeners = {};
+    if (this._listeners[type] === undefined) this._listeners[type] = [];
+    if (this._listeners[type].indexOf(listener) === -1) {
+        this._listeners[type].push(listener);
+    }
+};
+
+MayaControls.prototype.dispatchEvent = function (event) {
+    if (this._listeners === undefined) return;
+    const listeners = this._listeners[event.type];
+    if (listeners !== undefined) {
+        const array = listeners.slice(0);
+        for (let i = 0, l = array.length; i < l; i++) {
+            array[i].call(this, event);
+        }
+    }
+};
 
 class App {
     /**
