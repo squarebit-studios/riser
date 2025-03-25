@@ -78,6 +78,9 @@ class App {
         // Initialize components
         this.initComponents();
         this.setupEventListeners();
+
+        // Debug message
+        console.log('App initialized', this);
     }
 
     /**
@@ -90,12 +93,20 @@ class App {
             shadowsEnabled: true
         });
 
+        // Store scene and loaded model references on container for raycasting
+        this.container.scene = this.viewport.scene;
+        this.container.loadedModel = this.viewport.loadedModel;
+
         // Create Maya-style camera controls
         this.cameraControls = new MayaControls(
             this.viewport.camera,
             this.viewport.cameraTarget,
-            this.viewport.renderer.domElement
+            this.viewport.renderer.domElement,
+            { debug: true }
         );
+
+        // Set the scene in the controls
+        this.cameraControls.setScene(this.viewport.scene);
 
         // Create model loader
         this.modelLoader = new ModelLoader({
@@ -240,6 +251,9 @@ class App {
                 // Add the model to the scene
                 const model = this.viewport.loadModel(modelData);
 
+                // Update reference to loaded model on container for raycasting
+                this.container.loadedModel = this.viewport.loadedModel;
+
                 // Store transform data
                 this.modelTransform.translate = Object.assign({}, modelData.transform.translate);
                 this.modelTransform.rotate = Object.assign({}, modelData.transform.rotate);
@@ -259,6 +273,12 @@ class App {
 
                 // Update camera controls target
                 this.cameraControls.setPivotPoint(modelData.center);
+
+                console.log('Model loaded successfully:', {
+                    modelData,
+                    model: this.viewport.loadedModel,
+                    scene: this.viewport.scene
+                });
             })
             .catch(error => {
                 console.error('Error loading model:', error);
@@ -390,9 +410,47 @@ class App {
             this.pivotIndicator.position.copy(position);
         }
     }
+
+    /**
+     * Load a test cube to verify the 3D view
+     */
+    loadTestCube() {
+        console.log('Loading test cube');
+
+        // Create a simple cube geometry
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
+        const material = new THREE.MeshStandardMaterial({
+            color: 0x00ff00,
+            metalness: 0.2,
+            roughness: 0.8
+        });
+
+        const cube = new THREE.Mesh(geometry, material);
+        cube.position.set(0, 0.5, 0);
+        cube.castShadow = true;
+        cube.receiveShadow = true;
+
+        // Add to scene
+        this.viewport.scene.add(cube);
+        this.viewport.loadedModel = cube;
+
+        // Update container reference
+        this.container.loadedModel = cube;
+
+        // Update info
+        this.uiManager.updateStatus('Test cube loaded');
+        console.log('Test cube added to scene');
+
+        return cube;
+    }
 }
 
 // Initialize application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     const app = new App();
+
+    // Load test cube after a short delay to verify the 3D view
+    setTimeout(() => {
+        app.loadTestCube();
+    }, 1000);
 }); 

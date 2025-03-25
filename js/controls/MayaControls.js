@@ -17,6 +17,12 @@ class MayaControls {
         this.cameraTarget = cameraTarget;
         this.domElement = domElement;
 
+        // Try to get the scene from the parent container of the domElement
+        this.scene = null;
+        if (domElement.parentNode && domElement.parentNode.scene) {
+            this.scene = domElement.parentNode.scene;
+        }
+
         // The true pivot point for tumbling (can be different from camera target)
         this.pivotPoint = new THREE.Vector3();
         this.pivotPoint.copy(cameraTarget); // Initialize to same as camera target
@@ -52,6 +58,14 @@ class MayaControls {
         if (options.showPivotIndicator) {
             this.createPivotIndicator();
         }
+
+        // Debug log
+        console.log('MayaControls initialized:', {
+            camera: this.camera,
+            target: this.cameraTarget,
+            scene: this.scene,
+            domElement: this.domElement
+        });
     }
 
     /**
@@ -218,6 +232,9 @@ class MayaControls {
     onClick(event) {
         if (!this.isEnabled || this.isAltDown || event.button !== 0) return;
 
+        // Debug log
+        console.log('Click event:', event);
+
         // Get accurate client coordinates relative to the renderer
         const rect = this.domElement.getBoundingClientRect();
         const mouseX = event.clientX - rect.left;
@@ -226,10 +243,22 @@ class MayaControls {
         // Get raycaster from camera through click point
         const raycaster = this.getMouseRay(mouseX, mouseY);
 
-        // Get all meshes in the model for raycasting
+        // Try multiple methods to access the scene and meshes
         let meshes = [];
-        if (this.domElement.parentNode && this.domElement.parentNode.scene) {
-            // Try to get scene from parent element
+
+        // Method 1: Get scene from this.scene
+        if (this.scene) {
+            console.log('Using this.scene for raycasting');
+            this.scene.traverse((child) => {
+                if (child.isMesh) {
+                    meshes.push(child);
+                }
+            });
+        }
+
+        // Method 2: Get scene from container
+        if (meshes.length === 0 && this.domElement.parentNode && this.domElement.parentNode.scene) {
+            console.log('Using parentNode.scene for raycasting');
             const scene = this.domElement.parentNode.scene;
             scene.traverse((child) => {
                 if (child.isMesh) {
@@ -238,8 +267,22 @@ class MayaControls {
             });
         }
 
+        // Method 3: If we know about a loaded model directly 
+        if (meshes.length === 0 && this.domElement.parentNode.loadedModel) {
+            console.log('Using parentNode.loadedModel for raycasting');
+            const model = this.domElement.parentNode.loadedModel;
+            model.traverse((child) => {
+                if (child.isMesh) {
+                    meshes.push(child);
+                }
+            });
+        }
+
+        console.log('Meshes found for raycasting:', meshes.length);
+
         // Find intersection with model meshes
         const intersects = raycaster.intersectObjects(meshes, true);
+        console.log('Intersections:', intersects);
 
         // If we hit something, update the pivot point without moving the camera
         if (intersects.length > 0) {
@@ -251,6 +294,8 @@ class MayaControls {
 
             // Dispatch pivot changed event
             this.dispatchEvent({ type: 'pivotChanged', position: this.pivotPoint.clone() });
+
+            console.log('Pivot point set to:', this.pivotPoint);
         }
     }
 
@@ -436,6 +481,15 @@ class MayaControls {
         // Reset the pivot point to match camera target
         this.pivotPoint.copy(this.cameraTarget);
         this.updatePivotIndicator();
+    }
+
+    /**
+     * Set the scene reference
+     * @param {THREE.Scene} scene - The scene to use for raycasting
+     */
+    setScene(scene) {
+        this.scene = scene;
+        console.log('Scene updated in MayaControls');
     }
 }
 

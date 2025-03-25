@@ -33,6 +33,9 @@ class Viewport {
         this.animating = false;
         this.loadedModel = null;
 
+        // Store scene reference on container for raycasting
+        this.container.scene = this.scene;
+
         // Handle window resize
         window.addEventListener('resize', this.onWindowResize.bind(this));
 
@@ -261,9 +264,15 @@ class Viewport {
      * Animation loop
      */
     animate() {
-        this.animating = true;
+        if (!this.animating) {
+            this.animating = true;
+        }
+
+        // Render
         this.render();
-        requestAnimationFrame(this.animate.bind(this));
+
+        // Request next frame
+        requestAnimationFrame(() => this.animate());
     }
 
     /**
