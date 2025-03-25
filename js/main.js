@@ -109,9 +109,6 @@ class ModelViewer {
         const axesHelper = new THREE.AxesHelper(5);
         this.scene.add(axesHelper);
 
-        // Store original domElement for controls
-        this.controlsDomElement = this.renderer.domElement;
-
         // Handle window resize
         window.addEventListener('resize', () => this.onWindowResize(), false);
 
@@ -484,24 +481,30 @@ class ModelViewer {
 
                 // If we hit something, update the pivot point without moving the camera
                 if (intersects.length > 0) {
-                    // Capture current state
-                    const oldTarget = this.controls.target.clone();
-                    const newTarget = intersects[0].point.clone();
+                    // Get the current target and camera position
+                    const currentTarget = this.controls.target.clone();
+                    const currentCameraPosition = this.camera.position.clone();
 
-                    // Temporarily disconnect the OrbitControls by removing its domElement
-                    // This prevents any automatic camera updates during target changes
-                    this.detachOrbitControls();
+                    // Calculate the original camera-to-target offset vector
+                    const offsetVector = new THREE.Vector3().subVectors(
+                        currentCameraPosition,
+                        currentTarget
+                    );
 
-                    try {
-                        // Set the new target directly
-                        this.controls.target.copy(newTarget);
+                    // Set the new target to the intersection point
+                    this.controls.target.copy(intersects[0].point);
 
-                        // Update the pivot indicator
-                        this.updatePivotIndicator();
-                    } finally {
-                        // Re-attach the controls
-                        this.reattachOrbitControls();
-                    }
+                    // Calculate where the camera should be to maintain the exact same view
+                    const newCameraPosition = new THREE.Vector3().copy(this.controls.target).add(offsetVector);
+
+                    // Set the camera to the new position
+                    this.camera.position.copy(newCameraPosition);
+
+                    // Update the pivot indicator position
+                    this.updatePivotIndicator();
+
+                    // Update the controls immediately
+                    this.controls.update();
                 }
             }
         });
@@ -721,29 +724,6 @@ class ModelViewer {
 
         // Add navigation help to the container
         this.container.appendChild(navHelp);
-    }
-
-    detachOrbitControls() {
-        // Store current controls target and camera position
-        this._storedTarget = this.controls.target.clone();
-        this._storedCameraPosition = this.camera.position.clone();
-        this._storedCameraQuaternion = this.camera.quaternion.clone();
-
-        // Temporarily remove the event listeners by removing the DOM element
-        this.controls.domElement = null;
-    }
-
-    reattachOrbitControls() {
-        // Reattach the same DOM element
-        this.controls.domElement = this.controlsDomElement;
-
-        // Restore exact camera position and orientation
-        this.camera.position.copy(this._storedCameraPosition);
-        this.camera.quaternion.copy(this._storedCameraQuaternion);
-
-        // Manually update controls (which updates internal matrices)
-        // but preserves our exact camera position
-        this.controls.update();
     }
 }
 
