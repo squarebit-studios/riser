@@ -46,6 +46,9 @@ h4 {
 
 #file-container {
     margin-bottom: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
 #file-input {
@@ -65,13 +68,60 @@ h4 {
     border-radius: 4px;
     cursor: pointer;
     transition: background-color 0.3s;
+    width: fit-content;
 }
 
 .file-label:hover {
     background-color: #81d4fa;
 }
 
-#controls {
+/* Drop zone for drag-and-drop file uploads */
+.drop-zone {
+    border: 2px dashed #4fc3f7;
+    border-radius: 6px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.3s ease;
+    background-color: rgba(79, 195, 247, 0.1);
+    margin-top: 10px;
+}
+
+.drop-zone.highlight {
+    border-color: #81d4fa;
+    background-color: rgba(129, 212, 250, 0.2);
+    transform: scale(1.02);
+}
+
+.drop-zone span {
+    display: block;
+    color: #4fc3f7;
+    font-size: 14px;
+}
+
+/* Loading indicator */
+.loading-indicator {
+    background-color: rgba(0, 0, 0, 0.8);
+    color: #4fc3f7;
+    padding: 10px 15px;
+    border-radius: 4px;
+    margin: 10px 0;
+    text-align: center;
+    display: none;
+    font-weight: bold;
+}
+
+/* Status bar */
+.status-bar {
+    background-color: rgba(0, 0, 0, 0.6);
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin-top: 15px;
+    font-size: 14px;
+    color: #e0e0e0;
+    border-left: 3px solid #4fc3f7;
+}
+
+#controls-panel {
     display: flex;
     flex-wrap: wrap;
     gap: 20px;
@@ -185,4 +235,77 @@ canvas {
 #nav-help strong {
     color: #4fc3f7;
     font-weight: bold;
+}
+
+/* Keyboard shortcuts help */
+.keyboard-shortcuts {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    background-color: rgba(0, 0, 0, 0.8);
+    color: #ffffff;
+    padding: 12px 15px;
+    border-radius: 6px;
+    font-size: 13px;
+    z-index: 100;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
+    transition: all 0.3s ease;
+    border: 1px solid rgba(79, 195, 247, 0.3);
+    max-width: 300px;
+}
+
+.keyboard-shortcuts:hover {
+    transform: scale(1.02);
+    background-color: rgba(0, 0, 0, 0.9);
+    border-color: rgba(79, 195, 247, 0.8);
+}
+
+.shortcuts-title {
+    color: #4fc3f7;
+    font-weight: bold;
+    margin-bottom: 8px;
+    font-size: 14px;
+    border-bottom: 1px solid rgba(79, 195, 247, 0.5);
+    padding-bottom: 5px;
+}
+
+.shortcut-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+    line-height: 1.4;
+}
+
+.shortcut-row span:first-child {
+    color: #81d4fa;
+    margin-right: 15px;
+}
+
+/* Media queries for responsiveness */
+@media (max-width: 768px) {
+    #info {
+        max-height: 60vh;
+    }
+
+    .transform-group {
+        min-width: 100%;
+    }
+
+    .keyboard-shortcuts {
+        bottom: 10px;
+        right: 10px;
+        left: 10px;
+        max-width: none;
+    }
+}
+
+@media (min-width: 1200px) {
+    #container {
+        flex-direction: row;
+    }
+
+    #info {
+        max-height: 100vh;
+        width: 350px;
+    }
 }
