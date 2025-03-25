@@ -419,9 +419,22 @@ class ModelViewer {
         // Tracking active control mode
         let activeControl = null; // 'tumble', 'pan', 'zoom', or null
 
-        // For pan control
-        let panningPoint = new THREE.Vector3();
-        let panningPlane = new THREE.Plane();
+        // For pan control - we'll track the initial camera position
+        let initialCameraPos = new THREE.Vector3();
+        let initialMousePos = new THREE.Vector2();
+        let viewPlane = new THREE.Plane();
+
+        // Screen-to-world conversion helpers
+        const getMouseRay = (mouseX, mouseY) => {
+            // Convert to normalized device coordinates (-1 to +1)
+            const ndcX = (mouseX / renderer.clientWidth) * 2 - 1;
+            const ndcY = -(mouseY / renderer.clientHeight) * 2 + 1;
+
+            // Create ray from camera through mouse point
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.camera);
+            return raycaster.ray;
+        };
 
         // Track Alt key state
         window.addEventListener('keydown', (event) => {
@@ -450,14 +463,8 @@ class ModelViewer {
                 const mouseX = event.clientX - rect.left;
                 const mouseY = event.clientY - rect.top;
 
-                // Convert to normalized device coordinates (-1 to +1)
-                const mousePosition = new THREE.Vector2(
-                    (mouseX / renderer.clientWidth) * 2 - 1,
-                    -(mouseY / renderer.clientHeight) * 2 + 1
-                );
-
-                const raycaster = new THREE.Raycaster();
-                raycaster.setFromCamera(mousePosition, this.camera);
+                // Get ray from camera through click point
+                const ray = getMouseRay(mouseX, mouseY);
 
                 // Get all meshes in the model
                 const meshes = [];
@@ -468,7 +475,7 @@ class ModelViewer {
                 });
 
                 // Find intersection with model meshes
-                const intersects = raycaster.intersectObjects(meshes, true);
+                const intersects = ray.intersectObjects(meshes, true);
 
                 // If we hit something, update the pivot point without moving the camera
                 if (intersects.length > 0) {
@@ -492,6 +499,10 @@ class ModelViewer {
                 // Store initial position for all types of movement
                 prevMouse.x = mouseX;
                 prevMouse.y = mouseY;
+                initialMousePos.set(mouseX, mouseY);
+
+                // Store initial camera position
+                initialCameraPos.copy(this.camera.position);
 
                 // Determine which control to activate based on the mouse button
                 if (event.button === 0) { // Left button - Tumble
@@ -501,22 +512,16 @@ class ModelViewer {
                     activeControl = 'pan';
                     renderer.style.cursor = 'grabbing';
 
-                    // Create a panning plane perpendicular to the camera
+                    // Create a view plane for the panning operation
+                    // This plane is perpendicular to the view direction at the pivot depth
                     const cameraDirection = new THREE.Vector3();
                     this.camera.getWorldDirection(cameraDirection);
-                    panningPlane.setFromNormalAndCoplanarPoint(
+
+                    // Set up the view plane at the pivot point
+                    viewPlane.setFromNormalAndCoplanarPoint(
                         cameraDirection.negate(),
                         this.pivotPoint
                     );
-
-                    // Get the point on the plane where the ray intersects
-                    const raycaster = new THREE.Raycaster();
-                    const mousePosition = new THREE.Vector2(
-                        (mouseX / renderer.clientWidth) * 2 - 1,
-                        -(mouseY / renderer.clientHeight) * 2 + 1
-                    );
-                    raycaster.setFromCamera(mousePosition, this.camera);
-                    raycaster.ray.intersectPlane(panningPlane, panningPoint);
                 } else if (event.button === 2) { // Right button - Zoom
                     activeControl = 'zoom';
                     renderer.style.cursor = 'ns-resize';
@@ -539,80 +544,81 @@ class ModelViewer {
             const deltaY = mouse.y - prevMouse.y;
 
             if (activeControl === 'tumble') {
-                // Pure manual tumble implementation without OrbitControls
+                // Pure manual tumble implementation 
                 const rotateSpeed = 0.005; // Reduced speed for more precision
 
-                // Get the camera-to-pivot direction vector
-                const offset = new THREE.Vector3().subVectors(
+                // Get vector from pivot to camera
+                const pivotToCamera = new THREE.Vector3().subVectors(
                     this.camera.position,
                     this.pivotPoint
                 );
 
-                // Create a quaternion for horizontal rotation (around world Y axis)
-                // Horizontal pan - rotate around Y axis
-                const horizontalRotation = new THREE.Quaternion().setFromAxisAngle(
-                    new THREE.Vector3(0, 1, 0),
+                // Apply rotations to this vector using quaternions
+
+                // 1. Horizontal rotation around world up (Y) axis
+                const horizontalQuat = new THREE.Quaternion().setFromAxisAngle(
+                    new THREE.Vector3(0, 1, 0), // World up axis
                     -deltaX * rotateSpeed
                 );
+                pivotToCamera.applyQuaternion(horizontalQuat);
 
-                // Apply the horizontal rotation to our offset
-                offset.applyQuaternion(horizontalRotation);
-
-                // For vertical rotation, we need to rotate around the camera's right vector
-                // First we get the forward vector of the camera
-                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
-
-                // Then get the right vector (cross product of forward and world up)
+                // 2. Vertical rotation around camera right vector
+                // First get the camera's current right vector
+                const forward = new THREE.Vector3();
+                this.camera.getWorldDirection(forward);
                 const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
-                // Create the vertical rotation quaternion
-                const verticalRotation = new THREE.Quaternion().setFromAxisAngle(
+                // Create and apply vertical rotation
+                const verticalQuat = new THREE.Quaternion().setFromAxisAngle(
                     right,
                     -deltaY * rotateSpeed
                 );
+                pivotToCamera.applyQuaternion(verticalQuat);
 
-                // Apply the vertical rotation
-                offset.applyQuaternion(verticalRotation);
+                // Set new camera position based on pivot + rotated offset vector
+                this.camera.position.copy(this.pivotPoint).add(pivotToCamera);
 
-                // Set the new camera position based on the rotated offset
-                this.camera.position.copy(this.pivotPoint).add(offset);
-
-                // Update where the camera is looking at
+                // Always look at the pivot
                 this.cameraTarget.copy(this.pivotPoint);
+                this.camera.lookAt(this.cameraTarget);
             }
             else if (activeControl === 'pan') {
-                // Maya-style panning where point under cursor follows the cursor
-                const raycaster = new THREE.Raycaster();
-                const mousePosition = new THREE.Vector2(
-                    (mouse.x / renderer.clientWidth) * 2 - 1,
-                    -(mouse.y / renderer.clientHeight) * 2 + 1
+                // Maya-style panning - move the camera in the view plane
+                // This method keeps the pivot point stationary in world space
+
+                // 1. Get two rays - one from the initial mouse position and one from the current
+                const initialRay = getMouseRay(initialMousePos.x, initialMousePos.y);
+                const currentRay = getMouseRay(mouse.x, mouse.y);
+
+                // 2. Find where these rays intersect our view plane
+                const initialIntersection = new THREE.Vector3();
+                const currentIntersection = new THREE.Vector3();
+                initialRay.intersectPlane(viewPlane, initialIntersection);
+                currentRay.intersectPlane(viewPlane, currentIntersection);
+
+                // 3. The difference is how much we need to move the camera
+                const worldMovement = new THREE.Vector3().subVectors(
+                    initialIntersection,
+                    currentIntersection
                 );
 
-                raycaster.setFromCamera(mousePosition, this.camera);
+                // 4. Apply the movement only to the camera (NOT to the pivot)
+                this.camera.position.copy(initialCameraPos).add(worldMovement);
 
-                // Find where this ray intersects our panning plane
-                const newPanningPoint = new THREE.Vector3();
-                raycaster.ray.intersectPlane(panningPlane, newPanningPoint);
-
-                // The translation is the difference between the original point and the new point
-                const translation = new THREE.Vector3().subVectors(panningPoint, newPanningPoint);
-
-                // Move the camera, camera target and pivot point by this translation
-                this.camera.position.add(translation);
-                this.cameraTarget.add(translation);
-                this.pivotPoint.add(translation);
+                // 5. Keep the camera looking at the same target
+                this.camera.lookAt(this.cameraTarget);
             }
             else if (activeControl === 'zoom') {
                 // Maya-style zoom: move right to zoom in, left to zoom out
-                const zoomSpeed = 0.0025; // Reduced to 25% of original speed (was 0.01)
+                const zoomSpeed = 0.0025; // 25% of original speed
 
-                // Calculate zoom direction (from camera to target)
+                // Calculate zoom direction from camera to pivot (NOT camera target)
                 const zoomDirection = new THREE.Vector3().subVectors(
                     this.pivotPoint,
                     this.camera.position
                 ).normalize();
 
-                // Move camera toward/away from pivot point
+                // Move camera along the zoom direction
                 const distance = this.camera.position.distanceTo(this.pivotPoint);
                 this.camera.position.addScaledVector(zoomDirection, deltaX * zoomSpeed * distance);
             }
@@ -637,16 +643,16 @@ class ModelViewer {
 
         // Add mouse wheel zoom (standard behavior, works without Alt)
         renderer.addEventListener('wheel', (event) => {
-            const zoomSpeed = 0.00025; // Reduced to 25% of original speed (was 0.001)
+            const zoomSpeed = 0.00025; // 25% of original speed
             const delta = event.deltaY;
 
-            // Calculate zoom direction (from camera to target)
+            // Calculate zoom direction from camera to pivot
             const zoomDirection = new THREE.Vector3().subVectors(
-                this.pivotPoint,
+                this.pivotPoint, // Use the pivot point, not camera target
                 this.camera.position
             ).normalize();
 
-            // Move camera toward/away from pivot point
+            // Move camera along the zoom direction
             const distance = this.camera.position.distanceTo(this.pivotPoint);
             this.camera.position.addScaledVector(zoomDirection, delta * zoomSpeed * distance);
 
