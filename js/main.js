@@ -618,22 +618,23 @@ class ModelViewer {
                 // The pivot point remains fixed in world space - do not move it
             }
             else if (activeControl === 'zoom') {
-                // Improved Maya-style zoom that avoids "swimming" when target is off-center
-
-                // Use a fixed zoom direction directly from camera to pivot point
-                const zoomDirection = new THREE.Vector3().subVectors(
-                    this.pivotPoint,
-                    this.camera.position
-                ).normalize();
+                // Standard linear zoom toward camera target (center of view)
+                // This ignores the pivot point and just zooms toward what's centered in the camera
 
                 // Calculate zoom amount - right moves in, left moves out
                 const zoomSpeed = 0.0025;
+
+                // Get vector from camera to target (center of view)
+                const zoomDirection = new THREE.Vector3().subVectors(
+                    this.cameraTarget,
+                    this.camera.position
+                ).normalize();
+
+                // Calculate zoom amount based on initial distance and mouse movement
                 const zoomAmount = deltaX * zoomSpeed * zoomStartDistance;
 
-                // Move the camera along the zoom direction
+                // Move camera along the view direction (toward camera target)
                 this.camera.position.addScaledVector(zoomDirection, zoomAmount);
-
-                // Do not change cameraTarget - this keeps view direction consistent
             }
 
             // Update for next movement
@@ -660,18 +661,16 @@ class ModelViewer {
             const delta = event.deltaY;
 
             // Get current distance for consistent zoom speed
-            const distance = this.camera.position.distanceTo(this.pivotPoint);
+            const distance = this.camera.position.distanceTo(this.cameraTarget);
 
-            // Get fixed zoom direction from camera to pivot point
+            // Get fixed zoom direction from camera to target (center of view)
             const zoomDirection = new THREE.Vector3().subVectors(
-                this.pivotPoint,
+                this.cameraTarget,
                 this.camera.position
             ).normalize();
 
             // Apply zoom by moving camera along zoom direction
             this.camera.position.addScaledVector(zoomDirection, delta * zoomSpeed * distance);
-
-            // Do not change camera target
 
             event.preventDefault();
         }, { passive: false });
