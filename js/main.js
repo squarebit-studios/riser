@@ -39,6 +39,9 @@ class ModelViewer {
         this.grid = null;
         this.pivotIndicator = null;
 
+        // Custom pivot properties
+        this.pivotPoint = new THREE.Vector3(0, 0, 0); // True pivot point for tumbling
+
         // Transform values
         this.modelTransform = {
             translate: { x: 0, y: 0, z: 0 },
@@ -382,12 +385,14 @@ class ModelViewer {
                 center.z + distance
             );
 
-            // Update camera target
+            // Update camera target and pivot point
             this.controls.target.copy(center);
+            this.pivotPoint.copy(center);
         } else {
             // Reset to default position if no model
             this.camera.position.set(0, 5, 10);
             this.controls.target.set(0, 0, 0);
+            this.pivotPoint.set(0, 0, 0);
         }
 
         this.camera.updateProjectionMatrix();
@@ -481,30 +486,11 @@ class ModelViewer {
 
                 // If we hit something, update the pivot point without moving the camera
                 if (intersects.length > 0) {
-                    // Get the current target and camera position
-                    const currentTarget = this.controls.target.clone();
-                    const currentCameraPosition = this.camera.position.clone();
-
-                    // Calculate the original camera-to-target offset vector
-                    const offsetVector = new THREE.Vector3().subVectors(
-                        currentCameraPosition,
-                        currentTarget
-                    );
-
-                    // Set the new target to the intersection point
-                    this.controls.target.copy(intersects[0].point);
-
-                    // Calculate where the camera should be to maintain the exact same view
-                    const newCameraPosition = new THREE.Vector3().copy(this.controls.target).add(offsetVector);
-
-                    // Set the camera to the new position
-                    this.camera.position.copy(newCameraPosition);
+                    // Store the pivot point for tumbling/orbiting
+                    this.pivotPoint.copy(intersects[0].point);
 
                     // Update the pivot indicator position
                     this.updatePivotIndicator();
-
-                    // Update the controls immediately
-                    this.controls.update();
                 }
             }
         });
@@ -539,10 +525,10 @@ class ModelViewer {
 
                     raycaster.setFromCamera(mousePosition, this.camera);
 
-                    // Use the target point for the panning plane
+                    // Use the pivot point for the panning plane
                     panningPlane.setFromNormalAndCoplanarPoint(
                         this.camera.getWorldDirection(new THREE.Vector3()).negate(),
-                        this.controls.target
+                        this.pivotPoint
                     );
 
                     // Get the point on the plane where the ray intersects
@@ -569,11 +555,13 @@ class ModelViewer {
             const deltaY = mouse.y - prevMouse.y;
 
             if (activeControl === 'rotate') {
-                // Manual tumble/orbit implementation
+                // Manual tumble/orbit implementation around the custom pivot point
                 const rotateSpeed = 0.01;
 
+                // Move camera position relative to the pivot point
+                this.camera.position.sub(this.pivotPoint);
+
                 // Horizontal movement = rotate around vertical axis (y)
-                this.camera.position.sub(this.controls.target);
                 this.camera.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), -deltaX * rotateSpeed);
 
                 // Vertical movement = rotate around horizontal axis (x)
@@ -585,13 +573,17 @@ class ModelViewer {
                 // Rotate around the right vector
                 this.camera.position.applyAxisAngle(right, -deltaY * rotateSpeed);
 
-                // Move camera back to its position relative to target
-                this.camera.position.add(this.controls.target);
-                this.camera.lookAt(this.controls.target);
+                // Move camera back to its position relative to the pivot point
+                this.camera.position.add(this.pivotPoint);
+
+                // Update the orbit controls target to match where we're looking
+                this.controls.target.copy(this.pivotPoint);
+
+                // Make camera look at the pivot point
+                this.camera.lookAt(this.pivotPoint);
             }
             else if (activeControl === 'pan') {
                 // True Maya-style panning where point under cursor follows the cursor
-
                 // Get the new ray under the cursor
                 const raycaster = new THREE.Raycaster();
                 const mousePosition = new THREE.Vector2(
@@ -608,9 +600,12 @@ class ModelViewer {
                 // The translation is the difference between the original point and the new point
                 const translation = new THREE.Vector3().subVectors(panningPoint, newPanningPoint);
 
-                // Move both camera and target by this translation to maintain relative positions
+                // Move both camera and pivot point by this translation to maintain relative positions
                 this.camera.position.add(translation);
-                this.controls.target.add(translation);
+                this.pivotPoint.add(translation);
+
+                // Update the orbit controls target to match the pivot
+                this.controls.target.copy(this.pivotPoint);
 
                 // Update the pivot indicator position
                 this.updatePivotIndicator();
@@ -622,15 +617,15 @@ class ModelViewer {
 
                 // Apply zoom by changing camera position
                 const zoomDirection = new THREE.Vector3().subVectors(
-                    this.controls.target,
+                    this.pivotPoint,
                     this.camera.position
                 ).normalize();
 
-                // Move camera toward/away from target
+                // Move camera toward/away from pivot point
                 this.camera.position.addScaledVector(
                     zoomDirection,
                     deltaX * zoomSpeed *
-                    this.camera.position.distanceTo(this.controls.target)
+                    this.camera.position.distanceTo(this.pivotPoint)
                 );
             }
 
@@ -660,7 +655,7 @@ class ModelViewer {
 
             // Get zoom direction
             const zoomDirection = new THREE.Vector3().subVectors(
-                this.controls.target,
+                this.pivotPoint,
                 this.camera.position
             ).normalize();
 
@@ -668,7 +663,7 @@ class ModelViewer {
             this.camera.position.addScaledVector(
                 zoomDirection,
                 delta * zoomSpeed *
-                this.camera.position.distanceTo(this.controls.target)
+                this.camera.position.distanceTo(this.pivotPoint)
             );
 
             event.preventDefault();
@@ -688,9 +683,9 @@ class ModelViewer {
     }
 
     updatePivotIndicator() {
-        // Update the position of the pivot indicator to match the orbit controls target
-        if (this.pivotIndicator && this.controls) {
-            this.pivotIndicator.position.copy(this.controls.target);
+        // Update the position of the pivot indicator to match our custom pivot point
+        if (this.pivotIndicator) {
+            this.pivotIndicator.position.copy(this.pivotPoint);
         }
     }
 
