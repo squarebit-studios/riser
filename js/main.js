@@ -419,9 +419,11 @@ class ModelViewer {
         // Tracking active control mode
         let activeControl = null; // 'tumble', 'pan', 'zoom', or null
 
-        // For pan control
-        let initialCameraPos = new THREE.Vector3();
-        let initialCameraTarget = new THREE.Vector3();
+        // For tumble operation - store distance to pivot
+        let distanceToPivot = 0;
+
+        // For zoom operation - store distance to pivot
+        let zoomStartDistance = 0;
 
         // Screen-to-world conversion helpers
         const getMouseRay = (mouseX, mouseY) => {
@@ -476,11 +478,11 @@ class ModelViewer {
 
                 // If we hit something, update the pivot point without moving the camera
                 if (intersects.length > 0) {
-                    // Store the pivot point for tumbling/orbiting
+                    // Set the new pivot point to the intersection point
                     this.pivotPoint.copy(intersects[0].point);
 
-                    // Update camera target to the new pivot point
-                    this.cameraTarget.copy(this.pivotPoint);
+                    // DO NOT update camera target - this keeps off-center rotation
+                    // this.cameraTarget remains where it was
 
                     // Update the pivot indicator position
                     this.updatePivotIndicator();
@@ -500,9 +502,9 @@ class ModelViewer {
                 prevMouse.x = mouseX;
                 prevMouse.y = mouseY;
 
-                // Store initial camera state
-                initialCameraPos.copy(this.camera.position);
-                initialCameraTarget.copy(this.cameraTarget);
+                // Store current distance to pivot for zoom operations
+                distanceToPivot = this.camera.position.distanceTo(this.pivotPoint);
+                zoomStartDistance = distanceToPivot;
 
                 // Determine which control to activate based on the mouse button
                 if (event.button === 0) { // Left button - Tumble
@@ -533,7 +535,6 @@ class ModelViewer {
             const deltaY = mouse.y - prevMouse.y;
 
             if (activeControl === 'tumble') {
-                // Pure manual tumble implementation 
                 const rotateSpeed = 0.005; // Reduced speed for more precision
 
                 // Get vector from pivot to camera
@@ -542,66 +543,97 @@ class ModelViewer {
                     this.pivotPoint
                 );
 
-                // Apply rotations to this vector using quaternions
+                // Store the original camera-to-pivot distance
+                const originalDistance = pivotToCamera.length();
 
-                // 1. Horizontal rotation around world up (Y) axis
+                // Create a quaternion for horizontal rotation around world up
+                const yAxis = new THREE.Vector3(0, 1, 0);
                 const horizontalQuat = new THREE.Quaternion().setFromAxisAngle(
-                    new THREE.Vector3(0, 1, 0), // World up axis
+                    yAxis,
                     -deltaX * rotateSpeed
                 );
+
+                // Apply horizontal rotation
                 pivotToCamera.applyQuaternion(horizontalQuat);
 
-                // 2. Vertical rotation around camera right vector
-                // First get the camera's current right vector
-                const forward = new THREE.Vector3();
-                this.camera.getWorldDirection(forward);
-                const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+                // Get the camera's right vector for vertical rotation
+                // This ensures vertical rotation is always around the screen horizontal axis
+                const cameraRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
 
-                // Create and apply vertical rotation
+                // Create vertical rotation quaternion
                 const verticalQuat = new THREE.Quaternion().setFromAxisAngle(
-                    right,
+                    cameraRight,
                     -deltaY * rotateSpeed
                 );
+
+                // Apply vertical rotation
                 pivotToCamera.applyQuaternion(verticalQuat);
 
-                // Set new camera position based on pivot + rotated offset vector
+                // Make sure we maintain the original distance (avoid any scaling issues)
+                pivotToCamera.normalize().multiplyScalar(originalDistance);
+
+                // Set the new camera position
                 this.camera.position.copy(this.pivotPoint).add(pivotToCamera);
 
-                // Keep the camera looking at the pivot point
-                this.cameraTarget.copy(this.pivotPoint);
+                // Keep pivot point off-center - DO NOT update cameraTarget to match pivot
+                // Instead, calculate a new camera orientation that keeps the tumbling centered
+                // on the pivot point without changing what's in the center of the screen
+
+                // Get offset from camera target to pivot
+                const targetToPivot = new THREE.Vector3().subVectors(
+                    this.pivotPoint,
+                    this.cameraTarget
+                );
+
+                // Rotate this offset vector the same way we rotated the camera
+                targetToPivot.applyQuaternion(horizontalQuat);
+                targetToPivot.applyQuaternion(verticalQuat);
+
+                // Calculate the new camera target position that keeps the same
+                // relationship between the pivot and what's in the center of the screen
+                const newTarget = new THREE.Vector3().copy(this.pivotPoint).sub(targetToPivot);
+                this.cameraTarget.copy(newTarget);
             }
             else if (activeControl === 'pan') {
-                // Simple pan implementation - move camera and target together
-                // Convert mouse movement to world space movement based on camera view
+                // Improved pan implementation that keeps pivot point fixed in world space
+
+                // Calculate pan speed based on distance to pivot for consistent feeling at any zoom level
+                const panSpeed = distanceToPivot * 0.001;
+
+                // Get camera's viewing plane vectors
                 const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
                 const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion);
 
-                // Calculate pan speed based on distance to target for consistent feeling
-                const distance = this.camera.position.distanceTo(this.pivotPoint);
-                const panSpeed = distance * 0.001;
-
-                // Create the movement vector in world space
+                // Create movement vector in world space
                 const movement = new THREE.Vector3()
                     .addScaledVector(right, -deltaX * panSpeed)
                     .addScaledVector(up, deltaY * panSpeed);
 
-                // Move both camera and camera target (not the pivot point)
+                // Move the camera position
                 this.camera.position.add(movement);
+
+                // Move the camera target by the same amount to maintain view direction
                 this.cameraTarget.add(movement);
+
+                // The pivot point remains fixed in world space - do not move it
             }
             else if (activeControl === 'zoom') {
-                // Maya-style zoom: move right to zoom in, left to zoom out
-                const zoomSpeed = 0.0025; // 25% of original speed
+                // Improved Maya-style zoom that avoids "swimming" when target is off-center
 
-                // Calculate zoom direction from camera to pivot
+                // Use a fixed zoom direction directly from camera to pivot point
                 const zoomDirection = new THREE.Vector3().subVectors(
                     this.pivotPoint,
                     this.camera.position
                 ).normalize();
 
-                // Move camera along the zoom direction
-                const distance = this.camera.position.distanceTo(this.pivotPoint);
-                this.camera.position.addScaledVector(zoomDirection, deltaX * zoomSpeed * distance);
+                // Calculate zoom amount - right moves in, left moves out
+                const zoomSpeed = 0.0025;
+                const zoomAmount = deltaX * zoomSpeed * zoomStartDistance;
+
+                // Move the camera along the zoom direction
+                this.camera.position.addScaledVector(zoomDirection, zoomAmount);
+
+                // Do not change cameraTarget - this keeps view direction consistent
             }
 
             // Update for next movement
@@ -627,15 +659,19 @@ class ModelViewer {
             const zoomSpeed = 0.00025; // 25% of original speed
             const delta = event.deltaY;
 
-            // Calculate zoom direction from camera to pivot
+            // Get current distance for consistent zoom speed
+            const distance = this.camera.position.distanceTo(this.pivotPoint);
+
+            // Get fixed zoom direction from camera to pivot point
             const zoomDirection = new THREE.Vector3().subVectors(
-                this.pivotPoint, // Use the pivot point, not camera target
+                this.pivotPoint,
                 this.camera.position
             ).normalize();
 
-            // Move camera along the zoom direction
-            const distance = this.camera.position.distanceTo(this.pivotPoint);
+            // Apply zoom by moving camera along zoom direction
             this.camera.position.addScaledVector(zoomDirection, delta * zoomSpeed * distance);
+
+            // Do not change camera target
 
             event.preventDefault();
         }, { passive: false });
