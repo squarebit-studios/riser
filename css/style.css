@@ -414,6 +414,16 @@ canvas {
     color: #666;
 }
 
+.menu-option.active {
+    background-color: rgba(79, 195, 247, 0.3);
+    font-weight: bold;
+}
+
+.menu-option.active:hover {
+    background-color: #4fc3f7;
+    color: #222;
+}
+
 /* Animation Controls Panel */
 #bone-controls-panel {
     margin-top: 15px;

@@ -83,6 +83,7 @@ class ModelViewer {
         // Create scene
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x2a2a2a);
+        // Removed fog for clearer rendering
 
         // Create camera
         const aspect = this.container.clientWidth / this.container.clientHeight;
@@ -97,93 +98,246 @@ class ModelViewer {
         this.renderer.shadowMap.enabled = true;
         this.container.appendChild(this.renderer.domElement);
 
-        // Initialize the channel box in disabled state
-        this.transformGroup.style.opacity = '0.5';
-        this.transformGroup.style.pointerEvents = 'none';
+        // Simple test click handler - placed early in initialization
+        this.renderer.domElement.addEventListener('click', (event) => {
+            console.error("🔴 DIRECT TEST CLICK HANDLER TRIGGERED 🔴");
 
-        // Create transform controls for manipulation
-        this.transformControls = new THREE.TransformControls(this.camera, this.renderer.domElement);
-        this.transformControls.setMode('translate'); // Default to translate mode
-        this.transformControls.setSize(0.85); // Slightly larger size for better visibility
+            // Get normalized mouse coordinates for raycasting
+            const rect = this.renderer.domElement.getBoundingClientRect();
+            const mouseX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            const mouseY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-        // Adjust uniform scale sensitivity - reducing to 1/10 of the default speed for very fine control
-        this.transformControls.scaleSpeed = 0.1;
+            console.error(`🔴 Mouse coords: ${mouseX.toFixed(2)}, ${mouseY.toFixed(2)}`);
 
-        // Set up space modes for different manipulators
-        this.transformControls.setTranslationSnap(null); // No snapping for translation
-        this.transformControls.setRotationSnap(null); // No snapping for rotation
-        this.transformControls.setScaleSnap(null); // No snapping for scaling
-
-        // Configure transform controls to use local space for all manipulators
-        this.transformControls.setSpace('local'); // Use local space for all manipulators
-
-        // Save state before manipulating
-        this.transformControls.addEventListener('mouseDown', () => {
-            if (this.selectedObject && !this.isUndoRedoAction) {
-                this.saveTransformState();
-            }
-        });
-
-        this.transformControls.addEventListener('dragging-changed', (event) => {
-            this.isDragging = event.value;
-
-            // When dragging ends, store the timestamp
-            if (!event.value) {
-                this.lastDragEndTime = Date.now();
+            // Create raycaster if not already created
+            if (!this.raycaster) {
+                this.raycaster = new THREE.Raycaster();
             }
 
-            // Disable tumble controls when using manipulator
-            this.enableTumbleControls(!this.isDragging);
-        });
+            // Update raycaster with mouse position and camera
+            this.raycaster.setFromCamera(new THREE.Vector2(mouseX, mouseY), this.camera);
 
-        // Add change listener to update UI when object is manipulated
-        this.transformControls.addEventListener('objectChange', () => {
-            if (this.selectedObject) {
-                // Update UI values to match object transformation
-                this.updateUIFromObject();
-
-                // Handle bone manipulation
-                if (this.selectedBone && this.selectedObject.userData.isBoneJoint) {
-                    // Update bone position based on joint position
-                    const worldMatrix = this.selectedObject.matrixWorld.clone();
-                    const boneParent = this.selectedBone.parent;
-
-                    if (boneParent) {
-                        // Calculate the new local position in the parent's space
-                        const invParentMatrix = new THREE.Matrix4().copy(boneParent.matrixWorld).invert();
-                        const localMatrix = new THREE.Matrix4().multiplyMatrices(invParentMatrix, worldMatrix);
-
-                        // Extract position from local matrix
-                        const position = new THREE.Vector3();
-                        localMatrix.decompose(position, new THREE.Quaternion(), new THREE.Vector3());
-
-                        // Update bone position
-                        this.selectedBone.position.copy(position);
-                    } else {
-                        // If no parent, just use world position
-                        const position = new THREE.Vector3();
-                        worldMatrix.decompose(position, new THREE.Quaternion(), new THREE.Vector3());
-                        this.selectedBone.position.copy(position);
+            // Collect all meshes from all models for raycasting
+            const meshes = [];
+            this.models.forEach(model => {
+                model.traverse(child => {
+                    if (child.isMesh && child.visible) {
+                        meshes.push(child);
                     }
+                });
+            });
 
-                    // Update bone matrix
-                    this.selectedBone.updateMatrix();
-                    this.selectedBone.updateMatrixWorld(true);
+            // Don't proceed if no meshes found
+            if (meshes.length === 0) {
+                console.error("🔴 No meshes to raycast against");
+                return;
+            }
 
-                    // Find the model and update skinned meshes
-                    const model = this.findModelForBone(this.selectedBone);
-                    if (model) {
-                        this.updateSkinnedMeshes(model);
+            console.error(`🔴 Raycasting against ${meshes.length} meshes`);
+
+            // Perform the raycast
+            const intersects = this.raycaster.intersectObjects(meshes, false);
+            console.error(`🔴 Found ${intersects.length} intersections`);
+
+            // If hit something, select the object
+            if (intersects.length > 0) {
+                const hitMesh = intersects[0].object;
+                console.error(`🔴 Hit mesh: ${hitMesh.name || 'unnamed'}`);
+
+                // Find which model contains this mesh
+                let parentModel = null;
+                this.models.forEach(model => {
+                    let isPartOfModel = false;
+                    model.traverse(child => {
+                        if (child === hitMesh) {
+                            isPartOfModel = true;
+                        }
+                    });
+                    if (isPartOfModel) {
+                        parentModel = model;
+                    }
+                });
+
+                // Default to hit mesh if no parent model found
+                const objectToSelect = parentModel || hitMesh;
+                console.error(`🔴 Selecting: ${objectToSelect.name || 'unnamed'}`);
+
+                // Clear previous selections
+                if (this.selectedObject) {
+                    console.error("🔴 First deselecting current object");
+                    // Reset color of previously selected object
+                    this.selectedObject.traverse(child => {
+                        if (child.isMesh && child.material) {
+                            console.error("🔴 Resetting material color");
+                            if (Array.isArray(child.material)) {
+                                child.material.forEach(mat => {
+                                    if (mat.originalColor) {
+                                        mat.color.copy(mat.originalColor);
+                                    }
+                                });
+                            } else if (child.material.originalColor) {
+                                child.material.color.copy(child.material.originalColor);
+                            }
+                        }
+                    });
+                }
+
+                // Store selection
+                this.selectedObject = objectToSelect;
+
+                // Make selection visually obvious by changing color
+                objectToSelect.traverse(child => {
+                    if (child.isMesh && child.material) {
+                        console.error("🔴 Setting selection highlight color");
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach(mat => {
+                                // Store original color if not already stored
+                                if (!mat.originalColor) {
+                                    mat.originalColor = mat.color.clone();
+                                }
+                                // Set to bright highlight color
+                                mat.color.set(0x00ffff); // Bright cyan
+                            });
+                        } else {
+                            // Store original color if not already stored
+                            if (!child.material.originalColor) {
+                                child.material.originalColor = child.material.color.clone();
+                            }
+                            // Set to bright highlight color
+                            child.material.color.set(0x00ffff); // Bright cyan
+                        }
+                    }
+                });
+
+                // Enable transform group
+                if (this.transformGroup) {
+                    this.transformGroup.style.opacity = '1';
+                    this.transformGroup.style.pointerEvents = 'auto';
+                }
+
+                // Update channel box title
+                if (this.channelBoxTitle) {
+                    this.channelBoxTitle.innerText = objectToSelect.name || 'Selected Object';
+                }
+
+                // Attach transform controls directly to ensure they appear
+                console.error("🔴 Attaching transform controls");
+                this.transformControls.attach(objectToSelect);
+                this.transformControls.visible = true;
+                this.transformControls.enabled = true;
+
+                console.error("🔴 Selection complete");
+                return true;
+            } else {
+                console.error("🔴 No intersections found, deselecting");
+                // No hit, deselect
+                if (this.selectedObject) {
+                    // Reset color
+                    this.selectedObject.traverse(child => {
+                        if (child.isMesh && child.material) {
+                            if (Array.isArray(child.material)) {
+                                child.material.forEach(mat => {
+                                    if (mat.originalColor) {
+                                        mat.color.copy(mat.originalColor);
+                                    }
+                                });
+                            } else if (child.material.originalColor) {
+                                child.material.color.copy(child.material.originalColor);
+                            }
+                        }
+                    });
+
+                    // Detach transform controls
+                    this.transformControls.detach();
+
+                    // Clear selection
+                    this.selectedObject = null;
+
+                    // Update UI
+                    if (this.channelBoxTitle) {
+                        this.channelBoxTitle.innerText = 'No Object Selected';
+                    }
+                    if (this.transformGroup) {
+                        this.transformGroup.style.opacity = '0.5';
+                        this.transformGroup.style.pointerEvents = 'none';
                     }
                 }
             }
         });
 
+        // Set up post-processing for outline effect
+        this.composer = new THREE.EffectComposer(this.renderer);
+        const renderPass = new THREE.RenderPass(this.scene, this.camera);
+        this.composer.addPass(renderPass);
+
+        // Set up outline effect for selected objects
+        this.outlinePass = new THREE.OutlinePass(
+            new THREE.Vector2(this.container.clientWidth, this.container.clientHeight),
+            this.scene,
+            this.camera
+        );
+        this.outlinePass.edgeStrength = 10;
+        this.outlinePass.edgeGlow = 0;
+        this.outlinePass.edgeThickness = 1;
+        this.outlinePass.pulsePeriod = 0;
+        this.outlinePass.visibleEdgeColor.set('#ffffff');
+        this.outlinePass.hiddenEdgeColor.set('#190a05');
+        this.composer.addPass(this.outlinePass);
+
+        // Add FXAA anti-aliasing pass
+        const fxaaPass = new THREE.ShaderPass(THREE.FXAAShader);
+        fxaaPass.material.uniforms.resolution.value.set(
+            1 / this.container.clientWidth,
+            1 / this.container.clientHeight
+        );
+        this.composer.addPass(fxaaPass);
+
+        // Create transform controls
+        this.transformControls = new THREE.TransformControls(this.camera, this.renderer.domElement);
+        this.transformControls.setMode('translate');
+        this.transformControls.setSpace('local');
         this.scene.add(this.transformControls);
+
+        // Add event listener for transform controls updates
+        this.transformControls.addEventListener('objectChange', (event) => {
+            // If we're manipulating a bone joint, update the bone position
+            if (this.selectedObject && this.selectedObject.userData.isBoneJoint && this.selectedBone) {
+                // Get the world position of the manipulator
+                const worldPos = this.selectedObject.position.clone();
+
+                // If the bone has a parent, convert to local space
+                if (this.selectedBone.parent) {
+                    // Get parent world matrix and invert it
+                    const invParentMatrix = new THREE.Matrix4().copy(this.selectedBone.parent.matrixWorld).invert();
+
+                    // Convert world position to local position
+                    const localPos = worldPos.clone().applyMatrix4(invParentMatrix);
+
+                    // Update bone position
+                    this.selectedBone.position.copy(localPos);
+                } else {
+                    // If no parent, just use world position
+                    this.selectedBone.position.copy(worldPos);
+                }
+
+                // Update bone matrix
+                this.selectedBone.updateMatrix();
+                this.selectedBone.updateMatrixWorld(true);
+
+                // Update UI to reflect new position
+                this.updateUIFromBone();
+
+                // Update skinned mesh
+                const model = this.findModelForBone(this.selectedBone);
+                if (model) {
+                    this.updateSkinnedMeshes(model);
+                }
+            }
+        });
 
         // Create pivot indicator
         this.pivotIndicator = this.createPivotIndicator();
-        this.pivotIndicator.visible = false; // Start hidden until Ctrl is pressed
+        this.pivotIndicator.visible = false; // Hidden by default, shown when Ctrl is pressed
         this.scene.add(this.pivotIndicator);
 
         // Add Maya-style control handlers
@@ -202,26 +356,38 @@ class ModelViewer {
         const axesHelper = new THREE.AxesHelper(5);
         this.scene.add(axesHelper);
 
+        // Set up component mode for vertex/edge/face editing
+        this.componentMode = 'object'; // 'object', 'vertex', 'edge', 'face'
+        this.selectedComponents = [];
+        this.componentHelpers = null;
+        this.createComponentModeUI();
+
+        // Initialize the outliner panel
+        this.createOutliner();
+
+        // Initialize the undo/redo system
+        this.undoStack = [];
+        this.redoStack = [];
+        this.isUndoRedoAction = false;
+
+        // Initialize bone-related UI
+        const bonesMenuItem = document.getElementById('show-bones-option');
+        if (bonesMenuItem) {
+            bonesMenuItem.textContent = 'Show Bones';
+            bonesMenuItem.classList.add('active'); // Start with bones visible by default
+        }
+
         // Handle window resize
         window.addEventListener('resize', () => this.onWindowResize(), false);
 
         // Add status info for navigation
         this.addNavigationHelp();
 
-        // Create outliner panel
-        this.createOutliner();
-
-        // Add object selection handler
-        this.setupObjectSelection();
-
         // Start animation
         this.animate();
 
         // Initialize slider values
         this.updateInputs();
-
-        // Add component mode button to the UI
-        this.createComponentModeUI();
     }
 
     setupLights() {
@@ -270,156 +436,87 @@ class ModelViewer {
             this.setDisplayMode('shaded');
         });
 
-        document.getElementById('reset-view-option').addEventListener('click', () => {
-            this.resetCamera();
-        });
+        document.getElementById('show-bones-option').addEventListener('click', (e) => {
+            const menuItem = e.target;
+            const showing = menuItem.classList.contains('active');
 
-        // File input change event - replace all models
-        this.fileInput.addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (file) {
-                this.loadModel(file, false);
-                // Reset the input value to allow importing the same file again
-                event.target.value = '';
+            // Toggle the active class
+            if (showing) {
+                menuItem.classList.remove('active');
+                menuItem.textContent = 'Show Bones';
+            } else {
+                menuItem.classList.add('active');
+                menuItem.textContent = 'Hide Bones';
             }
-        });
 
-        // Import file input change event - add model to scene
-        this.importFileInput.addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (file) {
-                this.loadModel(file, true);
-                // Reset the input value to allow importing the same file again
-                event.target.value = '';
-            }
-        });
-
-        // Reset camera button click event
-        this.resetCameraButton.addEventListener('click', () => {
-            this.resetCamera();
-        });
-
-        // Reset transform button click event
-        this.resetTransformButton.addEventListener('click', () => {
-            if (this.selectedObject) {
-                this.saveTransformState();
-                this.resetTransform();
-            }
-        });
-
-        // Translation events using number inputs
-        this.translateXInput.addEventListener('input', (e) => {
-            if (!this.isUndoRedoAction) this.saveTransformState();
-            this.modelTransform.translate.x = parseFloat(e.target.value);
-            this.updateModelTransform();
-            this.updateTransformControls();
-        });
-
-        this.translateYInput.addEventListener('input', (e) => {
-            if (!this.isUndoRedoAction) this.saveTransformState();
-            this.modelTransform.translate.y = parseFloat(e.target.value);
-            this.updateModelTransform();
-            this.updateTransformControls();
-        });
-
-        this.translateZInput.addEventListener('input', (e) => {
-            if (!this.isUndoRedoAction) this.saveTransformState();
-            this.modelTransform.translate.z = parseFloat(e.target.value);
-            this.updateModelTransform();
-            this.updateTransformControls();
-        });
-
-        // Rotation events
-        this.rotateXInput.addEventListener('input', (e) => {
-            if (!this.isUndoRedoAction) this.saveTransformState();
-            // Convert from degrees to radians
-            this.modelTransform.rotate.x = parseFloat(e.target.value) * (Math.PI / 180);
-            this.updateModelTransform();
-            this.updateTransformControls();
-        });
-
-        this.rotateYInput.addEventListener('input', (e) => {
-            if (!this.isUndoRedoAction) this.saveTransformState();
-            // Convert from degrees to radians
-            this.modelTransform.rotate.y = parseFloat(e.target.value) * (Math.PI / 180);
-            this.updateModelTransform();
-            this.updateTransformControls();
-        });
-
-        this.rotateZInput.addEventListener('input', (e) => {
-            if (!this.isUndoRedoAction) this.saveTransformState();
-            // Convert from degrees to radians
-            this.modelTransform.rotate.z = parseFloat(e.target.value) * (Math.PI / 180);
-            this.updateModelTransform();
-            this.updateTransformControls();
-        });
-
-        // Scale events
-        this.scaleXInput.addEventListener('input', (e) => {
-            if (!this.isUndoRedoAction) this.saveTransformState();
-            this.modelTransform.scale.x = parseFloat(e.target.value);
-            this.updateModelTransform();
-            this.updateTransformControls();
-        });
-
-        this.scaleYInput.addEventListener('input', (e) => {
-            if (!this.isUndoRedoAction) this.saveTransformState();
-            this.modelTransform.scale.y = parseFloat(e.target.value);
-            this.updateModelTransform();
-            this.updateTransformControls();
-        });
-
-        this.scaleZInput.addEventListener('input', (e) => {
-            if (!this.isUndoRedoAction) this.saveTransformState();
-            this.modelTransform.scale.z = parseFloat(e.target.value);
-            this.updateModelTransform();
-            this.updateTransformControls();
-        });
-
-        // Keyboard shortcuts for manipulator modes
-        window.addEventListener('keydown', (event) => {
-            // Don't trigger if user is typing in an input field
-            if (document.activeElement.tagName === 'INPUT') return;
-
-            // Handle keyboard shortcuts
-            if (event.ctrlKey) {
-                if (event.key === 'z' || event.key === 'Z') {
-                    event.preventDefault();
-                    this.undo();
-                    return;
-                } else if ((event.key === 'y' || event.key === 'Y') || (event.shiftKey && (event.key === 'z' || event.key === 'Z'))) {
-                    event.preventDefault();
-                    this.redo();
-                    return;
+            // Toggle bone visibility on all models
+            this.models.forEach(model => {
+                if (model.userData && model.userData.hasSkeletalData) {
+                    this.toggleBoneVisualization(model, !showing);
                 }
-            }
+            });
+        });
 
-            switch (event.key.toLowerCase()) {
-                case 'w': // Translate mode
+        // Setup file inputs
+        this.fileInput = document.createElement('input');
+        this.fileInput.type = 'file';
+        this.fileInput.accept = '.obj,.fbx,.gltf,.glb';
+        this.fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                this.loadModel(e.target.files[0], false);
+            }
+        });
+
+        this.importFileInput = document.createElement('input');
+        this.importFileInput.type = 'file';
+        this.importFileInput.accept = '.obj,.fbx,.gltf,.glb';
+        this.importFileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                this.loadModel(e.target.files[0], true);
+            }
+        });
+
+        // Keyboard shortcuts
+        window.addEventListener('keydown', (event) => {
+            // Check if any input element has focus
+            const activeElement = document.activeElement;
+            const isInputFocused = activeElement.tagName === 'INPUT' ||
+                activeElement.tagName === 'TEXTAREA' ||
+                activeElement.isContentEditable;
+
+            // If an input has focus, don't handle keyboard shortcuts
+            if (isInputFocused) return;
+
+            const key = event.key.toLowerCase();
+
+            switch (key) {
+                case 'w': // Translate
                     this.transformControls.setMode('translate');
-                    this.transformControls.setSpace('local');
+                    event.preventDefault();
                     break;
-                case 'e': // Rotate mode
+                case 'e': // Rotate
                     this.transformControls.setMode('rotate');
-                    this.transformControls.setSpace('local');
+                    event.preventDefault();
                     break;
-                case 'r': // Scale mode
+                case 'r': // Scale
                     this.transformControls.setMode('scale');
-                    this.transformControls.setSpace('local');
+                    event.preventDefault();
                     break;
-                case '4': // Wireframe mode
-                    this.setDisplayMode('wireframe');
-                    break;
-                case '5': // Shaded mode
-                    this.setDisplayMode('shaded');
-                    break;
-                case 'f': // Frame selected or center on target
+                case 'f': // Frame selected or all
                     if (event.shiftKey) {
-                        // Shift+F: Center on target without changing distance
                         this.centerOnTarget();
                     } else {
-                        // F: Frame selected object or all objects
                         this.frameSelected();
+                    }
+                    event.preventDefault();
+                    break;
+                case 'z': // Undo/Redo
+                    if (event.ctrlKey || event.metaKey) {
+                        if (event.shiftKey) {
+                            this.redo();
+                        } else {
+                            this.undo();
+                        }
                     }
                     event.preventDefault();
                     break;
@@ -429,6 +526,13 @@ class ModelViewer {
                         this.deselectObject();
                     }
                     break;
+                case '4': // Wireframe mode
+                    this.setDisplayMode('wireframe');
+                    break;
+                case '5': // Shaded mode
+                    this.setDisplayMode('shaded');
+                    break;
+                // Test hotkeys removed (S and D keys)
             }
         });
     }
@@ -535,285 +639,325 @@ class ModelViewer {
         // Raycaster for object selection
         this.raycaster = new THREE.Raycaster();
 
-        // Initialize flag to skip selection after camera operations
-        this.skipNextSelection = false;
-
-        // Add click event listener to the renderer
+        // Add click event listener to the renderer with proper raycasting
         this.renderer.domElement.addEventListener('click', (event) => {
-            // Skip if transform controls are being used
-            if (this.isDragging || (this.lastDragEndTime && Date.now() - this.lastDragEndTime < 200)) {
-                return;
-            }
-
-            // Skip selection if this click follows a camera operation
-            if (this.skipNextSelection) {
-                this.skipNextSelection = false;
-                return;
-            }
+            console.error("⚠️ PROPER SELECTION: Click detected in 3D view");
 
             // Get mouse position in normalized coordinates
             const mouse = new THREE.Vector2();
             const rect = this.renderer.domElement.getBoundingClientRect();
             mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            console.error(`⚠️ PROPER SELECTION: Mouse coords: ${mouse.x.toFixed(2)}, ${mouse.y.toFixed(2)}`);
 
             // Update the raycaster with camera and mouse position
             this.raycaster.setFromCamera(mouse, this.camera);
 
-            // Check all models for intersections
-            for (const model of this.models) {
-                // First check for bone intersections if bones are visible
-                if (model.userData && model.userData.hasSkeletalData &&
-                    model.userData.boneVisualization && model.userData.boneVisualization.visible) {
-
-                    // Get all the joint meshes from the bone visualization
-                    const boneJoints = model.userData.boneVisualization.children.filter(
-                        child => child.userData && child.userData.isBoneJoint
-                    );
-
-                    // Check for intersections with bone joints
-                    const intersects = this.raycaster.intersectObjects(boneJoints, false);
-
-                    if (intersects.length > 0) {
-                        const joint = intersects[0].object;
-                        const bone = joint.userData.bone;
-
-                        if (bone) {
-                            this.selectBone(bone, joint);
-                            return; // Stop after selecting a bone
-                        }
+            // Collect all meshes for raycasting
+            const meshes = [];
+            this.models.forEach(model => {
+                model.traverse(child => {
+                    if (child.isMesh && child.visible) {
+                        meshes.push(child);
                     }
-                }
+                });
+            });
 
-                // If we didn't hit a bone, check for regular object intersections
-                if (this.componentMode === 'object') {
-                    // Object mode selection
-                    const result = this.handleObjectSelection(this.raycaster);
-                    if (result) return;
-                } else {
-                    // Component mode selection (vertex, edge, face)
-                    const result = this.handleComponentSelection(this.raycaster);
-                    if (result) return;
-                }
-            }
+            // Display models info for debugging
+            console.error(`⚠️ PROPER SELECTION: Found ${meshes.length} meshes for raycasting`);
 
-            // If we got here, nothing was clicked, so deselect
-            this.deselectObject();
-        });
+            // Perform the raycast
+            const intersects = this.raycaster.intersectObjects(meshes, false);
+            console.error(`⚠️ PROPER SELECTION: Found ${intersects.length} intersections`);
 
-        // Add touch event listeners for mobile/touchscreen support
-        this.setupTouchEventHandlers();
-    }
+            if (intersects.length > 0) {
+                // Find the hit mesh
+                const hitMesh = intersects[0].object;
+                console.error(`⚠️ PROPER SELECTION: Hit mesh: ${hitMesh.name || 'unnamed'}`);
 
-    // Setup touch event handlers for mobile/touchscreen interaction
-    setupTouchEventHandlers() {
-        const renderer = this.renderer.domElement;
-        let touchStartTime = 0;
-        let touchStartPos = { x: 0, y: 0 };
-        let lastTouchPos = { x: 0, y: 0 };
-        let touchMoveDistance = 0;
-        let isBoneManipulationActive = false;
+                // Find which model contains this mesh
+                let parentModel = null;
+                this.models.forEach(model => {
+                    let isPartOfModel = false;
+                    model.traverse(child => {
+                        if (child === hitMesh) {
+                            isPartOfModel = true;
+                        }
+                    });
+                    if (isPartOfModel) {
+                        parentModel = model;
+                    }
+                });
 
-        // Helper to get normalized touch coordinates
-        const getNormalizedTouchCoordinates = (touch) => {
-            const rect = renderer.getBoundingClientRect();
-            return {
-                x: ((touch.clientX - rect.left) / rect.width) * 2 - 1,
-                y: -((touch.clientY - rect.top) / rect.height) * 2 + 1
-            };
-        };
+                // Default to hit mesh if no parent model found
+                const objectToSelect = parentModel || hitMesh;
+                console.error(`⚠️ PROPER SELECTION: Selecting: ${objectToSelect.name || 'unnamed'}`);
 
-        // Handle touch start event
-        renderer.addEventListener('touchstart', (event) => {
-            // Prevent default to avoid scrolling
-            event.preventDefault();
-
-            // Record touch start time for detecting taps vs drags
-            touchStartTime = Date.now();
-
-            // Record touch position
-            if (event.touches.length === 1) {
-                const touch = event.touches[0];
-                touchStartPos = { x: touch.clientX, y: touch.clientY };
-                lastTouchPos = { x: touch.clientX, y: touch.clientY };
-                touchMoveDistance = 0;
-
-                // Check if we're touching a bone
-                if (this.selectedBone) {
-                    isBoneManipulationActive = true;
-                } else {
-                    // Check for bone selection
-                    const normalizedPos = getNormalizedTouchCoordinates(touch);
-                    this.raycaster.setFromCamera(new THREE.Vector2(normalizedPos.x, normalizedPos.y), this.camera);
-
-                    // Check all models for bone intersections
-                    for (const model of this.models) {
-                        if (model.userData && model.userData.hasSkeletalData &&
-                            model.userData.boneVisualization && model.userData.boneVisualization.visible) {
-
-                            // Get all the joint meshes
-                            const boneJoints = model.userData.boneVisualization.children.filter(
-                                child => child.userData && child.userData.isBoneJoint
-                            );
-
-                            // Check for intersections
-                            const intersects = this.raycaster.intersectObjects(boneJoints, false);
-
-                            if (intersects.length > 0) {
-                                const joint = intersects[0].object;
-                                const bone = joint.userData.bone;
-
-                                if (bone) {
-                                    this.selectBone(bone, joint);
-                                    isBoneManipulationActive = true;
-                                    break;
-                                }
+                // Clear previous selections
+                if (this.selectedObject) {
+                    console.error("⚠️ PROPER SELECTION: First deselecting current object");
+                    // Reset color of previously selected object
+                    this.selectedObject.traverse(child => {
+                        if (child.isMesh && child.material) {
+                            console.error("⚠️ PROPER SELECTION: Resetting material color");
+                            if (Array.isArray(child.material)) {
+                                child.material.forEach(mat => {
+                                    if (mat.originalColor) {
+                                        mat.color.copy(mat.originalColor);
+                                    }
+                                });
+                            } else if (child.material.originalColor) {
+                                child.material.color.copy(child.material.originalColor);
                             }
                         }
-                    }
+                    });
                 }
-            }
-        }, { passive: false });
 
-        // Handle touch move event
-        renderer.addEventListener('touchmove', (event) => {
-            event.preventDefault();
+                // Store selection
+                this.selectedObject = objectToSelect;
 
-            if (event.touches.length === 1) {
-                const touch = event.touches[0];
-
-                // Calculate distance moved
-                const deltaX = touch.clientX - lastTouchPos.x;
-                const deltaY = touch.clientY - lastTouchPos.y;
-
-                // Update last touch position
-                lastTouchPos = { x: touch.clientX, y: touch.clientY };
-
-                // Track total movement distance to distinguish between tap and drag
-                touchMoveDistance += Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-
-                // Handle bone manipulation if active
-                if (isBoneManipulationActive && this.selectedBone) {
-                    // Determine the current transform mode
-                    const mode = this.transformControls.getMode();
-
-                    // Calculate movement speed based on screen size
-                    const movementSpeed = 0.01 * (this.renderer.domElement.width / 800);
-
-                    if (mode === 'translate') {
-                        // Move the bone along screen space
-                        const worldDirection = new THREE.Vector3();
-
-                        // Up/down movement (Y-axis in screen space)
-                        this.camera.getWorldDirection(worldDirection);
-                        const upVector = new THREE.Vector3(0, 1, 0);
-                        const rightVector = new THREE.Vector3().crossVectors(worldDirection, upVector).normalize();
-
-                        // Apply the movement
-                        this.selectedBone.position.add(new THREE.Vector3(
-                            deltaX * movementSpeed * rightVector.x,
-                            deltaY * -movementSpeed, // Invert Y for screen space
-                            deltaX * movementSpeed * rightVector.z
-                        ));
-                    }
-                    else if (mode === 'rotate') {
-                        // Rotate the bone based on screen movement
-                        const rotationSpeed = 0.01;
-
-                        // Create rotation quaternions
-                        const rotationX = new THREE.Quaternion().setFromAxisAngle(
-                            new THREE.Vector3(1, 0, 0),
-                            deltaY * -rotationSpeed
-                        );
-
-                        const rotationY = new THREE.Quaternion().setFromAxisAngle(
-                            new THREE.Vector3(0, 1, 0),
-                            deltaX * -rotationSpeed
-                        );
-
-                        // Apply rotations
-                        this.selectedBone.quaternion.premultiply(rotationY);
-                        this.selectedBone.quaternion.premultiply(rotationX);
-                    }
-                    else if (mode === 'scale') {
-                        // Scale the bone based on diagonal movement
-                        const scaleFactor = 1 + (deltaX + deltaY) * 0.01;
-                        this.selectedBone.scale.multiplyScalar(scaleFactor);
-                    }
-
-                    // Update UI and visualizations
-                    this.updateUIFromBone();
-
-                    // Update the bone visualization
-                    const model = this.findModelForBone(this.selectedBone);
-                    if (model) {
-                        this.updateBoneVisualization(model);
-                    }
-                }
-            }
-        }, { passive: false });
-
-        // Handle touch end event
-        renderer.addEventListener('touchend', (event) => {
-            // Reset bone manipulation state
-            if (isBoneManipulationActive) {
-                // If there was minimal movement, consider it a tap for selection
-                if (touchMoveDistance < 10 && (Date.now() - touchStartTime) < 300) {
-                    // This was a quick tap - do nothing as selection was handled in touchstart
-                } else {
-                    // This was a drag manipulation - update any final state
-                    if (this.selectedBone) {
-                        const model = this.findModelForBone(this.selectedBone);
-                        if (model) {
-                            this.updateBoneVisualization(model);
+                // Make selection visually obvious by changing color
+                objectToSelect.traverse(child => {
+                    if (child.isMesh && child.material) {
+                        console.error("⚠️ PROPER SELECTION: Setting selection highlight color");
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach(mat => {
+                                // Store original color if not already stored
+                                if (!mat.originalColor) {
+                                    mat.originalColor = mat.color.clone();
+                                }
+                                // Set to bright highlight color
+                                mat.color.set(0xff0000); // Bright red
+                            });
+                        } else {
+                            // Store original color if not already stored
+                            if (!child.material.originalColor) {
+                                child.material.originalColor = child.material.color.clone();
+                            }
+                            // Set to bright highlight color
+                            child.material.color.set(0xff0000); // Bright red
                         }
                     }
+                });
+
+                // Enable transform group
+                if (this.transformGroup) {
+                    this.transformGroup.style.opacity = '1';
+                    this.transformGroup.style.pointerEvents = 'auto';
+                }
+
+                // Update channel box title
+                if (this.channelBoxTitle) {
+                    this.channelBoxTitle.innerText = objectToSelect.name || 'Selected Object';
+                }
+
+                // Attach transform controls directly to ensure they appear
+                console.error("⚠️ PROPER SELECTION: Attaching transform controls");
+                this.transformControls.attach(objectToSelect);
+                this.transformControls.visible = true;
+                this.transformControls.enabled = true;
+
+                console.error("⚠️ PROPER SELECTION: Selection complete");
+            } else {
+                console.error("⚠️ PROPER SELECTION: No intersections found, deselecting");
+                // Deselect current object
+                if (this.selectedObject) {
+                    // Reset color
+                    this.selectedObject.traverse(child => {
+                        if (child.isMesh && child.material) {
+                            if (Array.isArray(child.material)) {
+                                child.material.forEach(mat => {
+                                    if (mat.originalColor) {
+                                        mat.color.copy(mat.originalColor);
+                                    }
+                                });
+                            } else if (child.material.originalColor) {
+                                child.material.color.copy(child.material.originalColor);
+                            }
+                        }
+                    });
+
+                    // Detach transform controls
+                    this.transformControls.detach();
+
+                    // Clear selection
+                    this.selectedObject = null;
+
+                    // Update UI
+                    if (this.channelBoxTitle) {
+                        this.channelBoxTitle.innerText = 'No Object Selected';
+                    }
+                    if (this.transformGroup) {
+                        this.transformGroup.style.opacity = '0.5';
+                        this.transformGroup.style.pointerEvents = 'none';
+                    }
                 }
             }
-
-            isBoneManipulationActive = false;
-        }, { passive: false });
-
-        // Prevent contextmenu on long press
-        renderer.addEventListener('contextmenu', (event) => {
-            if (event.pointerType === 'touch') {
-                event.preventDefault();
-            }
         });
+
+        // Simplified touch event handlers
+        const renderer = this.renderer.domElement;
+        renderer.addEventListener('touchend', (event) => {
+            if (event.changedTouches.length === 1) {
+                console.error("⚠️ PROPER SELECTION: Touch ended, doing raycast selection");
+
+                // Get touch coordinates
+                const touch = event.changedTouches[0];
+                const rect = renderer.getBoundingClientRect();
+                const touchX = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+                const touchY = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+
+                // Update raycaster
+                this.raycaster.setFromCamera(new THREE.Vector2(touchX, touchY), this.camera);
+
+                // Collect meshes
+                const meshes = [];
+                this.models.forEach(model => {
+                    model.traverse(child => {
+                        if (child.isMesh && child.visible) {
+                            meshes.push(child);
+                        }
+                    });
+                });
+
+                // Raycast and select
+                const intersects = this.raycaster.intersectObjects(meshes, false);
+                if (intersects.length > 0) {
+                    const hitMesh = intersects[0].object;
+
+                    // Find parent model
+                    let parentModel = null;
+                    this.models.forEach(model => {
+                        let isPartOfModel = false;
+                        model.traverse(child => {
+                            if (child === hitMesh) {
+                                isPartOfModel = true;
+                            }
+                        });
+                        if (isPartOfModel) {
+                            parentModel = model;
+                        }
+                    });
+
+                    const objectToSelect = parentModel || hitMesh;
+
+                    // Clear previous selection
+                    if (this.selectedObject) {
+                        this.selectedObject.traverse(child => {
+                            if (child.isMesh && child.material) {
+                                if (Array.isArray(child.material)) {
+                                    child.material.forEach(mat => {
+                                        if (mat.originalColor) {
+                                            mat.color.copy(mat.originalColor);
+                                        }
+                                    });
+                                } else if (child.material.originalColor) {
+                                    child.material.color.copy(child.material.originalColor);
+                                }
+                            }
+                        });
+                    }
+
+                    // Update selection
+                    this.selectedObject = objectToSelect;
+
+                    // Highlight
+                    objectToSelect.traverse(child => {
+                        if (child.isMesh && child.material) {
+                            if (Array.isArray(child.material)) {
+                                child.material.forEach(mat => {
+                                    if (!mat.originalColor) {
+                                        mat.originalColor = mat.color.clone();
+                                    }
+                                    mat.color.set(0xff0000); // Red
+                                });
+                            } else {
+                                if (!child.material.originalColor) {
+                                    child.material.originalColor = child.material.color.clone();
+                                }
+                                child.material.color.set(0xff0000); // Red
+                            }
+                        }
+                    });
+
+                    // Update UI
+                    if (this.transformGroup) {
+                        this.transformGroup.style.opacity = '1';
+                        this.transformGroup.style.pointerEvents = 'auto';
+                    }
+                    if (this.channelBoxTitle) {
+                        this.channelBoxTitle.innerText = objectToSelect.name || 'Selected Object';
+                    }
+
+                    // Attach transform controls
+                    this.transformControls.attach(objectToSelect);
+                    this.transformControls.visible = true;
+                    this.transformControls.enabled = true;
+                }
+            }
+            event.preventDefault();
+        }, { passive: false });
     }
 
     handleObjectSelection(raycaster) {
-        // First check for intersections with all selectable objects
+        // Get all objects in the scene that can be selected
         const selectableObjects = [];
 
-        // Gather all meshes from all models
-        this.models.forEach(model => {
-            model.traverse(child => {
-                // Only allow selecting meshes, not the bone visualizations
-                if (child.isMesh &&
-                    !(child.parent && child.parent.name === "BoneVisualization")) {
-                    selectableObjects.push(child);
-                }
-            });
+        // Get all visible meshes from all models
+        this.scene.traverse(object => {
+            if (object.isMesh &&
+                !(object.userData.isHelper) &&
+                !(object.userData.isBoneJoint) &&
+                object !== this.grid &&
+                object.visible) {
+                selectableObjects.push(object);
+            }
         });
 
-        // Find intersections
+        console.log(`Found ${selectableObjects.length} selectable meshes in the scene`);
+
+        // Find all intersections
         const intersects = raycaster.intersectObjects(selectableObjects, false);
+        console.log(`Raycast found ${intersects.length} intersections`);
 
-        // If we hit something, select it
+        // If we hit something, select it or its parent model
         if (intersects.length > 0) {
-            const object = intersects[0].object;
+            const hitObject = intersects[0].object;
+            console.log(`Hit object: ${hitObject.name || 'unnamed'}, type: ${hitObject.type}`);
 
-            // Don't reselect the same object
-            if (this.selectedObject === object) {
+            // Find if this mesh belongs to one of our loaded models
+            const parentModel = this.findParentModel(hitObject);
+
+            if (parentModel) {
+                console.log(`Found parent model: ${parentModel.name || 'unnamed model'}`);
+                this.selectObject(parentModel);
+                return true;
+            } else {
+                // If no parent model found, just select the object itself
+                console.log(`No parent model found, selecting the object itself`);
+                this.selectObject(hitObject);
                 return true;
             }
-
-            this.selectObject(object);
-            return true; // Indicate that we selected something
         }
 
-        return false; // Indicate that we didn't select anything
+        return false;
+    }
+
+    // Helper to find the parent model for an object
+    findParentModel(object) {
+        for (const model of this.models) {
+            let isPartOfModel = false;
+            model.traverse(child => {
+                if (child === object) {
+                    isPartOfModel = true;
+                }
+            });
+
+            if (isPartOfModel) {
+                return model;
+            }
+        }
+        return null;
     }
 
     handleComponentSelection(raycaster) {
@@ -1117,13 +1261,23 @@ class ModelViewer {
     }
 
     selectObject(object) {
+        console.log("selectObject called with:", object ? (object.name || 'unnamed object') : 'null');
+
         // Deselect current object first
         if (this.selectedObject) {
+            console.log("Deselecting previous object:", this.selectedObject.name || 'unnamed');
             this.deselectObject();
+        }
+
+        // Make sure object is valid and in the scene graph
+        if (!object || !this.isObjectInScene(object)) {
+            console.warn("Cannot select object that is not in the scene graph");
+            return;
         }
 
         // Select new object
         this.selectedObject = object;
+        console.log("New object selected:", object.name || 'unnamed');
 
         // Update channel box title
         if (this.channelBoxTitle) {
@@ -1137,18 +1291,58 @@ class ModelViewer {
         }
 
         // Update transform controls
-        this.transformControls.attach(object);
+        try {
+            console.log("Attaching transform controls to object");
+            this.transformControls.attach(object);
+        } catch (error) {
+            console.error("Error attaching transform controls:", error);
+        }
 
         // Update input fields from object transform
         this.updateUIFromObject();
 
         // Check for skeleton and show bones UI if available
         if (object.userData && object.userData.hasSkeletalData) {
+            console.log("Setting up bone controls for object with skeletal data");
             this.setupBoneControls(object);
         }
 
         // Push to undo stack
         this.saveSelectionState();
+    }
+
+    // Helper method to check if an object is in the scene graph
+    isObjectInScene(object) {
+        console.log(`Checking if object "${object.name || 'unnamed'}" is in scene`);
+
+        // If the object is the scene itself
+        if (object === this.scene) {
+            console.log(`Object is the scene itself, returning true`);
+            return true;
+        }
+
+        // If the object has no parent, it's not in the scene
+        if (!object.parent) {
+            console.log(`Object has no parent, returning false`);
+            return false;
+        }
+
+        // Recursively check if any parent is the scene
+        let parent = object.parent;
+        let depth = 0;
+        const maxDepth = 20; // Prevent infinite loops
+
+        while (parent && depth < maxDepth) {
+            if (parent === this.scene) {
+                console.log(`Found scene as parent at depth ${depth}, returning true`);
+                return true;
+            }
+            parent = parent.parent;
+            depth++;
+        }
+
+        console.log(`No scene parent found after ${depth} levels, returning false`);
+        return false;
     }
 
     setupBoneControls(object) {
@@ -1430,6 +1624,9 @@ class ModelViewer {
 
         // If not importing, remove all previous models
         if (!isImport && this.models.length > 0) {
+            // Clean up skeleton helpers first
+            this.cleanupSkeletonHelpers();
+
             this.models.forEach(model => {
                 this.scene.remove(model);
             });
@@ -1576,118 +1773,133 @@ class ModelViewer {
 
     // Process a loaded model regardless of file type
     processLoadedModel(object, fileName, isImport) {
-        // Set a name for the model (using the filename without extension)
-        const modelName = fileName.replace(/\.[^/.]+$/, "");
-        object.name = modelName;
+        // Give the object a name based on file name if it doesn't have one
+        if (!object.name || object.name === '') {
+            object.name = fileName.split('.')[0];
+        }
 
-        // Check if this model has animations or bones
-        let hasSkeletalData = false;
-        let skeletons = [];
+        // Scale the model to fit in view
+        const boundingBox = new THREE.Box3().setFromObject(object);
+        const size = boundingBox.getSize(new THREE.Vector3());
+        const maxDimension = Math.max(size.x, size.y, size.z);
+
+        if (maxDimension > 10) {
+            const scale = 10 / maxDimension;
+            object.scale.multiplyScalar(scale);
+        }
+
+        // Normalize position
+        boundingBox.setFromObject(object);
+        const center = boundingBox.getCenter(new THREE.Vector3());
+        object.position.x -= center.x;
+        object.position.y -= boundingBox.min.y; // Set on ground
+        object.position.z -= center.z;
+
+        // Assume we have THREE.js installed
+        // Add model to scene
+        this.scene.add(object);
+
+        // Add model to our models array
+        this.models.push(object);
+
+        // Set as current model (the last loaded/imported becomes current)
+        this.model = object;
+
+        // Setup materials for the model
+        this.setupModelMaterials(object);
+
+        // Check for animations
         let animations = [];
-        let bones = [];
+        if (object.animations) {
+            animations = object.animations;
+        }
 
-        // Detect skeletal animation data
-        object.traverse((child) => {
-            // Look for bones
-            if (child.isBone) {
-                hasSkeletalData = true;
-                bones.push(child);
-            }
-
-            // Look for skinned meshes
-            if (child.isSkinnedMesh) {
-                hasSkeletalData = true;
-                if (child.skeleton && !skeletons.includes(child.skeleton)) {
-                    skeletons.push(child.skeleton);
+        // If a GLTF/FBX file, find animations in children
+        if (animations.length === 0) {
+            object.traverse(child => {
+                if (child.animations && child.animations.length) {
+                    animations = animations.concat(child.animations);
                 }
-            }
+            });
+        }
 
-            // Look for animation clips in FBX models
-            if (child.animations && child.animations.length > 0) {
-                animations = animations.concat(child.animations);
-                hasSkeletalData = true;
+        // If we have animations, set up animation mixer
+        if (animations.length > 0) {
+            console.error(`Model has animations: ${animations.length || object.animations.length}`);
+            const mixer = new THREE.AnimationMixer(object);
+            object.userData.mixer = mixer;
+            object.userData.animations = animations;
+            object.userData.currentAnimation = null;
+            object.userData.posingMode = false; // Start in animation mode
+        }
+
+        // Check for skeletal data (bones)
+        const skeletons = [];
+        const bones = [];
+
+        object.traverse(child => {
+            if (child.isSkinnedMesh && child.skeleton) {
+                skeletons.push(child.skeleton);
+                child.skeleton.bones.forEach((bone) => {
+                    if (!bones.includes(bone)) {
+                        bones.push(bone);
+                    }
+                });
             }
         });
 
-        // Store animations and skeletons on the object for later use
-        if (hasSkeletalData) {
+        if (bones.length > 0) {
+            console.error('Model has skeletal data with', skeletons.length, 'skeletons and', bones.length, 'bones');
+
+            // Store bones for later use
             object.userData.hasSkeletalData = true;
-            object.userData.skeletons = skeletons;
             object.userData.bones = bones;
+            object.userData.posingMode = true; // Start in posing mode by default
 
-            // Create bone visualization
-            this.createBoneVisualization(object, bones);
-
-            // Set up animation mixer if needed
-            if (animations.length > 0 || (object.animations && object.animations.length > 0)) {
-                console.log('Model has animations:', animations.length || object.animations.length);
-                const animMixer = new THREE.AnimationMixer(object);
-                object.userData.mixer = animMixer;
-                object.userData.animations = animations.length > 0 ? animations : object.animations;
-
-                // Store animations but don't auto-play
-                if (object.userData.animations.length > 0) {
-                    object.userData.currentAnimation = 0;
-                    // Don't auto-play, wait for user to choose a mode
-                    // Set a flag to indicate we are in posing mode by default
-                    object.userData.posingMode = true;
-                }
-            }
-
-            console.log('Model has skeletal data with', skeletons.length, 'skeletons and', bones.length, 'bones');
-        }
-
-        // Set up materials and enable shadows
-        this.setupModelMaterials(object);
-
-        // Handle model addition to scene
-        if (isImport) {
-            // For imported models, add to existing scene
-            this.models.push(object);
-            this.scene.add(object);
-
-            // Select the newly imported model
-            this.selectObject(object);
-
-            // Adjust camera to show all models
-            if (this.models.length > 1) {
-                this.zoomToFitAllModels();
-            } else {
-                this.resetCamera();
-            }
-        } else {
-            // Clear existing models
-            this.models.forEach(model => {
-                this.scene.remove(model);
+            // Store bone reference for selection
+            object.userData.boneHelpers = {};
+            bones.forEach(bone => {
+                object.userData.boneHelpers[bone.id] = bone;
             });
 
-            // For new models that replace existing ones
-            this.models = [object];
-            this.model = object; // Set as the primary model
+            // Create skeleton helper
+            if (object.userData.skeletonHelper) {
+                this.scene.remove(object.userData.skeletonHelper);
+            }
 
-            // No normalization, scaling, or positioning - use exact model as-is
-            this.modelTransform.baseScale = 1;
-            this.modelTransform.translate = { x: 0, y: 0, z: 0 };
-            this.modelTransform.rotate = { x: 0, y: 0, z: 0 };
-            this.modelTransform.scale = { x: 1, y: 1, z: 1 };
+            // Find the first skinned mesh to use for the skeleton helper
+            let skinnedMesh = null;
+            object.traverse(child => {
+                if (child.isSkinnedMesh && !skinnedMesh) {
+                    skinnedMesh = child;
+                }
+            });
 
-            // Update the controls to reflect the new model
-            this.updateInputs();
-            this.updateModelTransform();
-
-            // Add to scene
-            this.scene.add(object);
-
-            // Reset camera position to show the model
-            this.resetCamera();
+            if (skinnedMesh) {
+                // Use the root bone for better visualization
+                const rootBone = bones[0];
+                const skeletonHelper = new THREE.SkeletonHelper(rootBone);
+                skeletonHelper.material.linewidth = 2;
+                skeletonHelper.visible = true;
+                // Make lines more visible with a different color
+                skeletonHelper.material.color.set(0x00ff00);
+                // Add to scene, not to the model, for correct rendering
+                this.scene.add(skeletonHelper);
+                object.userData.skeletonHelper = skeletonHelper;
+                // Set initial visibility based on bonesVisible state
+                object.userData.bonesVisible = true;
+            }
         }
 
-        // Update the outliner with the new model
-        if (this.updateOutliner) {
-            this.updateOutliner();
-        }
+        // Reset the camera to fit the model
+        this.zoomToFitAllModels();
 
-        console.log(`Model ${isImport ? 'imported' : 'loaded'}: ${modelName}`);
+        // Update the outliner to show the new model
+        this.updateOutliner();
+
+        console.error(`Model ${isImport ? 'imported' : 'loaded'}: ${object.name}`);
+
+        // Removed automatic selection of first model
     }
 
     setupModelMaterials(model) {
@@ -1764,13 +1976,26 @@ class ModelViewer {
     }
 
     zoomToFitAllModels() {
+        // Only proceed if we have models
+        if (this.models.length === 0) return;
+
         // Calculate the bounding box of all models
-        const allModelsBoundingBox = new THREE.Box3();
+        let allModelsBoundingBox = null;
 
         this.models.forEach(model => {
             const modelBox = new THREE.Box3().setFromObject(model);
-            allModelsBoundingBox.expandByBox(modelBox);
+
+            // If this is the first model, just use its bounding box
+            if (!allModelsBoundingBox) {
+                allModelsBoundingBox = modelBox;
+            } else {
+                // Otherwise, create a union of the current box and the model box
+                allModelsBoundingBox.union(modelBox);
+            }
         });
+
+        // If we couldn't create a bounding box, exit
+        if (!allModelsBoundingBox) return;
 
         // Get the center and size of the combined bounding box
         const center = allModelsBoundingBox.getCenter(new THREE.Vector3());
@@ -1838,6 +2063,28 @@ class ModelViewer {
 
         // Update renderer size
         this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+
+        // Update composer size
+        if (this.composer) {
+            this.composer.setSize(this.container.clientWidth, this.container.clientHeight);
+
+            // Update FXAA shader resolution uniforms
+            this.composer.passes.forEach(pass => {
+                if (pass.material && pass.material.uniforms && pass.material.uniforms.resolution) {
+                    pass.material.uniforms.resolution.value.set(
+                        1 / this.container.clientWidth,
+                        1 / this.container.clientHeight
+                    );
+                }
+            });
+        }
+
+        // Update outline pass size
+        if (this.outlinePass) {
+            this.outlinePass.resolution.copy(
+                new THREE.Vector2(this.container.clientWidth, this.container.clientHeight)
+            );
+        }
     }
 
     animate() {
@@ -1853,10 +2100,8 @@ class ModelViewer {
                 model.userData.mixer.update(delta);
             }
 
-            // Update bone visualization if bones are visible
-            if (model.userData && model.userData.hasSkeletalData && model.userData.bonesVisible) {
-                this.updateBoneVisualization(model);
-            }
+            // SkeletonHelper will update automatically if the bones move
+            // No need to manually update it as we did with the custom bone visualization
         });
 
         // Make sure camera is looking at target point
@@ -1865,8 +2110,13 @@ class ModelViewer {
         // Update pivot indicator position (but don't change visibility here)
         this.updatePivotIndicator();
 
-        // Render scene
-        this.renderer.render(this.scene, this.camera);
+        // Render using effect composer instead of directly rendering
+        if (this.composer) {
+            this.composer.render();
+        } else {
+            // Fallback to direct rendering if composer isn't available
+            this.renderer.render(this.scene, this.camera);
+        }
     }
 
     // Helper to find model that contains a specific bone
@@ -2148,7 +2398,7 @@ class ModelViewer {
                 this.camera.position.addScaledVector(zoomDirection, zoomAmount);
 
                 // Log for debugging
-                console.log(`Distance: ${currentDistance.toFixed(2)}, Zoom speed: ${adaptiveZoomSpeed.toFixed(4)}`);
+                // console.log(`Distance: ${currentDistance.toFixed(2)}, Zoom speed: ${adaptiveZoomSpeed.toFixed(4)}`);
             }
 
             // Update for next movement
@@ -2160,10 +2410,6 @@ class ModelViewer {
 
         // Reset active control when mouse button is released
         window.addEventListener('mouseup', () => {
-            // If we were using a camera control, set a flag to prevent selection on the next click
-            if (activeControl) {
-                this.skipNextSelection = true;
-            }
             activeControl = null;
             renderer.style.cursor = isAltDown ? 'pointer' : 'auto';
         });
@@ -3147,146 +3393,44 @@ class ModelViewer {
 
     // Create visual representation of bones
     createBoneVisualization(model, bones) {
-        if (!bones || bones.length === 0) return;
-
-        // Create a group to hold all bone visualizations
-        const boneGroup = new THREE.Group();
-        boneGroup.name = "BoneVisualization";
-
-        // Create an object to track bone helpers for selection
-        model.userData.boneHelpers = {};
-
-        // Create material for bones
-        const boneMaterial = new THREE.MeshBasicMaterial({
-            color: 0x00aaff,
-            wireframe: false,
-            transparent: true,
-            opacity: 0.6,
-            depthTest: true
-        });
-
-        // Create material for bone joints
-        const jointMaterial = new THREE.MeshBasicMaterial({
-            color: 0xffaa00,
-            wireframe: false,
-            transparent: true,
-            opacity: 0.8,
-            depthTest: true
-        });
-
-        // Traverse bones and create visual elements
-        bones.forEach((bone, index) => {
-            // Create a sphere for joints
-            const jointGeometry = new THREE.SphereGeometry(0.02, 8, 8);
-            const joint = new THREE.Mesh(jointGeometry, jointMaterial.clone());
-            joint.name = `Joint_${bone.name || index}`;
-            joint.userData.bone = bone;
-            joint.userData.isBoneJoint = true;
-            joint.position.copy(bone.getWorldPosition(new THREE.Vector3()));
-            boneGroup.add(joint);
-
-            // Track this helper for selection
-            model.userData.boneHelpers[bone.id] = joint;
-
-            // Find child bones to create connections
-            bones.forEach(childBone => {
-                if (childBone.parent && childBone.parent.id === bone.id) {
-                    // Get positions
-                    const startPos = bone.getWorldPosition(new THREE.Vector3());
-                    const endPos = childBone.getWorldPosition(new THREE.Vector3());
-
-                    // Calculate length and orientation
-                    const direction = new THREE.Vector3().subVectors(endPos, startPos);
-                    const length = direction.length();
-
-                    // Create bone visualization as a cylinder
-                    const boneGeometry = new THREE.CylinderGeometry(0.01, 0.015, length, 8);
-                    boneGeometry.translate(0, length / 2, 0); // Move pivot to one end
-
-                    const boneMesh = new THREE.Mesh(boneGeometry, boneMaterial.clone());
-                    boneMesh.name = `Bone_${bone.name || index}_to_${childBone.name || 'child'}`;
-                    boneMesh.userData.bone = bone;
-                    boneMesh.userData.childBone = childBone;
-                    boneMesh.userData.isBone = true;
-
-                    // Position and orient the bone
-                    boneMesh.position.copy(startPos);
-
-                    // Look at target - align the cylinder with the bone direction
-                    if (length > 0) {
-                        // Create a direction vector for the bone
-                        const up = new THREE.Vector3(0, 1, 0);
-                        boneMesh.quaternion.setFromUnitVectors(up, direction.normalize());
-                    }
-
-                    boneGroup.add(boneMesh);
-                }
-            });
-        });
-
-        // Add bone visualization to the model
-        model.add(boneGroup);
-        model.userData.boneVisualization = boneGroup;
+        // This method is no longer needed since we use THREE.SkeletonHelper exclusively
+        // Method intentionally left empty but not removed to avoid breaking references
     }
 
     // Update the bone visualizations when bones move
     updateBoneVisualization(model) {
-        if (!model.userData.hasSkeletalData || !model.userData.boneVisualization) return;
-
-        const boneGroup = model.userData.boneVisualization;
-        const bones = model.userData.bones || [];
-
-        // Skip if no bones
-        if (bones.length === 0) return;
-
-        // Update joint positions
-        boneGroup.children.forEach(child => {
-            if (child.userData.isBoneJoint) {
-                const bone = child.userData.bone;
-                if (bone) {
-                    child.position.copy(bone.getWorldPosition(new THREE.Vector3()));
-                }
-            } else if (child.userData.isBone) {
-                const startBone = child.userData.bone;
-                const endBone = child.userData.childBone;
-
-                if (startBone && endBone) {
-                    // Get updated positions
-                    const startPos = startBone.getWorldPosition(new THREE.Vector3());
-                    const endPos = endBone.getWorldPosition(new THREE.Vector3());
-
-                    // Calculate new length and orientation
-                    const direction = new THREE.Vector3().subVectors(endPos, startPos);
-                    const length = direction.length();
-
-                    // Update position
-                    child.position.copy(startPos);
-
-                    // Update rotation
-                    if (length > 0) {
-                        const up = new THREE.Vector3(0, 1, 0);
-                        child.quaternion.setFromUnitVectors(up, direction.normalize());
-                    }
-
-                    // Note: we don't update the cylinder geometry here as that would be expensive
-                    // The visual representation might be slightly inaccurate if bones stretch
-                }
-            }
-        });
+        // This method is no longer needed since THREE.SkeletonHelper updates automatically
+        // Method intentionally left empty but not removed to avoid breaking references
     }
 
     // Toggle bone visualization visibility
     toggleBoneVisualization(model, visible) {
-        if (!model.userData.boneVisualization) return;
+        if (!model || !model.userData.hasSkeletalData) return;
 
-        model.userData.boneVisualization.visible = visible;
+        // Only update the SkeletonHelper visibility
+        if (model.userData.skeletonHelper) {
+            model.userData.skeletonHelper.visible = visible;
+        }
 
         // Store the visibility state
         model.userData.bonesVisible = visible;
     }
 
     // Select a bone for manipulation
-    selectBone(bone, joint) {
+    selectBone(bone) {
+        // Check if bone is valid
+        if (!bone) {
+            console.warn("Cannot select null bone");
+            return;
+        }
+
+        // Find the model that contains this bone
+        const model = this.findModelForBone(bone);
+        if (!model || !this.isObjectInScene(model)) {
+            console.warn("Cannot select bone from a model that is not in the scene");
+            return;
+        }
+
         // Deselect previous bone if any
         if (this.selectedBone) {
             // Find previous bone joint proxy
@@ -3300,58 +3444,52 @@ class ModelViewer {
         // Store the selected bone
         this.selectedBone = bone;
 
-        // Find the model that contains this bone
-        const model = this.findModelForBone(bone);
-        if (model) {
-            // Switch to posing mode
-            if (model.userData.posingMode === false) {
-                // Find and click the posing mode button
-                const posingButton = document.getElementById('posing-mode');
-                if (posingButton) {
-                    posingButton.click();
-                }
-            }
-
-            // Store the original bone transformations for reset if needed
-            if (!bone.userData.originalMatrix) {
-                bone.userData.originalMatrix = bone.matrix.clone();
-                bone.userData.originalPosition = bone.position.clone();
-                bone.userData.originalQuaternion = bone.quaternion.clone();
-                bone.userData.originalScale = bone.scale.clone();
+        // Switch to posing mode
+        if (model.userData.posingMode === false) {
+            // Find and click the posing mode button
+            const posingButton = document.getElementById('posing-mode');
+            if (posingButton) {
+                posingButton.click();
             }
         }
 
-        if (!joint) {
-            // Create a visual helper for the bone joint
-            const jointGeometry = new THREE.SphereGeometry(0.05, 16, 16);
-            const jointMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-            const jointMesh = new THREE.Mesh(jointGeometry, jointMaterial);
+        // Store the original bone transformations for reset if needed
+        if (!bone.userData.originalMatrix) {
+            bone.userData.originalMatrix = bone.matrix.clone();
+            bone.userData.originalPosition = bone.position.clone();
+            bone.userData.originalQuaternion = bone.quaternion.clone();
+            bone.userData.originalScale = bone.scale.clone();
+        }
 
-            // Position the joint at the bone's world position
-            const jointPos = bone.getWorldPosition(new THREE.Vector3());
-            jointMesh.position.copy(jointPos);
+        // Create a visual helper for the bone joint
+        const jointGeometry = new THREE.SphereGeometry(0.05, 16, 16);
+        const jointMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const jointMesh = new THREE.Mesh(jointGeometry, jointMaterial);
 
-            // Store reference to the bone
-            jointMesh.userData.isBoneJoint = true;
-            jointMesh.userData.bone = bone;
+        // Position the joint at the bone's world position
+        const jointPos = bone.getWorldPosition(new THREE.Vector3());
+        jointMesh.position.copy(jointPos);
 
-            // Add to scene
-            this.scene.add(jointMesh);
+        // Store reference to the bone
+        jointMesh.userData.isBoneJoint = true;
+        jointMesh.userData.bone = bone;
 
-            // Attach transform controls to the joint
-            this.transformControls.attach(jointMesh);
-            this.selectedObject = jointMesh;
+        // Add to scene
+        this.scene.add(jointMesh);
 
-            // Update UI with bone transformation values
-            this.updateUIFromBone();
+        // Attach transform controls to the joint
+        this.transformControls.attach(jointMesh);
+        this.selectedObject = jointMesh;
 
-            // Show channel box
-            this.channelBoxTitle.textContent = `${bone.name || 'Bone'} Transform`;
-            this.transformGroup.style.opacity = '1';
-            this.transformGroup.style.pointerEvents = 'auto';
-            if (this.boneManipulatorGroup) {
-                this.boneManipulatorGroup.style.display = 'block';
-            }
+        // Update UI with bone transformation values
+        this.updateUIFromBone();
+
+        // Show channel box
+        this.channelBoxTitle.textContent = `${bone.name || 'Bone'} Transform`;
+        this.transformGroup.style.opacity = '1';
+        this.transformGroup.style.pointerEvents = 'auto';
+        if (this.boneManipulatorGroup) {
+            this.boneManipulatorGroup.style.display = 'block';
         }
 
         // Update the outliner selection
@@ -3973,6 +4111,24 @@ class ModelViewer {
                 }
             }, 100); // Small delay to ensure DOM is updated
         }
+    }
+
+    // Cleanup skeleton helpers from the scene
+    cleanupSkeletonHelpers() {
+        // Remove skeleton helpers from the scene
+        this.models.forEach(model => {
+            if (model.userData && model.userData.skeletonHelper) {
+                this.scene.remove(model.userData.skeletonHelper);
+                model.userData.skeletonHelper = null;
+            }
+        });
+
+        // Also check the scene for any orphaned skeleton helpers
+        this.scene.traverse(object => {
+            if (object.isSkeletonHelper) {
+                this.scene.remove(object);
+            }
+        });
     }
 }
 
