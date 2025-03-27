@@ -9,35 +9,41 @@
 </head>
 
 <body>
-    <div id="container">
-        <div id="info">
-            <h1>riser</h1>
-            <div id="file-menu">
-                <div class="menu-bar">
-                    <div class="menu-item">
-                        <span>File</span>
-                        <div class="dropdown-content">
-                            <div class="menu-option" id="open-option">Open Model...</div>
-                            <div class="menu-option" id="import-option">Import Model...</div>
-                            <div class="menu-separator"></div>
-                            <div class="menu-option disabled">Export (Coming Soon)</div>
-                        </div>
-                    </div>
-                    <div class="menu-item">
-                        <span>View</span>
-                        <div class="dropdown-content">
-                            <div class="menu-option" id="wireframe-option">Wireframe</div>
-                            <div class="menu-option" id="shaded-option">Shaded</div>
-                            <div class="menu-separator"></div>
-                            <div class="menu-option" id="reset-view-option">Reset View</div>
-                        </div>
+    <div id="title-bar">
+        <div class="title-bar-left">
+            <div class="menu-bar">
+                <div class="menu-item">
+                    <span>File</span>
+                    <div class="dropdown-content">
+                        <div class="menu-option" id="open-option">Open Model...</div>
+                        <div class="menu-option" id="import-option">Import Model...</div>
+                        <div class="menu-separator"></div>
+                        <div class="menu-option disabled">Export (Coming Soon)</div>
                     </div>
                 </div>
-
-                <!-- Hidden file inputs -->
-                <input type="file" id="file-input" accept=".obj,.fbx,.gltf,.glb" style="display:none;">
-                <input type="file" id="import-file-input" accept=".obj,.fbx,.gltf,.glb" style="display:none;">
+                <div class="menu-item">
+                    <span>View</span>
+                    <div class="dropdown-content">
+                        <div class="menu-option" id="wireframe-option">Wireframe</div>
+                        <div class="menu-option" id="shaded-option">Shaded</div>
+                        <div class="menu-separator"></div>
+                        <div class="menu-option" id="reset-view-option">Reset View</div>
+                    </div>
+                </div>
             </div>
+        </div>
+        <div class="title-bar-center">
+            <h1 id="app-title">riser</h1>
+        </div>
+        <div class="title-bar-right">
+            <!-- Hidden file inputs -->
+            <input type="file" id="file-input" accept=".obj,.fbx,.gltf,.glb" style="display:none;">
+            <input type="file" id="import-file-input" accept=".obj,.fbx,.gltf,.glb" style="display:none;">
+        </div>
+    </div>
+
+    <div id="container">
+        <div id="info">
             <div class="channel-box">
                 <h2 id="channel-box-title">No Object Selected</h2>
 
@@ -110,7 +116,7 @@
                 const version = data[""];
                 const versionStr = `v${version.MAJOR}.${version.MINOR}.${version.PATCH}`;
                 document.title = `riser ${versionStr}`;
-                const titleElement = document.querySelector('h1');
+                const titleElement = document.getElementById('app-title');
                 if (titleElement) {
                     titleElement.textContent = `riser ${versionStr}`;
                 }

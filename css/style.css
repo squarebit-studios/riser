@@ -11,9 +11,68 @@ body {
     overflow: hidden;
 }
 
+/* Title Bar Styles */
+#title-bar {
+    width: 100%;
+    height: 40px;
+    background-color: #2a2a2a;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 15px;
+    border-bottom: 1px solid rgba(80, 80, 80, 0.5);
+    position: relative;
+    z-index: 10;
+}
+
+.title-bar-left,
+.title-bar-right {
+    flex: 1;
+}
+
+.title-bar-center {
+    flex: 2;
+    text-align: center;
+}
+
+.title-bar-center h1 {
+    margin: 0;
+    font-size: 18px;
+    color: #4fc3f7;
+    display: inline-block;
+}
+
+.title-bar-right {
+    text-align: right;
+}
+
+/* Update menu bar to work in title bar */
+.menu-bar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    height: 100%;
+}
+
+.menu-item {
+    position: relative;
+    cursor: pointer;
+}
+
+.menu-item span {
+    padding: 5px 10px;
+    border-radius: 3px;
+    transition: background-color 0.2s;
+    font-size: 14px;
+}
+
+.menu-item:hover span {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
 #container {
     width: 100vw;
-    height: 100vh;
+    height: calc(100vh - 40px);
     display: flex;
     flex-direction: row;
 }
@@ -309,48 +368,18 @@ canvas {
     margin-bottom: 15px;
 }
 
-.menu-bar {
-    display: flex;
-    background-color: #222;
-    border-radius: 4px 4px 0 0;
-    margin-bottom: 0;
-    border-bottom: 1px solid #444;
-}
-
-.menu-item {
-    position: relative;
-    display: inline-block;
-}
-
-.menu-item span {
-    display: inline-block;
-    padding: 8px 15px;
-    color: #ccc;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    letter-spacing: 0.2px;
-}
-
-.menu-item:hover span {
-    background-color: #333;
-    color: #fff;
-    border-radius: 4px 4px 0 0;
-}
-
 .dropdown-content {
     display: none;
     position: absolute;
-    background-color: #2a2a2a;
-    min-width: 180px;
-    box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.5);
-    z-index: 10;
-    border-radius: 0 4px 4px 4px;
-    overflow: hidden;
-    border: 1px solid #444;
-    border-top: none;
     left: 0;
     top: 100%;
+    background-color: #333;
+    min-width: 180px;
+    box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    border-radius: 0 4px 4px 4px;
+    overflow: hidden;
+    margin-top: 2px;
 }
 
 .menu-item:hover .dropdown-content {
@@ -358,16 +387,15 @@ canvas {
 }
 
 .menu-option {
-    color: #ddd;
-    padding: 10px 15px;
+    padding: 8px 15px;
     cursor: pointer;
+    font-size: 14px;
     transition: background-color 0.2s;
-    font-size: 13px;
 }
 
 .menu-option:hover {
     background-color: #4fc3f7;
-    color: #1a1a1a;
+    color: #222;
 }
 
 .menu-separator {
@@ -378,8 +406,12 @@ canvas {
 
 .menu-option.disabled {
     color: #666;
-    cursor: default;
-    pointer-events: none;
+    cursor: not-allowed;
+}
+
+.menu-option.disabled:hover {
+    background-color: inherit;
+    color: #666;
 }
 
 /* Animation Controls Panel */
