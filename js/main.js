@@ -535,10 +535,19 @@ class ModelViewer {
         // Raycaster for object selection
         this.raycaster = new THREE.Raycaster();
 
+        // Initialize flag to skip selection after camera operations
+        this.skipNextSelection = false;
+
         // Add click event listener to the renderer
         this.renderer.domElement.addEventListener('click', (event) => {
             // Skip if transform controls are being used
             if (this.isDragging || (this.lastDragEndTime && Date.now() - this.lastDragEndTime < 200)) {
+                return;
+            }
+
+            // Skip selection if this click follows a camera operation
+            if (this.skipNextSelection) {
+                this.skipNextSelection = false;
                 return;
             }
 
@@ -2151,6 +2160,10 @@ class ModelViewer {
 
         // Reset active control when mouse button is released
         window.addEventListener('mouseup', () => {
+            // If we were using a camera control, set a flag to prevent selection on the next click
+            if (activeControl) {
+                this.skipNextSelection = true;
+            }
             activeControl = null;
             renderer.style.cursor = isAltDown ? 'pointer' : 'auto';
         });
@@ -2251,7 +2264,7 @@ class ModelViewer {
             .navigation-help {
                 position: fixed;
                 bottom: 20px;
-                left: 20px;
+                right: 20px;
                 z-index: 1000;
                 font-family: Arial, sans-serif;
             }
@@ -2270,7 +2283,7 @@ class ModelViewer {
             .help-content {
                 position: absolute;
                 bottom: 50px;
-                left: 0;
+                right: 0;
                 background: rgba(0,0,0,0.8);
                 color: white;
                 padding: 15px;
@@ -2338,7 +2351,7 @@ class ModelViewer {
             .touch-help {
                 position: fixed;
                 bottom: 20px;
-                right: 20px;
+                left: 20px;
                 z-index: 1000;
                 font-family: Arial, sans-serif;
             }
