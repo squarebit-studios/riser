@@ -98,16 +98,56 @@ class ModelViewer {
         this.renderer.shadowMap.enabled = true;
         this.container.appendChild(this.renderer.domElement);
 
+        // Handle if mouse is pressed or released
+        // Add event listeners to the renderer's DOM element (or canvas)
+        this.renderer.domElement.addEventListener('mousedown', onMouseDown);
+        this.renderer.domElement.addEventListener('mouseup', onMouseUp);
+
+        this.mousePressed = false;
+        function onMouseDown(event) {
+            // Mouse button is pressed
+            this.mousePressed = true;
+            // Add your logic for a "press" event here
+        }
+
+        function onMouseUp(event) {
+            // Mouse button is released
+            this.mousePressed = false;
+            // Add your logic for a "release" event here
+        }
+
+        this.altKeyPressed = false;
+
+        // Move key listeners to window object
+        window.addEventListener('keydown', (event) => {
+            if (event.key === 'Alt') {
+                this.altKeyPressed = true;
+            }
+        });
+
+        window.addEventListener('keyup', (event) => {
+            if (event.key === 'Alt') {
+                this.altKeyPressed = false;
+            }
+        });
+        this.clickedOnManipulator = false;
+
         // Simple test click handler - placed early in initialization
         this.renderer.domElement.addEventListener('click', (event) => {
-            console.error("🔴 DIRECT TEST CLICK HANDLER TRIGGERED 🔴");
+            // If alt key is pressed, don't allow selection
+            if (this.altKeyPressed) {
+                return;
+            }
+            if (!this.mousePressed && this.clickedOnManipulator) {
+                this.clickedOnManipulator = false;
+                console.log('Mouse is released and recently clicked on manipulator');
+                return;
+            }
 
             // Get normalized mouse coordinates for raycasting
             const rect = this.renderer.domElement.getBoundingClientRect();
             const mouseX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
             const mouseY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-            console.error(`🔴 Mouse coords: ${mouseX.toFixed(2)}, ${mouseY.toFixed(2)}`);
 
             // Create raycaster if not already created
             if (!this.raycaster) {
@@ -127,22 +167,13 @@ class ModelViewer {
                 });
             });
 
-            // Don't proceed if no meshes found
-            if (meshes.length === 0) {
-                console.error("🔴 No meshes to raycast against");
-                return;
-            }
-
-            console.error(`🔴 Raycasting against ${meshes.length} meshes`);
 
             // Perform the raycast
             const intersects = this.raycaster.intersectObjects(meshes, false);
-            console.error(`🔴 Found ${intersects.length} intersections`);
 
             // If hit something, select the object
             if (intersects.length > 0) {
                 const hitMesh = intersects[0].object;
-                console.error(`🔴 Hit mesh: ${hitMesh.name || 'unnamed'}`);
 
                 // Find which model contains this mesh
                 let parentModel = null;
@@ -160,15 +191,12 @@ class ModelViewer {
 
                 // Default to hit mesh if no parent model found
                 const objectToSelect = parentModel || hitMesh;
-                console.error(`🔴 Selecting: ${objectToSelect.name || 'unnamed'}`);
 
                 // Clear previous selections
                 if (this.selectedObject) {
-                    console.error("🔴 First deselecting current object");
                     // Reset color of previously selected object
                     this.selectedObject.traverse(child => {
                         if (child.isMesh && child.material) {
-                            console.error("🔴 Resetting material color");
                             if (Array.isArray(child.material)) {
                                 child.material.forEach(mat => {
                                     if (mat.originalColor) {
@@ -188,7 +216,6 @@ class ModelViewer {
                 // Make selection visually obvious by changing color
                 objectToSelect.traverse(child => {
                     if (child.isMesh && child.material) {
-                        console.error("🔴 Setting selection highlight color");
                         if (Array.isArray(child.material)) {
                             child.material.forEach(mat => {
                                 // Store original color if not already stored
@@ -221,15 +248,12 @@ class ModelViewer {
                 }
 
                 // Attach transform controls directly to ensure they appear
-                console.error("🔴 Attaching transform controls");
                 this.transformControls.attach(objectToSelect);
                 this.transformControls.visible = true;
                 this.transformControls.enabled = true;
 
-                console.error("🔴 Selection complete");
                 return true;
             } else {
-                console.error("🔴 No intersections found, deselecting");
                 // No hit, deselect
                 if (this.selectedObject) {
                     // Reset color
@@ -297,6 +321,14 @@ class ModelViewer {
         this.transformControls.setMode('translate');
         this.transformControls.setSpace('local');
         this.scene.add(this.transformControls);
+
+        // Add event listener for transform controls dragging
+        this.transformControls.addEventListener('dragging-changed', (event) => {
+            if (event.value) {
+                // The TransformControls is being used (dragging started)
+                this.clickedOnManipulator = true;
+            }
+        });
 
         // Add event listener for transform controls updates
         this.transformControls.addEventListener('objectChange', (event) => {
@@ -641,14 +673,12 @@ class ModelViewer {
 
         // Add click event listener to the renderer with proper raycasting
         this.renderer.domElement.addEventListener('click', (event) => {
-            console.error("⚠️ PROPER SELECTION: Click detected in 3D view");
 
             // Get mouse position in normalized coordinates
             const mouse = new THREE.Vector2();
             const rect = this.renderer.domElement.getBoundingClientRect();
             mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-            console.error(`⚠️ PROPER SELECTION: Mouse coords: ${mouse.x.toFixed(2)}, ${mouse.y.toFixed(2)}`);
 
             // Update the raycaster with camera and mouse position
             this.raycaster.setFromCamera(mouse, this.camera);
@@ -663,17 +693,13 @@ class ModelViewer {
                 });
             });
 
-            // Display models info for debugging
-            console.error(`⚠️ PROPER SELECTION: Found ${meshes.length} meshes for raycasting`);
 
             // Perform the raycast
             const intersects = this.raycaster.intersectObjects(meshes, false);
-            console.error(`⚠️ PROPER SELECTION: Found ${intersects.length} intersections`);
 
             if (intersects.length > 0) {
                 // Find the hit mesh
                 const hitMesh = intersects[0].object;
-                console.error(`⚠️ PROPER SELECTION: Hit mesh: ${hitMesh.name || 'unnamed'}`);
 
                 // Find which model contains this mesh
                 let parentModel = null;
@@ -691,15 +717,12 @@ class ModelViewer {
 
                 // Default to hit mesh if no parent model found
                 const objectToSelect = parentModel || hitMesh;
-                console.error(`⚠️ PROPER SELECTION: Selecting: ${objectToSelect.name || 'unnamed'}`);
 
                 // Clear previous selections
                 if (this.selectedObject) {
-                    console.error("⚠️ PROPER SELECTION: First deselecting current object");
                     // Reset color of previously selected object
                     this.selectedObject.traverse(child => {
                         if (child.isMesh && child.material) {
-                            console.error("⚠️ PROPER SELECTION: Resetting material color");
                             if (Array.isArray(child.material)) {
                                 child.material.forEach(mat => {
                                     if (mat.originalColor) {
@@ -752,14 +775,11 @@ class ModelViewer {
                 }
 
                 // Attach transform controls directly to ensure they appear
-                console.error("⚠️ PROPER SELECTION: Attaching transform controls");
                 this.transformControls.attach(objectToSelect);
                 this.transformControls.visible = true;
                 this.transformControls.enabled = true;
 
-                console.error("⚠️ PROPER SELECTION: Selection complete");
             } else {
-                console.error("⚠️ PROPER SELECTION: No intersections found, deselecting");
                 // Deselect current object
                 if (this.selectedObject) {
                     // Reset color
@@ -799,7 +819,6 @@ class ModelViewer {
         const renderer = this.renderer.domElement;
         renderer.addEventListener('touchend', (event) => {
             if (event.changedTouches.length === 1) {
-                console.error("⚠️ PROPER SELECTION: Touch ended, doing raycast selection");
 
                 // Get touch coordinates
                 const touch = event.changedTouches[0];
@@ -914,27 +933,21 @@ class ModelViewer {
             }
         });
 
-        console.log(`Found ${selectableObjects.length} selectable meshes in the scene`);
-
         // Find all intersections
         const intersects = raycaster.intersectObjects(selectableObjects, false);
-        console.log(`Raycast found ${intersects.length} intersections`);
 
         // If we hit something, select it or its parent model
         if (intersects.length > 0) {
             const hitObject = intersects[0].object;
-            console.log(`Hit object: ${hitObject.name || 'unnamed'}, type: ${hitObject.type}`);
 
             // Find if this mesh belongs to one of our loaded models
             const parentModel = this.findParentModel(hitObject);
 
             if (parentModel) {
-                console.log(`Found parent model: ${parentModel.name || 'unnamed model'}`);
                 this.selectObject(parentModel);
                 return true;
             } else {
                 // If no parent model found, just select the object itself
-                console.log(`No parent model found, selecting the object itself`);
                 this.selectObject(hitObject);
                 return true;
             }
@@ -1073,9 +1086,6 @@ class ModelViewer {
             case 'face':
                 this.updateFacePosition(component, manipHandle.position, displacement);
                 break;
-
-            default:
-                console.warn('Unknown component type:', component.type);
         }
     }
 
