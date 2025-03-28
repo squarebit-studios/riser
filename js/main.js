@@ -332,10 +332,7 @@ class ModelViewer {
 
         // Add event listener for transform controls updates
         this.transformControls.addEventListener('objectChange', (event) => {
-            // If we're manipulating a bone joint, update the bone position
             if (this.selectedObject && this.selectedObject.userData.isBoneJoint && this.selectedBone) {
-                // Get the world position of the manipulator
-                const worldPos = this.selectedObject.position.clone();
 
                 // If the bone has a parent, convert to local space
                 if (this.selectedBone.parent) {
@@ -345,23 +342,36 @@ class ModelViewer {
                     // Convert world position to local position
                     const localPos = worldPos.clone().applyMatrix4(invParentMatrix);
 
-                    // Update bone position
+                    // Convert world rotation to local rotation
+                    const parentQuat = this.selectedBone.parent.quaternion.clone();
+                    const localQuat = worldQuat.clone().premultiply(parentQuat.invert());
+
+                    // Convert world scale to local scale
+                    const parentScale = this.selectedBone.parent.scale.clone();
+                    const localScale = worldScale.clone().divide(parentScale);
+
+                    // Update bone transform
                     this.selectedBone.position.copy(localPos);
+                    this.selectedBone.quaternion.copy(localQuat);
+                    this.selectedBone.scale.copy(localScale);
                 } else {
-                    // If no parent, just use world position
+                    // No parent, just copy world transform directly
                     this.selectedBone.position.copy(worldPos);
+                    this.selectedBone.quaternion.copy(worldQuat);
+                    this.selectedBone.scale.copy(worldScale);
                 }
 
-                // Update bone matrix
+                // Update bone matrix and world matrix
                 this.selectedBone.updateMatrix();
                 this.selectedBone.updateMatrixWorld(true);
 
-                // Update UI to reflect new position
-                this.updateUIFromBone();
-
-                // Update skinned mesh
+                // Find the model that contains this bone
                 const model = this.findModelForBone(this.selectedBone);
                 if (model) {
+                    // Update bone visualization
+                    this.updateBoneVisualization(model);
+
+                    // Update the skinned meshes
                     this.updateSkinnedMeshes(model);
                 }
             }
@@ -3443,12 +3453,8 @@ class ModelViewer {
 
         // Deselect previous bone if any
         if (this.selectedBone) {
-            // Find previous bone joint proxy
-            this.scene.traverse((object) => {
-                if (object.userData.isBoneJoint && object.userData.bone === this.selectedBone) {
-                    this.scene.remove(object);
-                }
-            });
+            // Remove transform controls from previous bone
+            this.transformControls.detach();
         }
 
         // Store the selected bone
@@ -3487,9 +3493,9 @@ class ModelViewer {
         // Add to scene
         this.scene.add(jointMesh);
 
-        // Attach transform controls to the joint
-        this.transformControls.attach(jointMesh);
-        this.selectedObject = jointMesh;
+        // Attach transform controls directly to the bone
+        this.transformControls.attach(bone);
+        this.selectedObject = bone;
 
         // Update UI with bone transformation values
         this.updateUIFromBone();
@@ -3583,6 +3589,9 @@ class ModelViewer {
     updateBoneTransform() {
         if (!this.selectedBone) return;
 
+        // Store the original world position before any transforms
+        const originalWorldPos = this.selectedBone.getWorldPosition(new THREE.Vector3());
+
         // Apply position
         this.selectedBone.position.set(
             parseFloat(this.translateXInput.value),
@@ -3605,13 +3614,21 @@ class ModelViewer {
             parseFloat(this.scaleZInput.value)
         );
 
-        // Update bone matrix
+        // Update bone matrix and world matrix
         this.selectedBone.updateMatrix();
         this.selectedBone.updateMatrixWorld(true);
 
         // Find the model that contains this bone
         const model = this.findModelForBone(this.selectedBone);
         if (model) {
+            // Update all bones in the skeleton
+            if (model.userData.bones) {
+                model.userData.bones.forEach(bone => {
+                    bone.updateMatrix();
+                    bone.updateMatrixWorld(true);
+                });
+            }
+
             // Update bone visualization
             this.updateBoneVisualization(model);
 
