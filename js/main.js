@@ -140,7 +140,6 @@ class ModelViewer {
             }
             if (!this.mousePressed && this.clickedOnManipulator) {
                 this.clickedOnManipulator = false;
-                console.log('Mouse is released and recently clicked on manipulator');
                 return;
             }
 
@@ -508,6 +507,22 @@ class ModelViewer {
             this.createSphere();
         });
 
+        // Setup primitive creation event listeners
+        const primitiveTypes = [
+            'cube', 'sphere', 'cylinder', 'cone', 'torus',
+            'plane', 'tetrahedron', 'octahedron', 'dodecahedron', 'icosahedron'
+        ];
+
+        primitiveTypes.forEach(type => {
+            const elementId = `create-${type}`;
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.addEventListener('click', () => {
+                    this.createPrimitive(type);
+                });
+            }
+        });
+
         // Setup file inputs
         this.fileInput = document.createElement('input');
         this.fileInput.type = 'file';
@@ -761,7 +776,6 @@ class ModelViewer {
                 // Make selection visually obvious by changing color
                 objectToSelect.traverse(child => {
                     if (child.isMesh && child.material) {
-                        console.error("⚠️ PROPER SELECTION: Setting selection highlight color");
                         if (Array.isArray(child.material)) {
                             child.material.forEach(mat => {
                                 // Store original color if not already stored
@@ -1290,11 +1304,9 @@ class ModelViewer {
     }
 
     selectObject(object) {
-        console.log("selectObject called with:", object ? (object.name || 'unnamed object') : 'null');
 
         // Deselect current object first
         if (this.selectedObject) {
-            console.log("Deselecting previous object:", this.selectedObject.name || 'unnamed');
             this.deselectObject();
         }
 
@@ -1306,7 +1318,6 @@ class ModelViewer {
 
         // Select new object
         this.selectedObject = object;
-        console.log("New object selected:", object.name || 'unnamed');
 
         // Update channel box title
         if (this.channelBoxTitle) {
@@ -1321,7 +1332,6 @@ class ModelViewer {
 
         // Update transform controls
         try {
-            console.log("Attaching transform controls to object");
             this.transformControls.attach(object);
         } catch (error) {
             console.error("Error attaching transform controls:", error);
@@ -1342,11 +1352,9 @@ class ModelViewer {
 
     // Helper method to check if an object is in the scene graph
     isObjectInScene(object) {
-        console.log(`Checking if object "${object.name || 'unnamed'}" is in scene`);
 
         // If the object is the scene itself
         if (object === this.scene) {
-            console.log(`Object is the scene itself, returning true`);
             return true;
         }
 
@@ -1363,7 +1371,6 @@ class ModelViewer {
 
         while (parent && depth < maxDepth) {
             if (parent === this.scene) {
-                console.log(`Found scene as parent at depth ${depth}, returning true`);
                 return true;
             }
             parent = parent.parent;
@@ -1800,64 +1807,80 @@ class ModelViewer {
         );
     }
 
-    // Create a cube primitive model
+    // Create a cube primitive model - for backwards compatibility
     createCube() {
-        // Create cube geometry
-        const geometry = new THREE.BoxGeometry(1, 1, 1);
-        const material = new THREE.MeshStandardMaterial({
-            color: 0x888888,
-            roughness: 0.5,
-            metalness: 0.5
-        });
-        const cube = new THREE.Mesh(geometry, material);
-        cube.name = "Cube";
-
-        // Add cube to scene
-        this.scene.add(cube);
-
-        // Add cube to models array
-        this.models.push(cube);
-
-        // Set as current model
-        this.model = cube;
-
-        // Select the cube
-        this.selectObject(cube);
-
-        // Update the outliner to show the new cube
-        this.updateOutliner();
-
-        return cube;
+        return this.createPrimitive('cube');
     }
 
-    // Create a sphere primitive model
+    // Create a sphere primitive model - for backwards compatibility
     createSphere() {
-        // Create sphere geometry
-        const geometry = new THREE.SphereGeometry(0.5, 32, 32);
+        return this.createPrimitive('sphere');
+    }
+
+    // Unified primitive creation method
+    createPrimitive(primitiveType) {
+        let geometry;
+        let name = primitiveType.charAt(0).toUpperCase() + primitiveType.slice(1);
+
+        // Create the appropriate geometry based on primitive type
+        switch (primitiveType.toLowerCase()) {
+            case 'cube':
+                geometry = new THREE.BoxGeometry(1, 1, 1);
+                break;
+            case 'sphere':
+                geometry = new THREE.SphereGeometry(0.5, 32, 32);
+                break;
+            case 'cylinder':
+                geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 32);
+                break;
+            case 'cone':
+                geometry = new THREE.ConeGeometry(0.5, 1, 32);
+                break;
+            case 'torus':
+                geometry = new THREE.TorusGeometry(0.5, 0.2, 16, 32);
+                break;
+            case 'plane':
+                geometry = new THREE.PlaneGeometry(1, 1);
+                break;
+            case 'tetrahedron':
+                geometry = new THREE.TetrahedronGeometry(0.5);
+                break;
+            case 'octahedron':
+                geometry = new THREE.OctahedronGeometry(0.5);
+                break;
+            case 'dodecahedron':
+                geometry = new THREE.DodecahedronGeometry(0.5);
+                break;
+            case 'icosahedron':
+                geometry = new THREE.IcosahedronGeometry(0.5);
+                break;
+            default:
+                console.warn(`Unknown primitive type: ${primitiveType}`);
+                return null;
+        }
+
+        // Create material and mesh
         const material = new THREE.MeshStandardMaterial({
             color: 0x888888,
             roughness: 0.5,
             metalness: 0.5
         });
-        const sphere = new THREE.Mesh(geometry, material);
-        sphere.name = "Sphere";
 
-        // Add sphere to scene
-        this.scene.add(sphere);
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = name;
 
-        // Add sphere to models array
-        this.models.push(sphere);
+        // Add to scene and models array
+        this.scene.add(mesh);
+        this.models.push(mesh);
 
-        // Set as current model
-        this.model = sphere;
+        // Set as current model and select it
+        this.model = mesh;
+        this.selectObject(mesh);
 
-        // Select the sphere
-        this.selectObject(sphere);
-
-        // Update the outliner to show the new sphere
+        // Update the outliner
         this.updateOutliner();
 
-        return sphere;
+        return mesh;
     }
 
     // Process a loaded model regardless of file type
@@ -2289,8 +2312,10 @@ class ModelViewer {
 
         // Handle direct click on mesh to set tumble pivot point (with Ctrl)
         renderer.addEventListener('click', (event) => {
+            // This needs to hit any mesh in the scene graph not just this.model
+
             // Only apply for left mouse button clicks WITH Ctrl key
-            if (event.button === 0 && event.ctrlKey && this.model) {
+            if (event.button === 0 && event.ctrlKey) {
                 // Get accurate client coordinates relative to the renderer
                 const rect = renderer.getBoundingClientRect();
                 const mouseX = event.clientX - rect.left;
@@ -2299,30 +2324,31 @@ class ModelViewer {
                 // Get raycaster from camera through click point
                 const raycaster = getMouseRay(mouseX, mouseY);
 
-                // Get all meshes in the model
-                const meshes = [];
-                this.model.traverse((child) => {
-                    if (child.isMesh) {
-                        meshes.push(child);
+                const intersects = raycaster.intersectObjects(this.scene.children, true);
+
+                const filteredIntersects = intersects.filter(intersect => {
+
+                    // Check if the hit object is part of any user-added model
+                    for (const model of this.models) {
+                        if (model === intersect.object || this.isObjectDescendantOf(intersect.object, model)) {
+                            return true; // Found a match, keep this intersection
+                        }
                     }
+
+                    // If we got here, no match was found
+                    return false;
                 });
 
-                // Find intersection with model meshes
-                const intersects = raycaster.intersectObjects(meshes, true);
-
                 // If we hit something, update the pivot point without moving the camera
-                if (intersects.length > 0) {
+                if (filteredIntersects.length > 0) {
                     // Set the new pivot point to the intersection point
-                    this.pivotPoint.copy(intersects[0].point);
+                    this.pivotPoint.copy(filteredIntersects[0].point);
 
                     // DO NOT update camera target - this keeps off-center rotation
                     // this.cameraTarget remains where it was
 
                     // Update the pivot indicator position
                     this.updatePivotIndicator();
-
-                    // Visual feedback
-                    console.log('Set pivot point at:', this.pivotPoint);
                 }
             }
         });
@@ -4225,6 +4251,14 @@ class ModelViewer {
                 this.scene.remove(object);
             }
         });
+    }
+
+    isObjectDescendantOf(object, parent) {
+        while (object) {
+            if (object === parent) return true;
+            object = object.parent;
+        }
+        return false;
     }
 }
 
