@@ -477,6 +477,10 @@ class ModelViewer {
             this.setDisplayMode('shaded');
         });
 
+        document.getElementById('shaded-wireframe-option').addEventListener('click', () => {
+            this.setDisplayMode('shaded-wireframe');
+        });
+
         document.getElementById('show-bones-option').addEventListener('click', (e) => {
             const menuItem = e.target;
             const showing = menuItem.classList.contains('active');
@@ -513,11 +517,18 @@ class ModelViewer {
             'plane', 'tetrahedron', 'octahedron', 'dodecahedron', 'icosahedron'
         ];
 
+        // Remove the individual event listeners for cube and sphere
+        // and use only the primitiveTypes loop to avoid duplicate event handlers
         primitiveTypes.forEach(type => {
             const elementId = `create-${type}`;
             const element = document.getElementById(elementId);
             if (element) {
-                element.addEventListener('click', () => {
+                // Remove any existing event listeners by cloning and replacing the element
+                const newElement = element.cloneNode(true);
+                element.parentNode.replaceChild(newElement, element);
+
+                // Add the new event listener
+                newElement.addEventListener('click', () => {
                     this.createPrimitive(type);
                 });
             }
@@ -960,6 +971,7 @@ class ModelViewer {
             if (object.isMesh &&
                 !(object.userData.isHelper) &&
                 !(object.userData.isBoneJoint) &&
+                !(object.userData.noSelection) &&
                 object !== this.grid &&
                 object.visible) {
                 selectableObjects.push(object);
@@ -1014,7 +1026,8 @@ class ModelViewer {
         this.models.forEach(model => {
             model.traverse((child) => {
                 if (child.isMesh &&
-                    !(child.parent && child.parent.name === "BoneVisualization")) {
+                    !(child.parent && child.parent.name === "BoneVisualization") &&
+                    !(child.userData.noSelection)) {
                     objects.push(child);
                 }
             });
@@ -2327,6 +2340,12 @@ class ModelViewer {
                 const intersects = raycaster.intersectObjects(this.scene.children, true);
 
                 const filteredIntersects = intersects.filter(intersect => {
+                    // Filter out wireframe helpers
+                    if (intersect.object.userData &&
+                        (intersect.object.userData.isWireframeHelper ||
+                            intersect.object.userData.noSelection)) {
+                        return false;
+                    }
 
                     // Check if the hit object is part of any user-added model
                     for (const model of this.models) {
@@ -2882,39 +2901,102 @@ class ModelViewer {
 
     // Method to set the display mode for all models
     setDisplayMode(mode) {
-        // Process all models in the scene
-        this.models.forEach(model => {
-            model.traverse(child => {
-                if (child.isMesh) {
-                    if (mode === 'wireframe') {
-                        // Store original material if not already stored
-                        if (!child._originalMaterial) {
-                            child._originalMaterial = child.material.clone();
-                        }
-
-                        // Create wireframe material
-                        child.material = new THREE.MeshBasicMaterial({
-                            color: 0x00ff00,
-                            wireframe: true
-                        });
-                    } else if (mode === 'shaded') {
-                        // Restore original material if available
-                        if (child._originalMaterial) {
-                            child.material = child._originalMaterial;
-                        } else {
-                            // Create default shaded material if no original is stored
-                            child.material = new THREE.MeshStandardMaterial({
-                                color: 0x808080,
-                                metalness: 0.2,
-                                roughness: 0.8
-                            });
-                        }
-                    }
-                }
-            });
+        // First, clean up any wireframe helpers
+        this.scene.traverse(object => {
+            if (object.userData && object.userData.isWireframeHelper) {
+                object.parent.remove(object);
+            }
         });
 
-        console.log(`Display mode set to: ${mode}`);
+        // Set display mode for all models
+        switch (mode) {
+            case 'wireframe':
+                this.models.forEach(model => {
+                    model.traverse(child => {
+                        if (child.isMesh && child.material) {
+                            if (Array.isArray(child.material)) {
+                                child.material.forEach(mat => {
+                                    mat.wireframe = true;
+                                    mat.needsUpdate = true;
+                                });
+                            } else {
+                                child.material.wireframe = true;
+                                child.material.needsUpdate = true;
+                            }
+                        }
+                    });
+                });
+                break;
+            case 'shaded':
+                this.models.forEach(model => {
+                    model.traverse(child => {
+                        if (child.isMesh && child.material) {
+                            if (Array.isArray(child.material)) {
+                                child.material.forEach(mat => {
+                                    mat.wireframe = false;
+                                    mat.needsUpdate = true;
+                                });
+                            } else {
+                                child.material.wireframe = false;
+                                child.material.needsUpdate = true;
+                            }
+                        }
+                    });
+                });
+                break;
+            case 'shaded-wireframe':
+                // First ensure shaded mode (no wireframe on materials)
+                this.models.forEach(model => {
+                    model.traverse(child => {
+                        if (child.isMesh && child.material) {
+                            if (Array.isArray(child.material)) {
+                                child.material.forEach(mat => {
+                                    mat.wireframe = false;
+                                    mat.needsUpdate = true;
+                                });
+                            } else {
+                                child.material.wireframe = false;
+                                child.material.needsUpdate = true;
+                            }
+                        }
+                    });
+                });
+
+                // Add wireframe to all models as separate lines
+                this.models.forEach(model => {
+                    model.traverse(child => {
+                        if (child.isMesh) {
+                            // Create wireframe overlay without modifying original material
+                            const wireframe = new THREE.LineSegments(
+                                new THREE.WireframeGeometry(child.geometry),
+                                new THREE.LineBasicMaterial({
+                                    color: 0x000000,
+                                    linewidth: 1,
+                                    opacity: 0.25,
+                                    transparent: true
+                                })
+                            );
+
+                            // Don't copy transforms - let the wireframe inherit from parent
+                            // This ensures the wireframe always stays aligned with the mesh
+                            // even when the mesh is transformed
+                            wireframe.userData.isWireframeHelper = true;
+
+                            // Set a flag to exclude wireframe helpers from raycasting
+                            wireframe.userData.noSelection = true;
+
+                            // Add to the mesh as a child
+                            child.add(wireframe);
+                        }
+                    });
+                });
+                break;
+            default:
+                console.warn(`Unknown display mode: ${mode}`);
+        }
+
+        // Update current display mode
+        this.currentDisplayMode = mode;
     }
 
     createComponentModeUI() {
