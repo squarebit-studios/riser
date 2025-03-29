@@ -459,6 +459,94 @@ class ModelViewer {
     }
 
     setupEventListeners() {
+        // Add mobile panel toggle functionality
+        const togglePanelButton = document.getElementById('toggle-panel');
+        const infoPanel = document.getElementById('info');
+
+        if (togglePanelButton) {
+            togglePanelButton.addEventListener('click', () => {
+                infoPanel.classList.toggle('visible');
+
+                // Also check if outliner exists and toggle its visibility on mobile
+                const outlinerPanel = document.getElementById('outliner-panel');
+                if (outlinerPanel) {
+                    if (infoPanel.classList.contains('visible')) {
+                        // Only show outliner if info panel is visible
+                        outlinerPanel.style.display = 'block';
+                    } else {
+                        outlinerPanel.style.display = 'none';
+                    }
+                }
+            });
+
+            // Also close panel when clicking outside of it on mobile
+            document.addEventListener('click', (e) => {
+                const isMobile = window.innerWidth <= 768;
+                const outlinerPanel = document.getElementById('outliner-panel');
+
+                if (isMobile && infoPanel.classList.contains('visible') &&
+                    !infoPanel.contains(e.target) &&
+                    e.target !== togglePanelButton &&
+                    !(outlinerPanel && outlinerPanel.contains(e.target))) {
+
+                    // Hide both info panel and outliner
+                    infoPanel.classList.remove('visible');
+                    if (outlinerPanel) {
+                        outlinerPanel.style.display = 'none';
+                    }
+                }
+            });
+        }
+
+        // Simple direct approach for the mesh submenu
+        const meshMenu = document.getElementById('mesh-menu-option');
+        const submenu = meshMenu.querySelector('.submenu');
+
+        // Direct click handler for mesh menu
+        meshMenu.addEventListener('click', (e) => {
+            // Prevent defaults
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Toggle submenu
+            if (submenu.style.display === 'block') {
+                submenu.style.display = 'none';
+            } else {
+                submenu.style.display = 'block';
+            }
+        });
+
+        // Setup primitive creation handlers
+        const primitiveTypes = [
+            'cube', 'sphere', 'cylinder', 'cone', 'torus',
+            'plane', 'tetrahedron', 'octahedron', 'dodecahedron', 'icosahedron'
+        ];
+
+        primitiveTypes.forEach(type => {
+            const elementId = `create-${type}`;
+            const element = document.getElementById(elementId);
+            if (element) {
+                // Clear any existing listeners
+                const newElement = element.cloneNode(true);
+                element.parentNode.replaceChild(newElement, element);
+
+                // Add simple click handler
+                newElement.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.createPrimitive(type);
+                    submenu.style.display = 'none';
+                });
+            }
+        });
+
+        // Close submenu when clicking elsewhere
+        document.addEventListener('click', (e) => {
+            if (!meshMenu.contains(e.target)) {
+                submenu.style.display = 'none';
+            }
+        });
+
         // Set up menu item events
         document.getElementById('new-scene-option').addEventListener('click', () => {
             this.resetScene();
@@ -513,29 +601,6 @@ class ModelViewer {
 
         document.getElementById('create-sphere').addEventListener('click', () => {
             this.createSphere();
-        });
-
-        // Setup primitive creation event listeners
-        const primitiveTypes = [
-            'cube', 'sphere', 'cylinder', 'cone', 'torus',
-            'plane', 'tetrahedron', 'octahedron', 'dodecahedron', 'icosahedron'
-        ];
-
-        // Remove the individual event listeners for cube and sphere
-        // and use only the primitiveTypes loop to avoid duplicate event handlers
-        primitiveTypes.forEach(type => {
-            const elementId = `create-${type}`;
-            const element = document.getElementById(elementId);
-            if (element) {
-                // Remove any existing event listeners by cloning and replacing the element
-                const newElement = element.cloneNode(true);
-                element.parentNode.replaceChild(newElement, element);
-
-                // Add the new event listener
-                newElement.addEventListener('click', () => {
-                    this.createPrimitive(type);
-                });
-            }
         });
 
         // Setup file inputs
@@ -2291,6 +2356,40 @@ class ModelViewer {
             this.outlinePass.resolution.copy(
                 new THREE.Vector2(this.container.clientWidth, this.container.clientHeight)
             );
+        }
+
+        // Handle mobile panel visibility on resize
+        const infoPanel = document.getElementById('info');
+        const outlinerPanel = document.getElementById('outliner-panel');
+
+        if (infoPanel) {
+            // Handle desktop mode (> 768px)
+            if (window.innerWidth > 768) {
+                infoPanel.style.display = 'flex';
+                infoPanel.classList.remove('visible');
+
+                // Show outliner in normal position on desktop
+                if (outlinerPanel) {
+                    outlinerPanel.style.display = 'block';
+                    outlinerPanel.style.position = '';
+                    outlinerPanel.style.top = '';
+                    outlinerPanel.style.right = '';
+                    outlinerPanel.style.width = '';
+                    outlinerPanel.style.maxWidth = '';
+                    outlinerPanel.style.boxShadow = '';
+                }
+            } else {
+                // Mobile mode (≤ 768px)
+                // Keep panel hidden in mobile unless explicitly toggled
+                if (!infoPanel.classList.contains('visible')) {
+                    infoPanel.style.display = 'none';
+
+                    // Also hide outliner on mobile
+                    if (outlinerPanel) {
+                        outlinerPanel.style.display = 'none';
+                    }
+                }
+            }
         }
     }
 

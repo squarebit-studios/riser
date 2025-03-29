@@ -404,38 +404,97 @@ canvas {
     background-color: rgba(255, 255, 255, 0.1);
 }
 
-/* Submenu styling */
-.has-submenu {
+/* Submenu styling - simplified and reliable */
+.menu-option.has-submenu {
     position: relative;
-    padding-right: 20px;
-}
-
-.has-submenu::after {
-    content: "▶";
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 10px;
-    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
 }
 
 .submenu {
+    display: none;
     position: absolute;
-    top: -5px;
     left: 100%;
-    min-width: 160px;
-    background-color: #333;
-    border: 1px solid rgba(100, 100, 100, 0.5);
+    top: 0;
+    background-color: #2a2a2a;
+    min-width: 180px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
     border-radius: 3px;
-    padding: 4px 0;
-    box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.3);
-    z-index: 101;
+    border: 1px solid rgba(80, 80, 80, 0.5);
+}
+
+/* Mobile panel toggle button */
+#toggle-panel {
+    background-color: transparent;
+    color: #fff;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0 10px;
+    display: none;
+    /* Hidden by default on desktop */
+}
+
+#toggle-panel:hover {
+    color: #4fc3f7;
+}
+
+/* Mobile-only elements */
+.mobile-only {
     display: none;
 }
 
-.has-submenu:hover>.submenu {
-    display: block;
+/* Media queries for mobile devices */
+@media (max-width: 768px) {
+
+    /* Show mobile-only elements */
+    .mobile-only {
+        display: block;
+    }
+
+    /* Hide the side panel on mobile by default */
+    #info {
+        display: none;
+        position: absolute;
+        top: 40px;
+        left: 0;
+        width: 80%;
+        max-width: 300px;
+        height: calc(100vh - 40px);
+        z-index: 1000;
+        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Hide outliner panel on mobile by default */
+    #outliner-panel,
+    .outliner-panel {
+        display: none;
+        position: absolute;
+        top: 40px;
+        right: 0;
+        width: 80%;
+        max-width: 300px;
+        max-height: calc(100vh - 40px);
+        z-index: 1000;
+        box-shadow: -2px 0 10px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Class to show the panel when toggled */
+    #info.visible {
+        display: flex;
+    }
+
+    /* Make canvas take up the full width */
+    #canvas-container {
+        width: 100%;
+    }
+
+    /* Better positioning for mobile */
+    .submenu {
+        left: 0;
+        top: 100%;
+        width: 100%;
+    }
 }
 
 .menu-separator {
