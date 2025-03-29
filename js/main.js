@@ -460,6 +460,10 @@ class ModelViewer {
 
     setupEventListeners() {
         // Set up menu item events
+        document.getElementById('new-scene-option').addEventListener('click', () => {
+            this.resetScene();
+        });
+
         document.getElementById('open-option').addEventListener('click', () => {
             this.fileInput.click();
         });
@@ -1610,38 +1614,100 @@ class ModelViewer {
 
         // Clear reference to bone manipulator group
         this.boneManipulatorGroup = null;
+    }
 
-        // Reset the selected bone
+    // Reset the scene to its initial state - new functionality
+    resetScene() {
+        // Confirm with the user to prevent accidental resets
+        if (!confirm('Create a new scene? All unsaved changes will be lost.')) {
+            return;
+        }
+
+        // Deselect any currently selected object
+        this.deselectObject();
+
+        // Clear transform controls
+        this.transformControls.detach();
+
+        // Remove all user-added models from the scene
+        [...this.models].forEach(model => {
+            this.scene.remove(model);
+
+            // Clean up any bone-related objects for this model
+            if (model.userData && model.userData.skeletonHelper) {
+                this.scene.remove(model.userData.skeletonHelper);
+            }
+        });
+
+        // Clear the models array
+        this.models = [];
+        this.model = null;
+
+        // Clear selection
+        this.selectedObject = null;
         this.selectedBone = null;
+
+        // Reset camera position
+        this.resetCamera();
+
+        // Clear undo/redo stacks
+        this.undoStack = [];
+        this.redoStack = [];
+
+        // Reset display mode
+        this.setDisplayMode('shaded');
+
+        // Initialize component helpers if it doesn't exist
+        if (!this.componentHelpers) {
+            this.componentHelpers = {
+                vertexMarkers: null,
+                edgeHighlights: null,
+                faceHighlights: null
+            };
+        }
+
+        // Reset component mode
+        if (this.componentMode && this.componentMode !== 'object') {
+            this.setComponentMode('object');
+        }
+
+        // Clean up any wireframe helpers and component helpers
+        this.removeComponentHelpers();
+        this.scene.traverse(object => {
+            if (object.userData && object.userData.isWireframeHelper) {
+                object.parent.remove(object);
+            }
+        });
+
+        // Update the outliner to show the empty scene
+        this.updateOutliner();
+
+        console.log('Scene reset to initial state');
     }
 
     deselectObject() {
+        // If we have a selected object, deselect it
         if (this.selectedObject) {
-            // Remove transform controls
+            // Detach the transform controls
             this.transformControls.detach();
+
+            // Remove the outline
+            this.outlinePass.selectedObjects = [];
+
             this.selectedObject = null;
 
             // Clear selected bone reference
             this.selectedBone = null;
 
-            // Disable transform group
-            if (this.transformGroup) {
-                this.transformGroup.style.opacity = '0.5';
-                this.transformGroup.style.pointerEvents = 'none';
-            }
-
             // Update channel box title
-            if (this.channelBoxTitle) {
-                this.channelBoxTitle.innerText = 'No Object Selected';
-            }
+            document.getElementById('channel-box-title').innerText = 'No Object Selected';
 
-            // Remove any bone controls
-            this.removeBoneControls();
+            // Reset transform inputs
+            this.resetTransformInputs();
 
-            // Hide bone manipulator controls if they exist
-            if (this.boneManipulatorGroup) {
-                this.boneManipulatorGroup.style.display = 'none';
-            }
+            // Remove active selection in outliner
+            const activeElements = document.querySelectorAll('.outliner-item.active');
+            activeElements.forEach(element => element.classList.remove('active'));
         }
     }
 
@@ -1660,6 +1726,22 @@ class ModelViewer {
         // Update sliders and model
         this.updateInputs();
         this.updateModelTransform();
+    }
+
+    // Reset transform inputs in the UI
+    resetTransformInputs() {
+        // Reset the transform input fields to default values
+        document.getElementById('translate-x').value = '0';
+        document.getElementById('translate-y').value = '0';
+        document.getElementById('translate-z').value = '0';
+
+        document.getElementById('rotate-x').value = '0';
+        document.getElementById('rotate-y').value = '0';
+        document.getElementById('rotate-z').value = '0';
+
+        document.getElementById('scale-x').value = '1';
+        document.getElementById('scale-y').value = '1';
+        document.getElementById('scale-z').value = '1';
     }
 
     // Main model loading function that handles different file types
