@@ -499,6 +499,15 @@ class ModelViewer {
             });
         });
 
+        // Create menu options
+        document.getElementById('create-cube').addEventListener('click', () => {
+            this.createCube();
+        });
+
+        document.getElementById('create-sphere').addEventListener('click', () => {
+            this.createSphere();
+        });
+
         // Setup file inputs
         this.fileInput = document.createElement('input');
         this.fileInput.type = 'file';
@@ -1789,6 +1798,90 @@ class ModelViewer {
                 delete this.loadingModels[fileURL];
             }
         );
+    }
+
+    // Create a cube primitive model
+    createCube() {
+        // Remove all previous models if no import
+        if (this.models.length > 0) {
+            // Clean up skeleton helpers first
+            this.cleanupSkeletonHelpers();
+
+            this.models.forEach(model => {
+                this.scene.remove(model);
+            });
+            this.models = [];
+            this.model = null;
+        }
+
+        // Create cube geometry
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
+        const material = new THREE.MeshStandardMaterial({
+            color: 0x888888,
+            roughness: 0.5,
+            metalness: 0.5
+        });
+        const cube = new THREE.Mesh(geometry, material);
+        cube.name = "Cube";
+
+        // Add cube to scene
+        this.scene.add(cube);
+
+        // Add cube to models array
+        this.models.push(cube);
+
+        // Set as current model
+        this.model = cube;
+
+        // Select the cube
+        this.selectObject(cube);
+
+        // Center the view on the cube
+        this.frameSelected();
+
+        return cube;
+    }
+
+    // Create a sphere primitive model
+    createSphere() {
+        // Remove all previous models if no import
+        if (this.models.length > 0) {
+            // Clean up skeleton helpers first
+            this.cleanupSkeletonHelpers();
+
+            this.models.forEach(model => {
+                this.scene.remove(model);
+            });
+            this.models = [];
+            this.model = null;
+        }
+
+        // Create sphere geometry
+        const geometry = new THREE.SphereGeometry(0.5, 32, 32);
+        const material = new THREE.MeshStandardMaterial({
+            color: 0x888888,
+            roughness: 0.5,
+            metalness: 0.5
+        });
+        const sphere = new THREE.Mesh(geometry, material);
+        sphere.name = "Sphere";
+
+        // Add sphere to scene
+        this.scene.add(sphere);
+
+        // Add sphere to models array
+        this.models.push(sphere);
+
+        // Set as current model
+        this.model = sphere;
+
+        // Select the sphere
+        this.selectObject(sphere);
+
+        // Center the view on the sphere
+        this.frameSelected();
+
+        return sphere;
     }
 
     // Process a loaded model regardless of file type
