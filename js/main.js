@@ -1802,18 +1802,6 @@ class ModelViewer {
 
     // Create a cube primitive model
     createCube() {
-        // Remove all previous models if no import
-        if (this.models.length > 0) {
-            // Clean up skeleton helpers first
-            this.cleanupSkeletonHelpers();
-
-            this.models.forEach(model => {
-                this.scene.remove(model);
-            });
-            this.models = [];
-            this.model = null;
-        }
-
         // Create cube geometry
         const geometry = new THREE.BoxGeometry(1, 1, 1);
         const material = new THREE.MeshStandardMaterial({
@@ -1836,26 +1824,14 @@ class ModelViewer {
         // Select the cube
         this.selectObject(cube);
 
-        // Center the view on the cube
-        this.frameSelected();
+        // Update the outliner to show the new cube
+        this.updateOutliner();
 
         return cube;
     }
 
     // Create a sphere primitive model
     createSphere() {
-        // Remove all previous models if no import
-        if (this.models.length > 0) {
-            // Clean up skeleton helpers first
-            this.cleanupSkeletonHelpers();
-
-            this.models.forEach(model => {
-                this.scene.remove(model);
-            });
-            this.models = [];
-            this.model = null;
-        }
-
         // Create sphere geometry
         const geometry = new THREE.SphereGeometry(0.5, 32, 32);
         const material = new THREE.MeshStandardMaterial({
@@ -1878,8 +1854,8 @@ class ModelViewer {
         // Select the sphere
         this.selectObject(sphere);
 
-        // Center the view on the sphere
-        this.frameSelected();
+        // Update the outliner to show the new sphere
+        this.updateOutliner();
 
         return sphere;
     }
