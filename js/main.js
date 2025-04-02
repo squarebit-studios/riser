@@ -166,7 +166,6 @@ class ModelViewer {
                 });
             });
 
-
             // Perform the raycast
             const intersects = this.raycaster.intersectObjects(meshes, false);
 
@@ -174,117 +173,23 @@ class ModelViewer {
             if (intersects.length > 0) {
                 const hitMesh = intersects[0].object;
 
-                // Find which model contains this mesh
-                let parentModel = null;
-                this.models.forEach(model => {
-                    let isPartOfModel = false;
-                    model.traverse(child => {
-                        if (child === hitMesh) {
-                            isPartOfModel = true;
-                        }
-                    });
-                    if (isPartOfModel) {
-                        parentModel = model;
+                // Walk up the parent chain to find the top-level transform
+                let currentObject = hitMesh;
+                let topLevelTransform = null;
+                while (currentObject.parent && currentObject.parent !== this.scene) {
+                    currentObject = currentObject.parent;
+                    if (!currentObject.isMesh) {
+                        topLevelTransform = currentObject;
                     }
-                });
-
-                // Default to hit mesh if no parent model found
-                const objectToSelect = parentModel || hitMesh;
-
-                // Clear previous selections
-                if (this.selectedObject) {
-                    // Reset color of previously selected object
-                    this.selectedObject.traverse(child => {
-                        if (child.isMesh && child.material) {
-                            if (Array.isArray(child.material)) {
-                                child.material.forEach(mat => {
-                                    if (mat.originalColor) {
-                                        mat.color.copy(mat.originalColor);
-                                    }
-                                });
-                            } else if (child.material.originalColor) {
-                                child.material.color.copy(child.material.originalColor);
-                            }
-                        }
-                    });
                 }
 
-                // Store selection
-                this.selectedObject = objectToSelect;
-
-                // Make selection visually obvious by changing color
-                objectToSelect.traverse(child => {
-                    if (child.isMesh && child.material) {
-                        if (Array.isArray(child.material)) {
-                            child.material.forEach(mat => {
-                                // Store original color if not already stored
-                                if (!mat.originalColor) {
-                                    mat.originalColor = mat.color.clone();
-                                }
-                                // Set to bright highlight color
-                                mat.color.set(0x00ffff); // Bright cyan
-                            });
-                        } else {
-                            // Store original color if not already stored
-                            if (!child.material.originalColor) {
-                                child.material.originalColor = child.material.color.clone();
-                            }
-                            // Set to bright highlight color
-                            child.material.color.set(0x00ffff); // Bright cyan
-                        }
-                    }
-                });
-
-                // Enable transform group
-                if (this.transformGroup) {
-                    this.transformGroup.style.opacity = '1';
-                    this.transformGroup.style.pointerEvents = 'auto';
-                }
-
-                // Update channel box title
-                if (this.channelBoxTitle) {
-                    this.channelBoxTitle.innerText = objectToSelect.name || 'Selected Object';
-                }
-
-                // Attach transform controls directly to ensure they appear
-                this.transformControls.attach(objectToSelect);
-                this.transformControls.visible = true;
-                this.transformControls.enabled = true;
-
+                // Select the top-level transform if found, otherwise the hit mesh
+                const objectToSelect = topLevelTransform || hitMesh;
+                this.selectObject(objectToSelect);
                 return true;
             } else {
                 // No hit, deselect
-                if (this.selectedObject) {
-                    // Reset color
-                    this.selectedObject.traverse(child => {
-                        if (child.isMesh && child.material) {
-                            if (Array.isArray(child.material)) {
-                                child.material.forEach(mat => {
-                                    if (mat.originalColor) {
-                                        mat.color.copy(mat.originalColor);
-                                    }
-                                });
-                            } else if (child.material.originalColor) {
-                                child.material.color.copy(child.material.originalColor);
-                            }
-                        }
-                    });
-
-                    // Detach transform controls
-                    this.transformControls.detach();
-
-                    // Clear selection
-                    this.selectedObject = null;
-
-                    // Update UI
-                    if (this.channelBoxTitle) {
-                        this.channelBoxTitle.innerText = 'No Object Selected';
-                    }
-                    if (this.transformGroup) {
-                        this.transformGroup.style.opacity = '0.5';
-                        this.transformGroup.style.pointerEvents = 'none';
-                    }
-                }
+                this.deselectObject();
             }
         });
 
@@ -332,7 +237,6 @@ class ModelViewer {
         // Add event listener for transform controls updates
         this.transformControls.addEventListener('objectChange', (event) => {
             if (this.selectedObject && this.selectedObject.userData.isBoneJoint && this.selectedBone) {
-
                 // If the bone has a parent, convert to local space
                 if (this.selectedBone.parent) {
                     // Get parent world matrix and invert it
@@ -516,30 +420,6 @@ class ModelViewer {
             }
         });
 
-        // Setup primitive creation handlers
-        const primitiveTypes = [
-            'cube', 'sphere', 'cylinder', 'cone', 'torus',
-            'plane', 'tetrahedron', 'octahedron', 'dodecahedron', 'icosahedron'
-        ];
-
-        primitiveTypes.forEach(type => {
-            const elementId = `create-${type}`;
-            const element = document.getElementById(elementId);
-            if (element) {
-                // Clear any existing listeners
-                const newElement = element.cloneNode(true);
-                element.parentNode.replaceChild(newElement, element);
-
-                // Add simple click handler
-                newElement.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    this.createPrimitive(type);
-                    submenu.style.display = 'none';
-                });
-            }
-        });
-
         // Close submenu when clicking elsewhere
         document.addEventListener('click', (e) => {
             if (!meshMenu.contains(e.target)) {
@@ -560,7 +440,6 @@ class ModelViewer {
             this.importFileInput.click();
         });
 
-        // View menu options
         document.getElementById('wireframe-option').addEventListener('click', () => {
             this.setDisplayMode('wireframe');
         });
@@ -573,35 +452,28 @@ class ModelViewer {
             this.setDisplayMode('shaded-wireframe');
         });
 
-        document.getElementById('show-bones-option').addEventListener('click', (e) => {
-            const menuItem = e.target;
-            const showing = menuItem.classList.contains('active');
-
-            // Toggle the active class
-            if (showing) {
-                menuItem.classList.remove('active');
-                menuItem.textContent = 'Show Bones';
-            } else {
-                menuItem.classList.add('active');
-                menuItem.textContent = 'Hide Bones';
+        document.getElementById('show-bones-option').addEventListener('click', () => {
+            const model = this.selectedObject;
+            if (model && model.userData.isModel) {
+                this.toggleBoneVisualization(model, !model.userData.showBones);
             }
+        });
 
-            // Toggle bone visibility on all models
-            this.models.forEach(model => {
-                if (model.userData && model.userData.hasSkeletalData) {
-                    this.toggleBoneVisualization(model, !showing);
-                }
-            });
+        document.getElementById('reset-view-option').addEventListener('click', () => {
+            this.resetCamera();
         });
 
         // Create menu options
-        document.getElementById('create-cube').addEventListener('click', () => {
-            this.createCube();
-        });
-
-        document.getElementById('create-sphere').addEventListener('click', () => {
-            this.createSphere();
-        });
+        document.getElementById('create-cube').addEventListener('click', () => this.createPrimitive('cube'));
+        document.getElementById('create-sphere').addEventListener('click', () => this.createPrimitive('sphere'));
+        document.getElementById('create-cylinder').addEventListener('click', () => this.createPrimitive('cylinder'));
+        document.getElementById('create-cone').addEventListener('click', () => this.createPrimitive('cone'));
+        document.getElementById('create-torus').addEventListener('click', () => this.createPrimitive('torus'));
+        document.getElementById('create-plane').addEventListener('click', () => this.createPrimitive('plane'));
+        document.getElementById('create-tetrahedron').addEventListener('click', () => this.createPrimitive('tetrahedron'));
+        document.getElementById('create-octahedron').addEventListener('click', () => this.createPrimitive('octahedron'));
+        document.getElementById('create-dodecahedron').addEventListener('click', () => this.createPrimitive('dodecahedron'));
+        document.getElementById('create-icosahedron').addEventListener('click', () => this.createPrimitive('icosahedron'));
 
         // Setup file inputs
         this.fileInput = document.createElement('input');
@@ -679,6 +551,66 @@ class ModelViewer {
                     this.setDisplayMode('shaded');
                     break;
                 // Test hotkeys removed (S and D keys)
+            }
+        });
+
+        // Add event listeners for transform inputs
+        this.translateXInput.addEventListener('change', () => {
+            this.modelTransform.translate.x = parseFloat(this.translateXInput.value);
+            this.updateModelTransform();
+        });
+
+        this.translateYInput.addEventListener('change', () => {
+            this.modelTransform.translate.y = parseFloat(this.translateYInput.value);
+            this.updateModelTransform();
+        });
+
+        this.translateZInput.addEventListener('change', () => {
+            this.modelTransform.translate.z = parseFloat(this.translateZInput.value);
+            this.updateModelTransform();
+        });
+
+        this.rotateXInput.addEventListener('change', () => {
+            this.modelTransform.rotate.x = parseFloat(this.rotateXInput.value) * (Math.PI / 180);
+            this.updateModelTransform();
+        });
+
+        this.rotateYInput.addEventListener('change', () => {
+            this.modelTransform.rotate.y = parseFloat(this.rotateYInput.value) * (Math.PI / 180);
+            this.updateModelTransform();
+        });
+
+        this.rotateZInput.addEventListener('change', () => {
+            this.modelTransform.rotate.z = parseFloat(this.rotateZInput.value) * (Math.PI / 180);
+            this.updateModelTransform();
+        });
+
+        this.scaleXInput.addEventListener('change', () => {
+            this.modelTransform.scale.x = parseFloat(this.scaleXInput.value);
+            this.updateModelTransform();
+        });
+
+        this.scaleYInput.addEventListener('change', () => {
+            this.modelTransform.scale.y = parseFloat(this.scaleYInput.value);
+            this.updateModelTransform();
+        });
+
+        this.scaleZInput.addEventListener('change', () => {
+            this.modelTransform.scale.z = parseFloat(this.scaleZInput.value);
+            this.updateModelTransform();
+        });
+
+        // Add click handler to canvas container to blur focused inputs
+        this.container.addEventListener('click', (event) => {
+
+            // Don't blur if Ctrl is pressed - this allows Ctrl+click to work for pivot setting
+            if (event.ctrlKey) {
+                return;
+            }
+
+            // Only blur if we have a focused transform input
+            if (document.activeElement && document.activeElement.classList.contains('transform-input')) {
+                document.activeElement.blur();
             }
         });
     }
@@ -779,312 +711,6 @@ class ModelViewer {
             // Update the UI inputs
             this.updateInputs();
         }
-    }
-
-    setupObjectSelection() {
-        // Raycaster for object selection
-        this.raycaster = new THREE.Raycaster();
-
-        // Add click event listener to the renderer with proper raycasting
-        this.renderer.domElement.addEventListener('click', (event) => {
-
-            // Get mouse position in normalized coordinates
-            const mouse = new THREE.Vector2();
-            const rect = this.renderer.domElement.getBoundingClientRect();
-            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-            // Update the raycaster with camera and mouse position
-            this.raycaster.setFromCamera(mouse, this.camera);
-
-            // Collect all meshes for raycasting
-            const meshes = [];
-            this.models.forEach(model => {
-                model.traverse(child => {
-                    if (child.isMesh && child.visible) {
-                        meshes.push(child);
-                    }
-                });
-            });
-
-
-            // Perform the raycast
-            const intersects = this.raycaster.intersectObjects(meshes, false);
-
-            if (intersects.length > 0) {
-                // Find the hit mesh
-                const hitMesh = intersects[0].object;
-
-                // Find which model contains this mesh
-                let parentModel = null;
-                this.models.forEach(model => {
-                    let isPartOfModel = false;
-                    model.traverse(child => {
-                        if (child === hitMesh) {
-                            isPartOfModel = true;
-                        }
-                    });
-                    if (isPartOfModel) {
-                        parentModel = model;
-                    }
-                });
-
-                // Default to hit mesh if no parent model found
-                const objectToSelect = parentModel || hitMesh;
-
-                // Clear previous selections
-                if (this.selectedObject) {
-                    // Reset color of previously selected object
-                    this.selectedObject.traverse(child => {
-                        if (child.isMesh && child.material) {
-                            if (Array.isArray(child.material)) {
-                                child.material.forEach(mat => {
-                                    if (mat.originalColor) {
-                                        mat.color.copy(mat.originalColor);
-                                    }
-                                });
-                            } else if (child.material.originalColor) {
-                                child.material.color.copy(child.material.originalColor);
-                            }
-                        }
-                    });
-                }
-
-                // Store selection
-                this.selectedObject = objectToSelect;
-
-                // Make selection visually obvious by changing color
-                objectToSelect.traverse(child => {
-                    if (child.isMesh && child.material) {
-                        if (Array.isArray(child.material)) {
-                            child.material.forEach(mat => {
-                                // Store original color if not already stored
-                                if (!mat.originalColor) {
-                                    mat.originalColor = mat.color.clone();
-                                }
-                                // Set to bright highlight color
-                                mat.color.set(0xff0000); // Bright red
-                            });
-                        } else {
-                            // Store original color if not already stored
-                            if (!child.material.originalColor) {
-                                child.material.originalColor = child.material.color.clone();
-                            }
-                            // Set to bright highlight color
-                            child.material.color.set(0xff0000); // Bright red
-                        }
-                    }
-                });
-
-                // Enable transform group
-                if (this.transformGroup) {
-                    this.transformGroup.style.opacity = '1';
-                    this.transformGroup.style.pointerEvents = 'auto';
-                }
-
-                // Update channel box title
-                if (this.channelBoxTitle) {
-                    this.channelBoxTitle.innerText = objectToSelect.name || 'Selected Object';
-                }
-
-                // Attach transform controls directly to ensure they appear
-                this.transformControls.attach(objectToSelect);
-                this.transformControls.visible = true;
-                this.transformControls.enabled = true;
-
-            } else {
-                // Deselect current object
-                if (this.selectedObject) {
-                    // Reset color
-                    this.selectedObject.traverse(child => {
-                        if (child.isMesh && child.material) {
-                            if (Array.isArray(child.material)) {
-                                child.material.forEach(mat => {
-                                    if (mat.originalColor) {
-                                        mat.color.copy(mat.originalColor);
-                                    }
-                                });
-                            } else if (child.material.originalColor) {
-                                child.material.color.copy(child.material.originalColor);
-                            }
-                        }
-                    });
-
-                    // Detach transform controls
-                    this.transformControls.detach();
-
-                    // Clear selection
-                    this.selectedObject = null;
-
-                    // Update UI
-                    if (this.channelBoxTitle) {
-                        this.channelBoxTitle.innerText = 'No Object Selected';
-                    }
-                    if (this.transformGroup) {
-                        this.transformGroup.style.opacity = '0.5';
-                        this.transformGroup.style.pointerEvents = 'none';
-                    }
-                }
-            }
-        });
-
-        // Simplified touch event handlers
-        const renderer = this.renderer.domElement;
-        renderer.addEventListener('touchend', (event) => {
-            if (event.changedTouches.length === 1) {
-
-                // Get touch coordinates
-                const touch = event.changedTouches[0];
-                const rect = renderer.getBoundingClientRect();
-                const touchX = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
-                const touchY = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
-
-                // Update raycaster
-                this.raycaster.setFromCamera(new THREE.Vector2(touchX, touchY), this.camera);
-
-                // Collect meshes
-                const meshes = [];
-                this.models.forEach(model => {
-                    model.traverse(child => {
-                        if (child.isMesh && child.visible) {
-                            meshes.push(child);
-                        }
-                    });
-                });
-
-                // Raycast and select
-                const intersects = this.raycaster.intersectObjects(meshes, false);
-                if (intersects.length > 0) {
-                    const hitMesh = intersects[0].object;
-
-                    // Find parent model
-                    let parentModel = null;
-                    this.models.forEach(model => {
-                        let isPartOfModel = false;
-                        model.traverse(child => {
-                            if (child === hitMesh) {
-                                isPartOfModel = true;
-                            }
-                        });
-                        if (isPartOfModel) {
-                            parentModel = model;
-                        }
-                    });
-
-                    const objectToSelect = parentModel || hitMesh;
-
-                    // Clear previous selection
-                    if (this.selectedObject) {
-                        this.selectedObject.traverse(child => {
-                            if (child.isMesh && child.material) {
-                                if (Array.isArray(child.material)) {
-                                    child.material.forEach(mat => {
-                                        if (mat.originalColor) {
-                                            mat.color.copy(mat.originalColor);
-                                        }
-                                    });
-                                } else if (child.material.originalColor) {
-                                    child.material.color.copy(child.material.originalColor);
-                                }
-                            }
-                        });
-                    }
-
-                    // Update selection
-                    this.selectedObject = objectToSelect;
-
-                    // Highlight
-                    objectToSelect.traverse(child => {
-                        if (child.isMesh && child.material) {
-                            if (Array.isArray(child.material)) {
-                                child.material.forEach(mat => {
-                                    if (!mat.originalColor) {
-                                        mat.originalColor = mat.color.clone();
-                                    }
-                                    mat.color.set(0xff0000); // Red
-                                });
-                            } else {
-                                if (!child.material.originalColor) {
-                                    child.material.originalColor = child.material.color.clone();
-                                }
-                                child.material.color.set(0xff0000); // Red
-                            }
-                        }
-                    });
-
-                    // Update UI
-                    if (this.transformGroup) {
-                        this.transformGroup.style.opacity = '1';
-                        this.transformGroup.style.pointerEvents = 'auto';
-                    }
-                    if (this.channelBoxTitle) {
-                        this.channelBoxTitle.innerText = objectToSelect.name || 'Selected Object';
-                    }
-
-                    // Attach transform controls
-                    this.transformControls.attach(objectToSelect);
-                    this.transformControls.visible = true;
-                    this.transformControls.enabled = true;
-                }
-            }
-            event.preventDefault();
-        }, { passive: false });
-    }
-
-    handleObjectSelection(raycaster) {
-        // Get all objects in the scene that can be selected
-        const selectableObjects = [];
-
-        // Get all visible meshes from all models
-        this.scene.traverse(object => {
-            if (object.isMesh &&
-                !(object.userData.isHelper) &&
-                !(object.userData.isBoneJoint) &&
-                !(object.userData.noSelection) &&
-                object !== this.grid &&
-                object.visible) {
-                selectableObjects.push(object);
-            }
-        });
-
-        // Find all intersections
-        const intersects = raycaster.intersectObjects(selectableObjects, false);
-
-        // If we hit something, select it or its parent model
-        if (intersects.length > 0) {
-            const hitObject = intersects[0].object;
-
-            // Find if this mesh belongs to one of our loaded models
-            const parentModel = this.findParentModel(hitObject);
-
-            if (parentModel) {
-                this.selectObject(parentModel);
-                return true;
-            } else {
-                // If no parent model found, just select the object itself
-                this.selectObject(hitObject);
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    // Helper to find the parent model for an object
-    findParentModel(object) {
-        for (const model of this.models) {
-            let isPartOfModel = false;
-            model.traverse(child => {
-                if (child === object) {
-                    isPartOfModel = true;
-                }
-            });
-
-            if (isPartOfModel) {
-                return model;
-            }
-        }
-        return null;
     }
 
     handleComponentSelection(raycaster) {
@@ -1304,7 +930,6 @@ class ModelViewer {
         // Update helpers as edge geometry has changed
         this.updateComponentHelpers();
 
-        console.log('Edge updated');
     }
 
     updateFacePosition(faceInfo, newPosition, displacement) {
@@ -1386,7 +1011,6 @@ class ModelViewer {
     }
 
     selectObject(object) {
-
         // Deselect current object first
         if (this.selectedObject) {
             this.deselectObject();
@@ -1400,6 +1024,16 @@ class ModelViewer {
 
         // Select new object
         this.selectedObject = object;
+
+        // Initialize modelTransform if it doesn't exist
+        if (!this.modelTransform) {
+            this.modelTransform = {
+                translate: { x: 0, y: 0, z: 0 },
+                rotate: { x: 0, y: 0, z: 0 },
+                scale: { x: 1, y: 1, z: 1 },
+                baseScale: 1
+            };
+        }
 
         // Update channel box title
         if (this.channelBoxTitle) {
@@ -1415,6 +1049,17 @@ class ModelViewer {
         // Update transform controls
         try {
             this.transformControls.attach(object);
+
+            // Add event listener for transform changes
+            const updateListener = () => {
+                this.updateUIFromObject();
+            };
+
+            // Remove any existing listeners to avoid duplicates
+            this.transformControls.removeEventListener('objectChange', updateListener);
+
+            // Add new listener
+            this.transformControls.addEventListener('objectChange', updateListener);
         } catch (error) {
             console.error("Error attaching transform controls:", error);
         }
@@ -1424,12 +1069,17 @@ class ModelViewer {
 
         // Check for skeleton and show bones UI if available
         if (object.userData && object.userData.hasSkeletalData) {
-            console.log("Setting up bone controls for object with skeletal data");
             this.setupBoneControls(object);
         }
 
         // Push to undo stack
         this.saveSelectionState();
+
+        // Update outliner selection
+        const outlinerItem = this.findOutlinerItemForObject(object);
+        if (outlinerItem) {
+            this.selectOutlinerItem(outlinerItem);
+        }
     }
 
     // Helper method to check if an object is in the scene graph
@@ -1442,7 +1092,6 @@ class ModelViewer {
 
         // If the object has no parent, it's not in the scene
         if (!object.parent) {
-            console.log(`Object has no parent, returning false`);
             return false;
         }
 
@@ -1459,7 +1108,6 @@ class ModelViewer {
             depth++;
         }
 
-        console.log(`No scene parent found after ${depth} levels, returning false`);
         return false;
     }
 
@@ -1540,18 +1188,14 @@ class ModelViewer {
             const channelBox = document.querySelector('.channel-box');
             if (channelBox && channelBox.parentNode) {
                 channelBox.parentNode.insertBefore(boneControlsPanel, channelBox.nextSibling);
-                console.log('Added bone controls panel to DOM', boneControlsPanel);
             } else {
-                console.error('Could not find channel-box element to add bone controls');
                 // Fallback: add to info panel
                 const infoPanel = document.getElementById('info');
                 if (infoPanel) {
                     infoPanel.appendChild(boneControlsPanel);
-                    console.log('Added bone controls panel to info panel as fallback');
                 } else {
                     // Last resort: add to body
                     document.body.appendChild(boneControlsPanel);
-                    console.log('Added bone controls panel to body as last resort');
                 }
             }
 
@@ -1869,7 +1513,7 @@ class ModelViewer {
                     this.loadingModels[fileURL].status = 'success';
                 }
 
-                this.processLoadedModel(object, fileName, isImport);
+                this.processLoadedModel(object, fileName, isImport, 'obj');
                 URL.revokeObjectURL(fileURL);
 
                 // Clean up tracking
@@ -1943,6 +1587,8 @@ class ModelViewer {
 
                 // GLTF loader returns a different structure, extract the scene
                 const object = gltf.scene;
+                // Rename the root object to make it clear it's a model group
+                object.name = fileName.split('.')[0] + '_group';
                 this.processLoadedModel(object, fileName, isImport);
                 URL.revokeObjectURL(fileURL);
 
@@ -1965,16 +1611,6 @@ class ModelViewer {
                 delete this.loadingModels[fileURL];
             }
         );
-    }
-
-    // Create a cube primitive model - for backwards compatibility
-    createCube() {
-        return this.createPrimitive('cube');
-    }
-
-    // Create a sphere primitive model - for backwards compatibility
-    createSphere() {
-        return this.createPrimitive('sphere');
     }
 
     // Unified primitive creation method
@@ -2026,28 +1662,42 @@ class ModelViewer {
             metalness: 0.5
         });
 
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.name = name;
+        // Create a group for the primitive
+        const group = new THREE.Group();
+        group.name = name;
 
-        // Add to scene and models array
-        this.scene.add(mesh);
-        this.models.push(mesh);
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = name + 'Shape';
+
+        // Add mesh to group and group to scene
+        group.add(mesh);
+        this.scene.add(group);
+        this.models.push(group);
 
         // Set as current model and select it
-        this.model = mesh;
-        this.selectObject(mesh);
+        this.model = group;
+        this.selectObject(group);
 
         // Update the outliner
         this.updateOutliner();
 
-        return mesh;
+        return group;
     }
 
     // Process a loaded model regardless of file type
-    processLoadedModel(object, fileName, isImport) {
+    processLoadedModel(object, fileName, isImport, fileType = '') {
         // Give the object a name based on file name if it doesn't have one
         if (!object.name || object.name === '') {
             object.name = fileName.split('.')[0];
+        }
+
+        // Rename any meshes to include 'Shape' only for OBJ files
+        if (fileType === 'obj') {
+            object.traverse((child) => {
+                if (child.isMesh) {
+                    child.name = child.name + 'Shape';
+                }
+            });
         }
 
         // Scale the model to fit in view
@@ -2438,14 +2088,14 @@ class ModelViewer {
     setupMayaControls() {
         const renderer = this.renderer.domElement;
         let isAltDown = false;
-        let isCtrlDown = false; // Add variable to track Ctrl key state
+        let isCtrlDown = false;
 
         // Variables to track mouse positions
         const mouse = { x: 0, y: 0 };
         const prevMouse = { x: 0, y: 0 };
 
         // Tracking active control mode
-        let activeControl = null; // 'tumble', 'pan', 'zoom', or null
+        let activeControl = null;
 
         // For tumble operation - store distance to pivot
         let distanceToPivot = 0;
@@ -2463,18 +2113,15 @@ class ModelViewer {
             return raycaster;
         };
 
-        // Track Alt key state
+        // Handle key events
         window.addEventListener('keydown', (event) => {
             if (event.key === 'Alt') {
                 isAltDown = true;
-                renderer.style.cursor = 'pointer'; // Change cursor to indicate special mode
-
-                // If manipulator is active while alt is pressed, temporarily hide it
-                if (this.transformControls.visible && this.transformControls.object) {
+                renderer.style.cursor = 'pointer'; // Change cursor to indicate selection mode
+                // Disable transform controls when Alt is pressed
+                if (this.transformControls) {
                     this.transformControls.enabled = false;
                 }
-
-                // Prevent browser's default Alt key behavior
                 event.preventDefault();
             } else if (event.key === 'Control') {
                 isCtrlDown = true;
@@ -2488,11 +2135,9 @@ class ModelViewer {
         window.addEventListener('keyup', (event) => {
             if (event.key === 'Alt') {
                 isAltDown = false;
-                activeControl = null;
-                renderer.style.cursor = 'auto'; // Reset cursor
-
-                // Restore manipulator when alt is released
-                if (this.transformControls.object) {
+                renderer.style.cursor = 'default';
+                // Re-enable transform controls when Alt is released
+                if (this.transformControls) {
                     this.transformControls.enabled = true;
                 }
             } else if (event.key === 'Control') {
@@ -2504,12 +2149,52 @@ class ModelViewer {
             }
         });
 
+        // Handle mouse down
+        renderer.addEventListener('mousedown', (event) => {
+            // Get mouse position in normalized coordinates
+            const rect = renderer.getBoundingClientRect();
+            mouse.x = event.clientX - rect.left;
+            mouse.y = event.clientY - rect.top;
+            prevMouse.x = mouse.x;
+            prevMouse.y = mouse.y;
+
+            // If Alt is pressed, handle selection
+            if (isAltDown) {
+                const raycaster = getMouseRay(mouse.x, mouse.y);
+                event.preventDefault();
+                return;
+            }
+
+            // Store current distance to pivot for zoom operations
+            distanceToPivot = this.camera.position.distanceTo(this.pivotPoint);
+            zoomStartDistance = distanceToPivot;
+
+            // Determine which control to activate based on the mouse button
+            if (event.button === 0) { // Left button - Tumble
+                activeControl = 'tumble';
+                renderer.style.cursor = 'move';
+            } else if (event.button === 1) { // Middle button - Pan
+                activeControl = 'pan';
+                renderer.style.cursor = 'grabbing';
+            } else if (event.button === 2) { // Right button - Zoom
+                activeControl = 'zoom';
+                renderer.style.cursor = 'ns-resize';
+            }
+
+            event.preventDefault();
+        });
+
         // Handle direct click on mesh to set tumble pivot point (with Ctrl)
         renderer.addEventListener('click', (event) => {
-            // This needs to hit any mesh in the scene graph not just this.model
+
+            // If Alt is pressed, don't do any selection
+            if (isAltDown) {
+                event.preventDefault();
+                return;
+            }
 
             // Only apply for left mouse button clicks WITH Ctrl key
-            if (event.button === 0 && event.ctrlKey) {
+            if (event.button === 0 && isCtrlDown) {
                 // Get accurate client coordinates relative to the renderer
                 const rect = renderer.getBoundingClientRect();
                 const mouseX = event.clientX - rect.left;
@@ -3766,7 +3451,6 @@ class ModelViewer {
         // Update camera position
         this.camera.position.copy(newPosition);
 
-        console.log('Centered camera on target');
     }
 
     // Create visual representation of bones
@@ -4217,10 +3901,16 @@ class ModelViewer {
         // Expand by default
         sceneItem.querySelector('.outliner-toggle').click();
 
-        // Add scene children (models, camera, lights, etc.)
+        // Add scene children (camera, lights, models, helpers)
         this.addCameraToOutliner(sceneChildren);
         this.addLightsToOutliner(sceneChildren);
-        this.addModelsToOutliner(sceneChildren);
+
+        // Add models directly to scene children
+        for (let i = 0; i < this.models.length; i++) {
+            const model = this.models[i];
+            this.addObjectHierarchyToOutliner(model, sceneChildren, 0);
+        }
+
         this.addHelperObjectsToOutliner(sceneChildren);
     }
 
@@ -4372,6 +4062,12 @@ class ModelViewer {
         // Skip non-visible objects
         if (object.userData && object.userData.isHelperObject) return;
 
+        // Skip scene hierarchy for simple meshes
+        if (object === this.scene && object.children.length === 1 && object.children[0].isMesh) {
+            this.addObjectHierarchyToOutliner(object.children[0], parent, 0);
+            return;
+        }
+
         // Determine object type and icon
         let objectClass = 'object-item';
         let icon = '📦';
@@ -4391,6 +4087,8 @@ class ModelViewer {
         const objectItem = document.createElement('div');
         objectItem.className = `outliner-item ${objectClass}`;
         objectItem.style.paddingLeft = `${depth * 10 + 8}px`;
+        // Add data attribute to store object reference
+        objectItem.dataset.objectId = object.uuid;
 
         // Determine if object has children
         const hasChildren = object.children.length > 0;
@@ -4522,6 +4220,12 @@ class ModelViewer {
             object = object.parent;
         }
         return false;
+    }
+
+    // Find outliner item for an object
+    findOutlinerItemForObject(object) {
+        if (!object) return null;
+        return document.querySelector(`.outliner-item[data-object-id="${object.uuid}"]`);
     }
 }
 
