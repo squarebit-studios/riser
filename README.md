@@ -51,6 +51,12 @@ To modify or extend this project:
 2. Modify the CSS (`css/style.css`) to change the appearance
 3. Update the JavaScript (`js/main.js`) to add or change functionality
 
+## Run locally
+1. cd into your riser repo folder and run this in a shell
+2. python -m http.server 8002
+3. Now go this address in your browser
+4. http://localhost:8002/
+
 ## License
 
 MIT License
