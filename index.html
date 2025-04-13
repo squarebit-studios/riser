@@ -160,7 +160,7 @@
         fetch('version.json')
             .then(response => response.json())
             .then(data => {
-                const version = data[""];
+                const version = data["riser"];
                 const versionStr = `v${version.MAJOR}.${version.MINOR}.${version.PATCH}`;
                 document.title = `riser ${versionStr}`;
                 const titleElement = document.getElementById('app-title');
