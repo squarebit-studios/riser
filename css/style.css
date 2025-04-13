@@ -87,7 +87,6 @@ body {
     z-index: 1;
     width: 280px;
     min-width: 200px;
-    max-width: 600px;
     height: 100%;
     overflow-y: auto;
     border-right: 1px solid rgba(80, 80, 80, 0.5);
@@ -116,11 +115,11 @@ body {
 /* Scene Outliner Panel */
 #outliner-panel {
     position: fixed;
-    top: 40px; /* Below the title bar */
+    top: 40px;
+    /* Below the title bar */
     right: 0;
     width: 250px;
     min-width: 150px;
-    max-width: 500px;
     height: calc(100vh - 40px);
     background-color: rgba(30, 30, 30, 0.9);
     border-left: 1px solid rgba(80, 80, 80, 0.5);
@@ -128,11 +127,12 @@ body {
     overflow-y: auto;
     z-index: 100;
     resize: horizontal;
-    direction: rtl; /* This helps with resize handle positioning */
+    direction: rtl;
+    /* This helps with resize handle positioning */
 }
 
 /* Fix the direction of content inside the outliner */
-#outliner-panel > * {
+#outliner-panel>* {
     direction: ltr;
 }
 
@@ -154,7 +154,8 @@ body {
 }
 
 /* Ensure proper stacking for resize handles */
-#info, #outliner-panel {
+#info,
+#outliner-panel {
     z-index: 2;
 }
 
@@ -330,13 +331,15 @@ input[type="file"]::-webkit-file-upload-button {
 .morph-target-name {
     color: #fff;
     font-size: 12px;
-    width: 200px; /* Fixed width based on longest name */
+    width: 200px;
+    /* Fixed width based on longest name */
     margin-right: 10px;
     white-space: nowrap;
     overflow: visible;
     text-overflow: clip;
     padding-right: 5px;
-    flex-shrink: 0; /* Prevent name from shrinking */
+    flex-shrink: 0;
+    /* Prevent name from shrinking */
 }
 
 .morph-target-controls {
@@ -350,7 +353,8 @@ input[type="file"]::-webkit-file-upload-button {
 
 .morph-target-slider {
     flex: 1;
-    min-width: 150px; /* Increased minimum width */
+    min-width: 150px;
+    /* Increased minimum width */
     height: 20px;
     -webkit-appearance: none;
     background: rgba(60, 60, 60, 0.8);
@@ -515,7 +519,8 @@ input[type=number]::-webkit-outer-spin-button {
     overflow: hidden;
     background-color: #2a2a2a;
     min-width: 200px;
-    margin-right: 250px; /* Initial width of outliner */
+    margin-right: 250px;
+    /* Initial width of outliner */
 }
 
 canvas {

@@ -635,8 +635,8 @@ class ModelViewer {
 
             // Set the width based on mouse position
             const newWidth = e.clientX;
-            // Constrain to min and max width
-            const constrainedWidth = Math.max(200, Math.min(600, newWidth));
+            // Constrain to min width only (removing max width limit)
+            const constrainedWidth = Math.max(200, newWidth);
             infoPanel.style.width = `${constrainedWidth}px`;
 
             // Prevent text selection during drag
@@ -649,8 +649,8 @@ class ModelViewer {
 
             // Calculate width from right edge
             const newWidth = window.innerWidth - e.clientX;
-            // Constrain to min and max width
-            const constrainedWidth = Math.max(150, Math.min(500, newWidth));
+            // Constrain to min width only (removing max width limit)
+            const constrainedWidth = Math.max(150, newWidth);
             outlinerPanel.style.width = `${constrainedWidth}px`;
 
             // Prevent text selection during drag
