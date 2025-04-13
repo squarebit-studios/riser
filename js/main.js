@@ -614,6 +614,105 @@ class ModelViewer {
                 document.activeElement.blur();
             }
         });
+
+        // Set up the splitters for resizing panels
+        this.setupSplitterDrag();
+    }
+
+    setupSplitterDrag() {
+        const infoPanel = document.getElementById('info');
+        const outlinerPanel = document.getElementById('outliner-panel');
+
+        if (!infoPanel || !outlinerPanel) return;
+
+        // Track if we're currently dragging
+        let isDraggingInfoSplitter = false;
+        let isDraggingOutlinerSplitter = false;
+
+        // Function to handle mouse move for info panel (left splitter)
+        const handleInfoPanelDrag = (e) => {
+            if (!isDraggingInfoSplitter) return;
+
+            // Set the width based on mouse position
+            const newWidth = e.clientX;
+            // Constrain to min and max width
+            const constrainedWidth = Math.max(200, Math.min(600, newWidth));
+            infoPanel.style.width = `${constrainedWidth}px`;
+
+            // Prevent text selection during drag
+            e.preventDefault();
+        };
+
+        // Function to handle mouse move for outliner panel (right splitter)
+        const handleOutlinerPanelDrag = (e) => {
+            if (!isDraggingOutlinerSplitter) return;
+
+            // Calculate width from right edge
+            const newWidth = window.innerWidth - e.clientX;
+            // Constrain to min and max width
+            const constrainedWidth = Math.max(150, Math.min(500, newWidth));
+            outlinerPanel.style.width = `${constrainedWidth}px`;
+
+            // Prevent text selection during drag
+            e.preventDefault();
+        };
+
+        // Function to handle mouse up (stop dragging)
+        const handleMouseUp = () => {
+            isDraggingInfoSplitter = false;
+            isDraggingOutlinerSplitter = false;
+            document.body.style.cursor = '';
+            document.removeEventListener('mousemove', handleInfoPanelDrag);
+            document.removeEventListener('mousemove', handleOutlinerPanelDrag);
+        };
+
+        // Add mouse events for splitter detection and dragging
+        document.addEventListener('mousedown', (e) => {
+            // Check info panel splitter (right edge)
+            const infoRect = infoPanel.getBoundingClientRect();
+            if (e.clientX >= infoRect.right - 5 && e.clientX <= infoRect.right + 5) {
+                isDraggingInfoSplitter = true;
+                document.body.style.cursor = 'ew-resize';
+                e.preventDefault();
+            }
+
+            // Check outliner panel splitter (left edge)
+            const outlinerRect = outlinerPanel.getBoundingClientRect();
+            if (e.clientX >= outlinerRect.left - 5 && e.clientX <= outlinerRect.left + 5) {
+                isDraggingOutlinerSplitter = true;
+                document.body.style.cursor = 'ew-resize';
+                e.preventDefault();
+            }
+        });
+
+        // Add mouse move listener for both splitters
+        document.addEventListener('mousemove', (e) => {
+            // Handle drag operations
+            handleInfoPanelDrag(e);
+            handleOutlinerPanelDrag(e);
+
+            // Only update cursor if not currently dragging
+            if (!isDraggingInfoSplitter && !isDraggingOutlinerSplitter) {
+                const infoRect = infoPanel.getBoundingClientRect();
+                const outlinerRect = outlinerPanel.getBoundingClientRect();
+
+                // Near info panel right edge
+                if (e.clientX >= infoRect.right - 5 && e.clientX <= infoRect.right + 5) {
+                    document.body.style.cursor = 'ew-resize';
+                }
+                // Near outliner panel left edge
+                else if (e.clientX >= outlinerRect.left - 5 && e.clientX <= outlinerRect.left + 5) {
+                    document.body.style.cursor = 'ew-resize';
+                }
+                // Default cursor
+                else if (document.body.style.cursor === 'ew-resize') {
+                    document.body.style.cursor = '';
+                }
+            }
+        });
+
+        // Add mouse up listener to stop dragging
+        document.addEventListener('mouseup', handleMouseUp);
     }
 
     updateInputs() {
@@ -1831,7 +1930,7 @@ class ModelViewer {
             if (child.isMesh && child.morphTargetInfluences && child.morphTargetInfluences.length > 0) {
                 // Get the actual morph target names from the mesh
                 const morphTargetNames = child.morphTargetDictionary || {};
-                
+
                 // If no dictionary exists, create one with the actual names
                 if (Object.keys(morphTargetNames).length === 0) {
                     // For each morph target influence, get or create a name
@@ -4257,12 +4356,12 @@ class ModelViewer {
         const container = document.getElementById('morph-targets');
         const contentContainer = container.querySelector('.panel-content');
         const expandButton = container.querySelector('.expand-button');
-        
+
         // Reset the container state
         container.classList.remove('collapsed');
         expandButton.textContent = '-';
         contentContainer.style.display = 'block';
-        
+
         // Clear existing content
         contentContainer.innerHTML = '';
 
@@ -4290,7 +4389,7 @@ class ModelViewer {
         // Create UI for each mesh with morph targets
         meshesWithMorphs.forEach((mesh) => {
             const morphTargetInfluences = mesh.morphTargetInfluences;
-            
+
             // Create a slider for each morph target
             for (let i = 0; i < morphTargetInfluences.length; i++) {
                 // Get the name from the morphTargetDictionary
@@ -4346,7 +4445,7 @@ class ModelViewer {
 
         // Add expand/collapse functionality
         const header = container.querySelector('.panel-header');
-        
+
         header.addEventListener('click', () => {
             container.classList.toggle('collapsed');
             expandButton.textContent = container.classList.contains('collapsed') ? '+' : '-';
@@ -4365,7 +4464,7 @@ document.querySelectorAll('.expand-button').forEach(button => {
     button.addEventListener('click', () => {
         const panel = button.closest('.panel');
         const isCollapsed = panel.classList.contains('collapsed');
-        
+
         if (isCollapsed) {
             panel.classList.remove('collapsed');
             button.textContent = '-';
