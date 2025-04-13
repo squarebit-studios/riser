@@ -834,45 +834,6 @@ canvas {
     margin: 10px 0;
 }
 
-/* Mode toggle buttons */
-.mode-button {
-    padding: 6px 10px;
-    min-width: 80px;
-    background-color: #3a3a3a;
-    color: #e0e0e0;
-    border: 1px solid #555;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: background-color 0.2s, color 0.2s, border-color 0.2s;
-}
-
-.mode-button.active {
-    background-color: #4fc3f7;
-    color: #1a1a1a;
-    border-color: #4fc3f7;
-    font-weight: bold;
-}
-
-#mode-toggle-group {
-    display: flex;
-    justify-content: space-between;
-    width: 100%;
-    margin-bottom: 10px;
-}
-
-#mode-toggle-group button {
-    flex: 1;
-    margin: 0 5px;
-}
-
-#mode-toggle-group button:first-child {
-    margin-left: 0;
-}
-
-#mode-toggle-group button:last-child {
-    margin-right: 0;
-}
-
 #outliner-panel.visible {
     display: block;
 }
