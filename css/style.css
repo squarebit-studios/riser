@@ -96,20 +96,9 @@ body {
     resize: horizontal;
 }
 
-/* Add resize handle for left panel */
+/* Remove the old splitter handle for left panel since it's now handled in JS */
 #info::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: -2px;
-    width: 4px;
-    height: 100%;
-    cursor: ew-resize;
-    background-color: rgba(80, 80, 80, 0.5);
-}
-
-#info:hover::after {
-    background-color: #4fc3f7;
+    display: none;
 }
 
 /* Scene Outliner Panel */
@@ -136,21 +125,43 @@ body {
     direction: ltr;
 }
 
-/* Add resize handle for outliner */
+/* Remove the old splitter handle for outliner since it's now handled in JS */
 #outliner-panel::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -2px;
-    width: 4px;
-    height: 100%;
-    cursor: ew-resize;
-    background-color: rgba(80, 80, 80, 0.5);
-    z-index: 101;
+    display: none;
 }
 
-#outliner-panel:hover::before {
-    background-color: #4fc3f7;
+/* For better scrollbar styling */
+#info::-webkit-scrollbar,
+#outliner-panel::-webkit-scrollbar {
+    width: 10px;
+}
+
+#info::-webkit-scrollbar-track,
+#outliner-panel::-webkit-scrollbar-track {
+    background: rgba(30, 30, 30, 0.5);
+}
+
+#info::-webkit-scrollbar-thumb,
+#outliner-panel::-webkit-scrollbar-thumb {
+    background: rgba(80, 80, 80, 0.7);
+    border-radius: 5px;
+}
+
+#info::-webkit-scrollbar-thumb:hover,
+#outliner-panel::-webkit-scrollbar-thumb:hover {
+    background: rgba(100, 100, 100, 0.8);
+}
+
+/* Custom splitter elements styling */
+#info-splitter,
+#outliner-splitter {
+    background-color: transparent;
+    transition: background-color 0.2s;
+}
+
+#info-splitter:hover,
+#outliner-splitter:hover {
+    background-color: rgba(79, 195, 247, 0.1);
 }
 
 /* Ensure proper stacking for resize handles */
@@ -258,6 +269,7 @@ input[type="file"]::-webkit-file-upload-button {
     resize: both;
     overflow: auto;
     border: 1px solid #444;
+    z-index: 1;
 }
 
 .morph-target-group .panel-header {
@@ -395,10 +407,11 @@ input[type="file"]::-webkit-file-upload-button {
     position: absolute;
     bottom: 0;
     right: 0;
-    width: 10px;
-    height: 10px;
+    width: 0;
+    height: 0;
     cursor: se-resize;
-    background: linear-gradient(135deg, transparent 50%, #666 50%);
+    /* Remove the custom triangle style */
+    background: none;
 }
 
 .control-group {

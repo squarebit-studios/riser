@@ -613,10 +613,21 @@ class ModelViewer {
         // Track if we're currently dragging
         let isDraggingInfoSplitter = false;
         let isDraggingOutlinerSplitter = false;
+        // Track if any resizing is happening (either from custom splitter or native resize)
+        let isResizing = false;
+
+        // Define splitter thickness (increased for easier clicking)
+        const splitterThickness = 8; // Increased from 5px
 
         // Function to handle mouse move for info panel (left splitter)
         const handleInfoPanelDrag = (e) => {
             if (!isDraggingInfoSplitter) return;
+
+            // Set resizing flag
+            isResizing = true;
+
+            // Hide custom splitter elements during resize
+            hideSplitterElements();
 
             // Set the width based on mouse position
             const newWidth = e.clientX;
@@ -632,6 +643,12 @@ class ModelViewer {
         const handleOutlinerPanelDrag = (e) => {
             if (!isDraggingOutlinerSplitter) return;
 
+            // Set resizing flag
+            isResizing = true;
+
+            // Hide custom splitter elements during resize
+            hideSplitterElements();
+
             // Calculate width from right edge
             const newWidth = window.innerWidth - e.clientX;
             // Constrain to min width only (removing max width limit)
@@ -644,60 +661,203 @@ class ModelViewer {
 
         // Function to handle mouse up (stop dragging)
         const handleMouseUp = () => {
-            isDraggingInfoSplitter = false;
-            isDraggingOutlinerSplitter = false;
-            document.body.style.cursor = '';
-            document.removeEventListener('mousemove', handleInfoPanelDrag);
-            document.removeEventListener('mousemove', handleOutlinerPanelDrag);
+            if (isDraggingInfoSplitter || isDraggingOutlinerSplitter) {
+                isDraggingInfoSplitter = false;
+                isDraggingOutlinerSplitter = false;
+                document.body.style.cursor = '';
+
+                // Set a timeout to update the splitters after resizing is complete
+                setTimeout(() => {
+                    isResizing = false;
+                    updateSplitterElements();
+                }, 200);
+            }
         };
 
-        // Add mouse events for splitter detection and dragging
-        document.addEventListener('mousedown', (e) => {
-            // Check info panel splitter (right edge)
-            const infoRect = infoPanel.getBoundingClientRect();
-            if (e.clientX >= infoRect.right - 5 && e.clientX <= infoRect.right + 5) {
-                isDraggingInfoSplitter = true;
-                document.body.style.cursor = 'ew-resize';
-                e.preventDefault();
-            }
+        // Function to hide splitter elements
+        const hideSplitterElements = () => {
+            const infoSplitter = document.getElementById('info-splitter');
+            const outlinerSplitter = document.getElementById('outliner-splitter');
 
-            // Check outliner panel splitter (left edge)
+            if (infoSplitter) infoSplitter.style.display = 'none';
+            if (outlinerSplitter) outlinerSplitter.style.display = 'none';
+        };
+
+        // Updated function to update splitter elements when scrolling occurs
+        const updateSplitterElements = () => {
+            // Don't update if resizing
+            if (isResizing) return;
+
+            // Remove existing splitter indicators if any
+            const existingInfoSplitter = document.getElementById('info-splitter');
+            const existingOutlinerSplitter = document.getElementById('outliner-splitter');
+
+            if (existingInfoSplitter) existingInfoSplitter.remove();
+            if (existingOutlinerSplitter) existingOutlinerSplitter.remove();
+
+            // Create and add new splitter indicators
+            const infoSplitter = document.createElement('div');
+            infoSplitter.id = 'info-splitter';
+            infoSplitter.style.position = 'absolute';
+            infoSplitter.style.top = '40px'; // Start below the menu bar
+            infoSplitter.style.width = `${splitterThickness}px`;
+            infoSplitter.style.height = 'calc(100vh - 40px)'; // Stop at menu bar
+            infoSplitter.style.cursor = 'ew-resize';
+            infoSplitter.style.zIndex = '1000';
+
+            const outlinerSplitter = document.createElement('div');
+            outlinerSplitter.id = 'outliner-splitter';
+            outlinerSplitter.style.position = 'absolute';
+            outlinerSplitter.style.top = '40px'; // Start below the menu bar
+            outlinerSplitter.style.width = `${splitterThickness}px`;
+            outlinerSplitter.style.height = 'calc(100vh - 40px)'; // Stop at menu bar
+            outlinerSplitter.style.cursor = 'ew-resize';
+            outlinerSplitter.style.zIndex = '1000';
+
+            // Position the splitters - ensuring they're outside the scrollbar
+            const infoRect = infoPanel.getBoundingClientRect();
             const outlinerRect = outlinerPanel.getBoundingClientRect();
-            if (e.clientX >= outlinerRect.left - 5 && e.clientX <= outlinerRect.left + 5) {
-                isDraggingOutlinerSplitter = true;
+
+            // Get the actual scrollbar widths
+            const infoScrollbarWidth = infoPanel.offsetWidth - infoPanel.clientWidth;
+
+            // Important: Position splitters exactly at the outer edge of the panels, 
+            // accounting for scrollbars
+            infoSplitter.style.left = `${infoRect.right - splitterThickness / 2}px`;
+            outlinerSplitter.style.left = `${outlinerRect.left - splitterThickness / 2}px`;
+
+            // Create visual indicator for each splitter
+            const infoIndicator = document.createElement('div');
+            infoIndicator.style.position = 'absolute';
+            infoIndicator.style.top = '0';
+            infoIndicator.style.left = `${splitterThickness / 4}px`;
+            infoIndicator.style.width = `${splitterThickness / 2}px`;
+            infoIndicator.style.height = '100%';
+            infoIndicator.style.backgroundColor = 'rgba(80, 80, 80, 0.5)';
+            infoIndicator.style.pointerEvents = 'none';
+
+            const outlinerIndicator = document.createElement('div');
+            outlinerIndicator.style.position = 'absolute';
+            outlinerIndicator.style.top = '0';
+            outlinerIndicator.style.left = `${splitterThickness / 4}px`;
+            outlinerIndicator.style.width = `${splitterThickness / 2}px`;
+            outlinerIndicator.style.height = '100%';
+            outlinerIndicator.style.backgroundColor = 'rgba(80, 80, 80, 0.5)';
+            outlinerIndicator.style.pointerEvents = 'none';
+
+            // Add hover effects for the indicators
+            infoSplitter.addEventListener('mouseenter', () => {
+                if (!isResizing) infoIndicator.style.backgroundColor = '#4fc3f7';
+            });
+
+            infoSplitter.addEventListener('mouseleave', () => {
+                if (!isDraggingInfoSplitter && !isResizing) {
+                    infoIndicator.style.backgroundColor = 'rgba(80, 80, 80, 0.5)';
+                }
+            });
+
+            outlinerSplitter.addEventListener('mouseenter', () => {
+                if (!isResizing) outlinerIndicator.style.backgroundColor = '#4fc3f7';
+            });
+
+            outlinerSplitter.addEventListener('mouseleave', () => {
+                if (!isDraggingOutlinerSplitter && !isResizing) {
+                    outlinerIndicator.style.backgroundColor = 'rgba(80, 80, 80, 0.5)';
+                }
+            });
+
+            // Add the indicators to the splitters
+            infoSplitter.appendChild(infoIndicator);
+            outlinerSplitter.appendChild(outlinerIndicator);
+
+            // Add the splitters to the document
+            document.body.appendChild(infoSplitter);
+            document.body.appendChild(outlinerSplitter);
+
+            // Add event listeners to detect mousedown on splitters
+            infoSplitter.addEventListener('mousedown', (e) => {
+                isDraggingInfoSplitter = true;
+                isResizing = true;
                 document.body.style.cursor = 'ew-resize';
+                infoIndicator.style.backgroundColor = '#4fc3f7';
                 e.preventDefault();
-            }
-        });
+            });
+
+            outlinerSplitter.addEventListener('mousedown', (e) => {
+                isDraggingOutlinerSplitter = true;
+                isResizing = true;
+                document.body.style.cursor = 'ew-resize';
+                outlinerIndicator.style.backgroundColor = '#4fc3f7';
+                e.preventDefault();
+            });
+        };
 
         // Add mouse move listener for both splitters
         document.addEventListener('mousemove', (e) => {
             // Handle drag operations
             handleInfoPanelDrag(e);
             handleOutlinerPanelDrag(e);
-
-            // Only update cursor if not currently dragging
-            if (!isDraggingInfoSplitter && !isDraggingOutlinerSplitter) {
-                const infoRect = infoPanel.getBoundingClientRect();
-                const outlinerRect = outlinerPanel.getBoundingClientRect();
-
-                // Near info panel right edge
-                if (e.clientX >= infoRect.right - 5 && e.clientX <= infoRect.right + 5) {
-                    document.body.style.cursor = 'ew-resize';
-                }
-                // Near outliner panel left edge
-                else if (e.clientX >= outlinerRect.left - 5 && e.clientX <= outlinerRect.left + 5) {
-                    document.body.style.cursor = 'ew-resize';
-                }
-                // Default cursor
-                else if (document.body.style.cursor === 'ew-resize') {
-                    document.body.style.cursor = '';
-                }
-            }
         });
 
         // Add mouse up listener to stop dragging
         document.addEventListener('mouseup', handleMouseUp);
+
+        // Initialize splitter elements
+        updateSplitterElements();
+
+        // Update splitter positions when window is resized
+        window.addEventListener('resize', () => {
+            isResizing = true;
+            hideSplitterElements();
+
+            // Re-enable splitters after resize is done
+            clearTimeout(this.resizeTimer);
+            this.resizeTimer = setTimeout(() => {
+                isResizing = false;
+                updateSplitterElements();
+            }, 300);
+        });
+
+        // Update splitter positions when panels are scrolled
+        infoPanel.addEventListener('scroll', () => {
+            // Only update if not resizing
+            if (!isResizing) {
+                updateSplitterElements();
+            }
+        });
+
+        outlinerPanel.addEventListener('scroll', () => {
+            // Only update if not resizing
+            if (!isResizing) {
+                updateSplitterElements();
+            }
+        });
+
+        // Detect native browser resizing of panels
+        const resizeObserver = new ResizeObserver(() => {
+            isResizing = true;
+            hideSplitterElements();
+
+            // Re-enable splitters after resize is done
+            clearTimeout(this.resizeObserverTimer);
+            this.resizeObserverTimer = setTimeout(() => {
+                isResizing = false;
+                updateSplitterElements();
+            }, 300);
+        });
+
+        // Observe both panels for resize
+        resizeObserver.observe(infoPanel);
+        resizeObserver.observe(outlinerPanel);
+
+        // Remove the CSS pseudo-elements that were previously used for splitters
+        const style = document.createElement('style');
+        style.innerHTML = `
+            #info::after, #outliner-panel::before {
+                display: none;
+            }
+        `;
+        document.head.appendChild(style);
     }
 
     updateInputs() {
