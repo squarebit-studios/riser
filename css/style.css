@@ -77,7 +77,8 @@ body {
     width: 100vw;
     height: calc(100vh - 40px);
     display: flex;
-    flex-direction: row;
+    position: relative;
+    overflow: hidden;
 }
 
 #info {
@@ -85,11 +86,76 @@ body {
     background-color: rgba(30, 30, 30, 0.9);
     z-index: 1;
     width: 280px;
-    height: 100vh;
+    min-width: 200px;
+    max-width: 600px;
+    height: 100%;
     overflow-y: auto;
     border-right: 1px solid rgba(80, 80, 80, 0.5);
     display: flex;
     flex-direction: column;
+    position: relative;
+    resize: horizontal;
+}
+
+/* Add resize handle for left panel */
+#info::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: -2px;
+    width: 4px;
+    height: 100%;
+    cursor: ew-resize;
+    background-color: rgba(80, 80, 80, 0.5);
+}
+
+#info:hover::after {
+    background-color: #4fc3f7;
+}
+
+/* Scene Outliner Panel */
+#outliner-panel {
+    position: fixed;
+    top: 40px; /* Below the title bar */
+    right: 0;
+    width: 250px;
+    min-width: 150px;
+    max-width: 500px;
+    height: calc(100vh - 40px);
+    background-color: rgba(30, 30, 30, 0.9);
+    border-left: 1px solid rgba(80, 80, 80, 0.5);
+    padding: 15px;
+    overflow-y: auto;
+    z-index: 100;
+    resize: horizontal;
+    direction: rtl; /* This helps with resize handle positioning */
+}
+
+/* Fix the direction of content inside the outliner */
+#outliner-panel > * {
+    direction: ltr;
+}
+
+/* Add resize handle for outliner */
+#outliner-panel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -2px;
+    width: 4px;
+    height: 100%;
+    cursor: ew-resize;
+    background-color: rgba(80, 80, 80, 0.5);
+    z-index: 101;
+}
+
+#outliner-panel:hover::before {
+    background-color: #4fc3f7;
+}
+
+/* Ensure proper stacking for resize handles */
+#info, #outliner-panel {
+    z-index: 2;
 }
 
 h1 {
@@ -181,17 +247,154 @@ input[type="file"]::-webkit-file-upload-button {
     border-bottom: 1px solid rgba(100, 100, 100, 0.5);
 }
 
-.transform-group {
-    background-color: rgba(255, 255, 255, 0.05);
-    padding: 8px;
-    border-radius: 3px;
-    margin-bottom: 10px;
+.transform-group,
+.morph-target-group {
+    background: rgba(30, 30, 30, 0.9);
+    padding: 10px;
+    border-radius: 5px;
+    margin: 10px;
+    min-width: 200px;
+    resize: both;
+    overflow: auto;
+    border: 1px solid #444;
 }
 
-.transform-group h3 {
+.morph-target-group .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.morph-target-group .panel-header h3 {
+    color: #fff;
     font-size: 14px;
-    margin: 0 0 8px 0;
-    color: #4fc3f7;
+    margin: 0;
+    user-select: none;
+}
+
+.morph-target-group .expand-button {
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 5px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    transition: background-color 0.2s;
+}
+
+.morph-target-group .expand-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.morph-target-group .panel-content {
+    transition: max-height 0.3s ease-out;
+    overflow: hidden;
+}
+
+.morph-target-group.collapsed .panel-content {
+    max-height: 0;
+    display: none;
+}
+
+.morph-target-group.collapsed .expand-button {
+    transform: rotate(0deg);
+}
+
+.morph-target-group h3 {
+    color: #fff;
+    font-size: 14px;
+    margin-bottom: 10px;
+    user-select: none;
+}
+
+.morph-target-item {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    margin: 5px 0;
+    background: rgba(40, 40, 40, 0.8);
+    border-radius: 3px;
+    min-width: 300px;
+    width: 100%;
+}
+
+.morph-target-name {
+    color: #fff;
+    font-size: 12px;
+    width: 200px; /* Fixed width based on longest name */
+    margin-right: 10px;
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+    padding-right: 5px;
+    flex-shrink: 0; /* Prevent name from shrinking */
+}
+
+.morph-target-controls {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    gap: 10px;
+    min-width: 150px;
+    width: 100%;
+}
+
+.morph-target-slider {
+    flex: 1;
+    min-width: 150px; /* Increased minimum width */
+    height: 20px;
+    -webkit-appearance: none;
+    background: rgba(60, 60, 60, 0.8);
+    border-radius: 10px;
+    outline: none;
+}
+
+.morph-target-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 15px;
+    height: 15px;
+    background: #fff;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.morph-target-value {
+    color: #fff;
+    font-size: 12px;
+    min-width: 40px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+/* Make channel box resizable */
+#channel-box {
+    resize: both;
+    overflow: auto;
+    min-width: 200px;
+    min-height: 100px;
+}
+
+/* Add resize handle styling */
+.transform-group::after,
+.morph-target-group::after,
+#channel-box::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 10px;
+    height: 10px;
+    cursor: se-resize;
+    background: linear-gradient(135deg, transparent 50%, #666 50%);
 }
 
 .control-group {
@@ -311,6 +514,8 @@ input[type=number]::-webkit-outer-spin-button {
     position: relative;
     overflow: hidden;
     background-color: #2a2a2a;
+    min-width: 200px;
+    margin-right: 250px; /* Initial width of outliner */
 }
 
 canvas {
@@ -444,8 +649,29 @@ canvas {
     display: none;
 }
 
-/* Media queries for mobile devices */
+/* Media queries for mobile devices - update to handle resizable panels */
 @media (max-width: 768px) {
+    #info {
+        resize: none;
+        position: absolute;
+        top: 40px;
+        left: 0;
+        width: 80%;
+        max-width: 300px;
+        height: calc(100vh - 40px);
+    }
+
+    #outliner-panel {
+        resize: none;
+        position: absolute;
+        direction: ltr;
+        display: none;
+    }
+
+    #info::after,
+    #outliner-panel::before {
+        display: none;
+    }
 
     /* Show mobile-only elements */
     .mobile-only {
@@ -487,6 +713,7 @@ canvas {
     /* Make canvas take up the full width */
     #canvas-container {
         width: 100%;
+        margin-right: 0;
     }
 
     /* Better positioning for mobile */
@@ -639,4 +866,8 @@ canvas {
 
 #mode-toggle-group button:last-child {
     margin-right: 0;
+}
+
+#outliner-panel.visible {
+    display: block;
 }

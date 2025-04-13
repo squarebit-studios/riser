@@ -10,6 +10,7 @@ class ModelViewer {
         // Channel box elements
         this.channelBoxTitle = document.getElementById('channel-box-title');
         this.transformGroup = document.querySelector('.transform-group');
+        this.morphTargetsContainer = document.getElementById('morph-targets-container');
 
         // Transform controls
         this.translateXInput = document.getElementById('translate-x');
@@ -1080,6 +1081,8 @@ class ModelViewer {
         if (outlinerItem) {
             this.selectOutlinerItem(outlinerItem);
         }
+
+        this.updateMorphTargetUI();
     }
 
     // Helper method to check if an object is in the scene graph
@@ -1822,6 +1825,28 @@ class ModelViewer {
         console.error(`Model ${isImport ? 'imported' : 'loaded'}: ${object.name}`);
 
         // Removed automatic selection of first model
+
+        // Check for morph targets
+        object.traverse((child) => {
+            if (child.isMesh && child.morphTargetInfluences && child.morphTargetInfluences.length > 0) {
+                // Get the actual morph target names from the mesh
+                const morphTargetNames = child.morphTargetDictionary || {};
+                
+                // If no dictionary exists, create one with the actual names
+                if (Object.keys(morphTargetNames).length === 0) {
+                    // For each morph target influence, get or create a name
+                    for (let i = 0; i < child.morphTargetInfluences.length; i++) {
+                        // Try to get the actual name from the mesh
+                        let name = child.geometry?.morphTargetDictionary?.[i];
+                        if (!name) {
+                            name = `Target ${i + 1}`;
+                        }
+                        morphTargetNames[i] = name;
+                    }
+                    child.morphTargetDictionary = morphTargetNames;
+                }
+            }
+        });
     }
 
     setupModelMaterials(model) {
@@ -2433,7 +2458,7 @@ class ModelViewer {
             const adaptiveZoomSpeed = baseZoomSpeed * Math.max(currentDistance, 0.5);
 
             // Calculate zoom factor from wheel delta
-            const zoomFactor = adaptiveZoomSpeed * Math.sign(event.deltaY) * Math.min(Math.abs(event.deltaY), 50);
+            const zoomFactor = -adaptiveZoomSpeed * Math.sign(event.deltaY) * Math.min(Math.abs(event.deltaY), 50);
 
             // Get fixed zoom direction from camera to target (center of view)
             const zoomDirection = new THREE.Vector3().subVectors(
@@ -4227,9 +4252,126 @@ class ModelViewer {
         if (!object) return null;
         return document.querySelector(`.outliner-item[data-object-id="${object.uuid}"]`);
     }
+
+    updateMorphTargetUI() {
+        const container = document.getElementById('morph-targets');
+        const contentContainer = container.querySelector('.panel-content');
+        const expandButton = container.querySelector('.expand-button');
+        
+        // Reset the container state
+        container.classList.remove('collapsed');
+        expandButton.textContent = '-';
+        contentContainer.style.display = 'block';
+        
+        // Clear existing content
+        contentContainer.innerHTML = '';
+
+        // If no object is selected, just return
+        if (!this.selectedObject) {
+            return;
+        }
+
+        // Find all meshes with morph targets
+        const meshesWithMorphs = [];
+        if (this.selectedObject.isMesh && this.selectedObject.morphTargetInfluences) {
+            meshesWithMorphs.push(this.selectedObject);
+        }
+        this.selectedObject.traverse((child) => {
+            if (child.isMesh && child.morphTargetInfluences) {
+                meshesWithMorphs.push(child);
+            }
+        });
+
+        // If no morph targets found, return
+        if (meshesWithMorphs.length === 0) {
+            return;
+        }
+
+        // Create UI for each mesh with morph targets
+        meshesWithMorphs.forEach((mesh) => {
+            const morphTargetInfluences = mesh.morphTargetInfluences;
+            
+            // Create a slider for each morph target
+            for (let i = 0; i < morphTargetInfluences.length; i++) {
+                // Get the name from the morphTargetDictionary
+                let name;
+                if (mesh.morphTargetDictionary) {
+                    const fullName = Object.entries(mesh.morphTargetDictionary).find(([key, value]) => value === i)?.[0];
+                    if (fullName) {
+                        const parts = fullName.split('.');
+                        name = parts.length > 1 ? parts[1] : fullName;
+                    }
+                }
+                if (!name) {
+                    name = `Target ${i + 1}`;
+                }
+
+                const value = morphTargetInfluences[i];
+
+                const item = document.createElement('div');
+                item.className = 'morph-target-item';
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'morph-target-name';
+                nameSpan.textContent = name;
+                item.appendChild(nameSpan);
+
+                const controls = document.createElement('div');
+                controls.className = 'morph-target-controls';
+
+                const slider = document.createElement('input');
+                slider.type = 'range';
+                slider.className = 'morph-target-slider';
+                slider.min = 0;
+                slider.max = 1;
+                slider.step = 0.01;
+                slider.value = value;
+                controls.appendChild(slider);
+
+                const valueSpan = document.createElement('span');
+                valueSpan.className = 'morph-target-value';
+                valueSpan.textContent = value.toFixed(2);
+                controls.appendChild(valueSpan);
+
+                item.appendChild(controls);
+                contentContainer.appendChild(item);
+
+                slider.addEventListener('input', () => {
+                    const newValue = parseFloat(slider.value);
+                    mesh.morphTargetInfluences[i] = newValue;
+                    valueSpan.textContent = newValue.toFixed(2);
+                });
+            }
+        });
+
+        // Add expand/collapse functionality
+        const header = container.querySelector('.panel-header');
+        
+        header.addEventListener('click', () => {
+            container.classList.toggle('collapsed');
+            expandButton.textContent = container.classList.contains('collapsed') ? '+' : '-';
+            contentContainer.style.display = container.classList.contains('collapsed') ? 'none' : 'block';
+        });
+    }
 }
 
 // Initialize the viewer when the page is loaded
 document.addEventListener('DOMContentLoaded', () => {
     new ModelViewer();
+});
+
+// Add expand/collapse functionality for panels
+document.querySelectorAll('.expand-button').forEach(button => {
+    button.addEventListener('click', () => {
+        const panel = button.closest('.panel');
+        const isCollapsed = panel.classList.contains('collapsed');
+        
+        if (isCollapsed) {
+            panel.classList.remove('collapsed');
+            button.textContent = '-';
+        } else {
+            panel.classList.add('collapsed');
+            button.textContent = '+';
+        }
+    });
 }); 
