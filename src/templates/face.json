@@ -1,0 +1,199 @@
+{
+  "id": "face",
+  "label": "Face only",
+  "description": "Head and face detail on its own, for busts and headshots. No body guides.",
+  "groups": [
+    { "id": "skull", "label": "Skull" },
+    { "id": "eyes", "label": "Eyes" },
+    { "id": "mouth", "label": "Mouth and jaw" },
+    { "id": "nose", "label": "Nose and ears" }
+  ],
+  "guides": [
+    {
+      "id": "head",
+      "group": "skull",
+      "label": "Head centre",
+      "hint": "Middle of the skull, roughly level with the ears.",
+      "interior": true
+    },
+    { "id": "headTop", "group": "skull", "label": "Top of head" },
+    {
+      "id": "neck",
+      "group": "skull",
+      "label": "Neck",
+      "hint": "Base of the neck.",
+      "interior": true
+    },
+
+    {
+      "id": "eyeL",
+      "group": "eyes",
+      "label": "Left eye centre",
+      "hint": "Centre of the eyeball, inside the socket.",
+      "mirror": "eyeR",
+      "interior": true
+    },
+    {
+      "id": "eyeR",
+      "group": "eyes",
+      "label": "Right eye centre",
+      "mirror": "eyeL",
+      "interior": true
+    },
+    {
+      "id": "eyeInnerL",
+      "group": "eyes",
+      "label": "Left inner corner",
+      "mirror": "eyeInnerR"
+    },
+    {
+      "id": "eyeOuterL",
+      "group": "eyes",
+      "label": "Left outer corner",
+      "mirror": "eyeOuterR"
+    },
+    {
+      "id": "eyeInnerR",
+      "group": "eyes",
+      "label": "Right inner corner",
+      "mirror": "eyeInnerL"
+    },
+    {
+      "id": "eyeOuterR",
+      "group": "eyes",
+      "label": "Right outer corner",
+      "mirror": "eyeOuterL"
+    },
+
+    {
+      "id": "jaw",
+      "group": "mouth",
+      "label": "Jaw pivot",
+      "hint": "Just in front of the ear, where the jaw hinges.",
+      "interior": true
+    },
+    { "id": "chin", "group": "mouth", "label": "Chin" },
+    { "id": "mouthCenter", "group": "mouth", "label": "Mouth centre" },
+    {
+      "id": "mouthCornerL",
+      "group": "mouth",
+      "label": "Left mouth corner",
+      "mirror": "mouthCornerR"
+    },
+    {
+      "id": "mouthCornerR",
+      "group": "mouth",
+      "label": "Right mouth corner",
+      "mirror": "mouthCornerL"
+    },
+
+    { "id": "noseTip", "group": "nose", "label": "Nose tip" },
+    { "id": "noseBridge", "group": "nose", "label": "Nose bridge" },
+    {
+      "id": "nostrilL",
+      "group": "nose",
+      "label": "Left nostril",
+      "mirror": "nostrilR",
+      "optional": true
+    },
+    {
+      "id": "nostrilR",
+      "group": "nose",
+      "label": "Right nostril",
+      "mirror": "nostrilL",
+      "optional": true
+    },
+    {
+      "id": "earL",
+      "group": "nose",
+      "label": "Left ear",
+      "mirror": "earR",
+      "optional": true
+    },
+    {
+      "id": "earR",
+      "group": "nose",
+      "label": "Right ear",
+      "mirror": "earL",
+      "optional": true
+    }
+  ],
+  "curves": [
+    {
+      "id": "browL",
+      "group": "eyes",
+      "label": "Left brow",
+      "mirror": "browR",
+      "suggestedPoints": 5
+    },
+    {
+      "id": "browR",
+      "group": "eyes",
+      "label": "Right brow",
+      "mirror": "browL",
+      "suggestedPoints": 5
+    },
+    {
+      "id": "eyeRingL",
+      "group": "eyes",
+      "label": "Left eye opening",
+      "hint": "All the way around the lid opening.",
+      "mirror": "eyeRingR",
+      "closed": true,
+      "suggestedPoints": 8
+    },
+    {
+      "id": "eyeRingR",
+      "group": "eyes",
+      "label": "Right eye opening",
+      "mirror": "eyeRingL",
+      "closed": true,
+      "suggestedPoints": 8
+    },
+    {
+      "id": "lipOuter",
+      "group": "mouth",
+      "label": "Outer lip",
+      "hint": "All the way around the mouth.",
+      "closed": true,
+      "suggestedPoints": 12
+    },
+    {
+      "id": "lipInner",
+      "group": "mouth",
+      "label": "Inner lip",
+      "optional": true,
+      "closed": true,
+      "suggestedPoints": 12
+    },
+    {
+      "id": "jawline",
+      "group": "mouth",
+      "label": "Jawline",
+      "suggestedPoints": 9
+    },
+    {
+      "id": "nasolabialL",
+      "group": "nose",
+      "label": "Left smile line",
+      "mirror": "nasolabialR",
+      "optional": true,
+      "suggestedPoints": 5
+    },
+    {
+      "id": "nasolabialR",
+      "group": "nose",
+      "label": "Right smile line",
+      "mirror": "nasolabialL",
+      "optional": true,
+      "suggestedPoints": 5
+    },
+    {
+      "id": "hairline",
+      "group": "skull",
+      "label": "Hairline",
+      "optional": true,
+      "suggestedPoints": 7
+    }
+  ]
+}

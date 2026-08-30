@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev, 'feature/**']
+  pull_request:
+    branches: [main, dev]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web (typecheck, unit, build, e2e)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      # The stock assets are generated, and a stale one would make the asset
+      # tests pass against something the generator no longer produces.
+      - name: Stock assets are up to date
+        run: |
+          node tools/make-stock-assets.mjs
+          git diff --exit-code public/assets
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  worker:
+    name: Worker (OpenUSD contract)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: npm ci
+
+      # The contract fixture is written by the TypeScript writer and read by
+      # OpenUSD. Regenerating it here is the point: it means the Python tests
+      # run against what the browser produces TODAY, not against a file that
+      # was committed months ago and has silently diverged.
+      - name: Regenerate the contract fixture
+        run: npx vitest run src/doc/fixture.test.ts
+
+      - name: Install worker dependencies
+        run: pip install "usd-core>=26.5" pytest
+
+      - name: Worker tests
+        working-directory: worker
+        run: python -m pytest tests -q
+
+      - name: Fixture is committed in sync
+        run: git diff --exit-code worker/tests/fixtures
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: [web, worker]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      # riser.squarebitstudios.com is served from the repo root today. This
+      # workflow replaces that: Pages must be switched to "GitHub Actions" as
+      # its source, or this job publishes and nothing changes.
+      - name: Keep the custom domain
+        run: cp CNAME dist/CNAME
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

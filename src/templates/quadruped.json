@@ -1,0 +1,324 @@
+{
+  "id": "quadruped",
+  "label": "Quadruped",
+  "description": "Four-legged character. Front legs carry a scapula the way a horse or dog does, not a human clavicle.",
+  "groups": [
+    { "id": "spine", "label": "Spine and head" },
+    { "id": "tail", "label": "Tail" },
+    { "id": "frontL", "label": "Front left leg" },
+    { "id": "frontR", "label": "Front right leg" },
+    { "id": "backL", "label": "Back left leg" },
+    { "id": "backR", "label": "Back right leg" },
+    { "id": "face", "label": "Head and face" }
+  ],
+  "guides": [
+    {
+      "id": "root",
+      "group": "spine",
+      "label": "Root",
+      "hint": "On the ground beneath the centre of the body.",
+      "interior": true
+    },
+    {
+      "id": "pelvis",
+      "group": "spine",
+      "label": "Pelvis",
+      "hint": "Centre of the hips, inside the body.",
+      "interior": true
+    },
+    {
+      "id": "spineLower",
+      "group": "spine",
+      "label": "Lower spine",
+      "hint": "Loin, just ahead of the pelvis.",
+      "interior": true
+    },
+    {
+      "id": "spineMid",
+      "group": "spine",
+      "label": "Mid spine",
+      "hint": "Middle of the back.",
+      "interior": true
+    },
+    {
+      "id": "chest",
+      "group": "spine",
+      "label": "Chest",
+      "hint": "Withers, between the shoulder blades.",
+      "interior": true
+    },
+    {
+      "id": "neckBase",
+      "group": "spine",
+      "label": "Neck base",
+      "interior": true
+    },
+    {
+      "id": "neckMid",
+      "group": "spine",
+      "label": "Mid neck",
+      "optional": true,
+      "interior": true
+    },
+    {
+      "id": "head",
+      "group": "spine",
+      "label": "Head",
+      "hint": "Where the skull meets the neck.",
+      "interior": true
+    },
+
+    {
+      "id": "tailBase",
+      "group": "tail",
+      "label": "Tail base",
+      "optional": true,
+      "interior": true
+    },
+    {
+      "id": "tailMid",
+      "group": "tail",
+      "label": "Mid tail",
+      "optional": true,
+      "interior": true
+    },
+    { "id": "tailTip", "group": "tail", "label": "Tail tip", "optional": true },
+
+    {
+      "id": "scapulaL",
+      "group": "frontL",
+      "label": "Left scapula",
+      "hint": "Top of the shoulder blade.",
+      "mirror": "scapulaR",
+      "interior": true
+    },
+    {
+      "id": "shoulderFL",
+      "group": "frontL",
+      "label": "Left front shoulder",
+      "mirror": "shoulderFR",
+      "interior": true
+    },
+    {
+      "id": "elbowFL",
+      "group": "frontL",
+      "label": "Left front elbow",
+      "mirror": "elbowFR",
+      "interior": true
+    },
+    {
+      "id": "carpusL",
+      "group": "frontL",
+      "label": "Left carpus",
+      "hint": "The front knee - anatomically a wrist.",
+      "mirror": "carpusR",
+      "interior": true
+    },
+    {
+      "id": "fetlockFL",
+      "group": "frontL",
+      "label": "Left front fetlock",
+      "mirror": "fetlockFR",
+      "interior": true
+    },
+    {
+      "id": "hoofFL",
+      "group": "frontL",
+      "label": "Left front foot",
+      "hint": "Where the foot meets the ground.",
+      "mirror": "hoofFR"
+    },
+
+    {
+      "id": "scapulaR",
+      "group": "frontR",
+      "label": "Right scapula",
+      "mirror": "scapulaL",
+      "interior": true
+    },
+    {
+      "id": "shoulderFR",
+      "group": "frontR",
+      "label": "Right front shoulder",
+      "mirror": "shoulderFL",
+      "interior": true
+    },
+    {
+      "id": "elbowFR",
+      "group": "frontR",
+      "label": "Right front elbow",
+      "mirror": "elbowFL",
+      "interior": true
+    },
+    {
+      "id": "carpusR",
+      "group": "frontR",
+      "label": "Right carpus",
+      "mirror": "carpusL",
+      "interior": true
+    },
+    {
+      "id": "fetlockFR",
+      "group": "frontR",
+      "label": "Right front fetlock",
+      "mirror": "fetlockFL",
+      "interior": true
+    },
+    {
+      "id": "hoofFR",
+      "group": "frontR",
+      "label": "Right front foot",
+      "mirror": "hoofFL"
+    },
+
+    {
+      "id": "hipL",
+      "group": "backL",
+      "label": "Left hip",
+      "mirror": "hipR",
+      "interior": true
+    },
+    {
+      "id": "stifleL",
+      "group": "backL",
+      "label": "Left stifle",
+      "hint": "The true knee, high on the back leg.",
+      "mirror": "stifleR",
+      "interior": true
+    },
+    {
+      "id": "hockL",
+      "group": "backL",
+      "label": "Left hock",
+      "hint": "The backward-bending joint - anatomically an ankle.",
+      "mirror": "hockR",
+      "interior": true
+    },
+    {
+      "id": "fetlockBL",
+      "group": "backL",
+      "label": "Left back fetlock",
+      "mirror": "fetlockBR",
+      "interior": true
+    },
+    {
+      "id": "hoofBL",
+      "group": "backL",
+      "label": "Left back foot",
+      "mirror": "hoofBR"
+    },
+
+    {
+      "id": "hipR",
+      "group": "backR",
+      "label": "Right hip",
+      "mirror": "hipL",
+      "interior": true
+    },
+    {
+      "id": "stifleR",
+      "group": "backR",
+      "label": "Right stifle",
+      "mirror": "stifleL",
+      "interior": true
+    },
+    {
+      "id": "hockR",
+      "group": "backR",
+      "label": "Right hock",
+      "mirror": "hockL",
+      "interior": true
+    },
+    {
+      "id": "fetlockBR",
+      "group": "backR",
+      "label": "Right back fetlock",
+      "mirror": "fetlockBL",
+      "interior": true
+    },
+    {
+      "id": "hoofBR",
+      "group": "backR",
+      "label": "Right back foot",
+      "mirror": "hoofBL"
+    },
+
+    {
+      "id": "jaw",
+      "group": "face",
+      "label": "Jaw pivot",
+      "interior": true
+    },
+    { "id": "muzzle", "group": "face", "label": "Muzzle" },
+    { "id": "noseTip", "group": "face", "label": "Nose tip" },
+    {
+      "id": "eyeL",
+      "group": "face",
+      "label": "Left eye",
+      "mirror": "eyeR",
+      "interior": true
+    },
+    {
+      "id": "eyeR",
+      "group": "face",
+      "label": "Right eye",
+      "mirror": "eyeL",
+      "interior": true
+    },
+    {
+      "id": "earL",
+      "group": "face",
+      "label": "Left ear",
+      "mirror": "earR",
+      "optional": true
+    },
+    {
+      "id": "earR",
+      "group": "face",
+      "label": "Right ear",
+      "mirror": "earL",
+      "optional": true
+    }
+  ],
+  "curves": [
+    {
+      "id": "spineCurve",
+      "group": "spine",
+      "label": "Spine curve",
+      "hint": "Poll to tail along the topline.",
+      "suggestedPoints": 8
+    },
+    {
+      "id": "bellyCurve",
+      "group": "spine",
+      "label": "Belly line",
+      "optional": true,
+      "suggestedPoints": 6
+    },
+    {
+      "id": "lipUpper",
+      "group": "face",
+      "label": "Upper lip",
+      "optional": true,
+      "suggestedPoints": 5
+    },
+    {
+      "id": "eyeRingL",
+      "group": "face",
+      "label": "Left eye ring",
+      "mirror": "eyeRingR",
+      "optional": true,
+      "closed": true,
+      "suggestedPoints": 8
+    },
+    {
+      "id": "eyeRingR",
+      "group": "face",
+      "label": "Right eye ring",
+      "mirror": "eyeRingL",
+      "optional": true,
+      "closed": true,
+      "suggestedPoints": 8
+    }
+  ]
+}

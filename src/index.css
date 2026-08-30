@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+  }
+
+  body {
+    @apply bg-panel text-ink font-sans text-[13px] antialiased;
+  }
+
+  /* The viewport takes the pointer; text selection there is always a mistake. */
+  canvas {
+    touch-action: none;
+    user-select: none;
+  }
+
+  /* Slim scrollbars, so the checklist does not lose 15px to chrome. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #3d434c transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #3d434c;
+    border-radius: 4px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .rs-panel {
+    @apply bg-panel border-edge;
+  }
+
+  .rs-button {
+    @apply rounded px-2.5 py-1.5 text-ink-dim transition-colors;
+    @apply hover:bg-panel-lighter hover:text-ink;
+    @apply disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent;
+  }
+
+  .rs-button-active {
+    @apply bg-panel-lighter text-ink;
+  }
+
+  .rs-row {
+    @apply flex w-full items-center gap-2 rounded px-2 py-1 text-left transition-colors;
+  }
+}

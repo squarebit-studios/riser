@@ -1,0 +1,427 @@
+{
+  "id": "biped",
+  "label": "Biped",
+  "description": "Two-legged character. Place the body guides first, then the face.",
+  "groups": [
+    { "id": "spine", "label": "Spine and head" },
+    { "id": "armL", "label": "Left arm" },
+    { "id": "armR", "label": "Right arm" },
+    { "id": "handL", "label": "Left hand" },
+    { "id": "handR", "label": "Right hand" },
+    { "id": "legL", "label": "Left leg" },
+    { "id": "legR", "label": "Right leg" },
+    { "id": "face", "label": "Face" }
+  ],
+  "guides": [
+    {
+      "id": "root",
+      "group": "spine",
+      "label": "Root",
+      "hint": "On the ground between the feet. This is where the character stands.",
+      "interior": true
+    },
+    {
+      "id": "pelvis",
+      "group": "spine",
+      "label": "Pelvis",
+      "hint": "Centre of the hips, inside the body.",
+      "interior": true
+    },
+    {
+      "id": "spine01",
+      "group": "spine",
+      "label": "Lower spine",
+      "hint": "Just above the pelvis, at the waist.",
+      "interior": true
+    },
+    {
+      "id": "spine02",
+      "group": "spine",
+      "label": "Mid spine",
+      "hint": "Around the bottom of the ribcage.",
+      "interior": true
+    },
+    {
+      "id": "chest",
+      "group": "spine",
+      "label": "Chest",
+      "hint": "Top of the ribcage, between the shoulders.",
+      "interior": true
+    },
+    {
+      "id": "neck",
+      "group": "spine",
+      "label": "Neck",
+      "hint": "Base of the neck where it meets the shoulders.",
+      "interior": true
+    },
+    {
+      "id": "head",
+      "group": "spine",
+      "label": "Head",
+      "hint": "Base of the skull, roughly level with the ears.",
+      "interior": true
+    },
+    {
+      "id": "headTop",
+      "group": "spine",
+      "label": "Top of head",
+      "hint": "Crown of the skull. Sets the character's height."
+    },
+
+    {
+      "id": "clavicleL",
+      "group": "armL",
+      "label": "Left clavicle",
+      "hint": "Inner end of the collarbone, near the throat.",
+      "mirror": "clavicleR",
+      "interior": true
+    },
+    {
+      "id": "shoulderL",
+      "group": "armL",
+      "label": "Left shoulder",
+      "hint": "Centre of the shoulder joint, inside the deltoid.",
+      "mirror": "shoulderR",
+      "interior": true
+    },
+    {
+      "id": "elbowL",
+      "group": "armL",
+      "label": "Left elbow",
+      "hint": "Centre of the elbow joint.",
+      "mirror": "elbowR",
+      "interior": true
+    },
+    {
+      "id": "wristL",
+      "group": "armL",
+      "label": "Left wrist",
+      "hint": "Centre of the wrist, where the hand starts to bend.",
+      "mirror": "wristR",
+      "interior": true
+    },
+
+    {
+      "id": "clavicleR",
+      "group": "armR",
+      "label": "Right clavicle",
+      "mirror": "clavicleL",
+      "interior": true
+    },
+    {
+      "id": "shoulderR",
+      "group": "armR",
+      "label": "Right shoulder",
+      "mirror": "shoulderL",
+      "interior": true
+    },
+    {
+      "id": "elbowR",
+      "group": "armR",
+      "label": "Right elbow",
+      "mirror": "elbowL",
+      "interior": true
+    },
+    {
+      "id": "wristR",
+      "group": "armR",
+      "label": "Right wrist",
+      "mirror": "wristL",
+      "interior": true
+    },
+
+    {
+      "id": "thumbBaseL",
+      "group": "handL",
+      "label": "Left thumb base",
+      "mirror": "thumbBaseR",
+      "optional": true
+    },
+    {
+      "id": "thumbTipL",
+      "group": "handL",
+      "label": "Left thumb tip",
+      "mirror": "thumbTipR",
+      "optional": true
+    },
+    {
+      "id": "indexBaseL",
+      "group": "handL",
+      "label": "Left index base",
+      "mirror": "indexBaseR",
+      "optional": true
+    },
+    {
+      "id": "indexTipL",
+      "group": "handL",
+      "label": "Left index tip",
+      "mirror": "indexTipR",
+      "optional": true
+    },
+    {
+      "id": "pinkyBaseL",
+      "group": "handL",
+      "label": "Left pinky base",
+      "mirror": "pinkyBaseR",
+      "optional": true
+    },
+    {
+      "id": "pinkyTipL",
+      "group": "handL",
+      "label": "Left pinky tip",
+      "mirror": "pinkyTipR",
+      "optional": true
+    },
+
+    {
+      "id": "thumbBaseR",
+      "group": "handR",
+      "label": "Right thumb base",
+      "mirror": "thumbBaseL",
+      "optional": true
+    },
+    {
+      "id": "thumbTipR",
+      "group": "handR",
+      "label": "Right thumb tip",
+      "mirror": "thumbTipL",
+      "optional": true
+    },
+    {
+      "id": "indexBaseR",
+      "group": "handR",
+      "label": "Right index base",
+      "mirror": "indexBaseL",
+      "optional": true
+    },
+    {
+      "id": "indexTipR",
+      "group": "handR",
+      "label": "Right index tip",
+      "mirror": "indexTipL",
+      "optional": true
+    },
+    {
+      "id": "pinkyBaseR",
+      "group": "handR",
+      "label": "Right pinky base",
+      "mirror": "pinkyBaseL",
+      "optional": true
+    },
+    {
+      "id": "pinkyTipR",
+      "group": "handR",
+      "label": "Right pinky tip",
+      "mirror": "pinkyTipL",
+      "optional": true
+    },
+
+    {
+      "id": "hipL",
+      "group": "legL",
+      "label": "Left hip",
+      "hint": "Centre of the hip socket, inside the body.",
+      "mirror": "hipR",
+      "interior": true
+    },
+    {
+      "id": "kneeL",
+      "group": "legL",
+      "label": "Left knee",
+      "hint": "Centre of the knee joint.",
+      "mirror": "kneeR",
+      "interior": true
+    },
+    {
+      "id": "ankleL",
+      "group": "legL",
+      "label": "Left ankle",
+      "hint": "Centre of the ankle joint.",
+      "mirror": "ankleR",
+      "interior": true
+    },
+    {
+      "id": "toeBaseL",
+      "group": "legL",
+      "label": "Left toe base",
+      "hint": "Ball of the foot, where the toes bend.",
+      "mirror": "toeBaseR"
+    },
+    {
+      "id": "toeTipL",
+      "group": "legL",
+      "label": "Left toe tip",
+      "mirror": "toeTipR",
+      "optional": true
+    },
+
+    {
+      "id": "hipR",
+      "group": "legR",
+      "label": "Right hip",
+      "mirror": "hipL",
+      "interior": true
+    },
+    {
+      "id": "kneeR",
+      "group": "legR",
+      "label": "Right knee",
+      "mirror": "kneeL",
+      "interior": true
+    },
+    {
+      "id": "ankleR",
+      "group": "legR",
+      "label": "Right ankle",
+      "mirror": "ankleL",
+      "interior": true
+    },
+    {
+      "id": "toeBaseR",
+      "group": "legR",
+      "label": "Right toe base",
+      "mirror": "toeBaseL"
+    },
+    {
+      "id": "toeTipR",
+      "group": "legR",
+      "label": "Right toe tip",
+      "mirror": "toeTipL",
+      "optional": true
+    },
+
+    {
+      "id": "jaw",
+      "group": "face",
+      "label": "Jaw pivot",
+      "hint": "Just in front of the ear, where the jaw hinges.",
+      "interior": true
+    },
+    { "id": "chin", "group": "face", "label": "Chin" },
+    {
+      "id": "eyeL",
+      "group": "face",
+      "label": "Left eye",
+      "hint": "Centre of the eyeball, inside the socket.",
+      "mirror": "eyeR",
+      "interior": true
+    },
+    {
+      "id": "eyeR",
+      "group": "face",
+      "label": "Right eye",
+      "mirror": "eyeL",
+      "interior": true
+    },
+    { "id": "noseTip", "group": "face", "label": "Nose tip" },
+    { "id": "noseBridge", "group": "face", "label": "Nose bridge", "optional": true },
+    { "id": "mouthCenter", "group": "face", "label": "Mouth centre" },
+    {
+      "id": "mouthCornerL",
+      "group": "face",
+      "label": "Left mouth corner",
+      "mirror": "mouthCornerR"
+    },
+    {
+      "id": "mouthCornerR",
+      "group": "face",
+      "label": "Right mouth corner",
+      "mirror": "mouthCornerL"
+    },
+    {
+      "id": "earL",
+      "group": "face",
+      "label": "Left ear",
+      "mirror": "earR",
+      "optional": true
+    },
+    {
+      "id": "earR",
+      "group": "face",
+      "label": "Right ear",
+      "mirror": "earL",
+      "optional": true
+    }
+  ],
+  "curves": [
+    {
+      "id": "browL",
+      "group": "face",
+      "label": "Left brow",
+      "hint": "Trace the brow ridge from the inner to the outer end.",
+      "mirror": "browR",
+      "suggestedPoints": 5
+    },
+    {
+      "id": "browR",
+      "group": "face",
+      "label": "Right brow",
+      "mirror": "browL",
+      "suggestedPoints": 5
+    },
+    {
+      "id": "lidUpperL",
+      "group": "face",
+      "label": "Left upper lid",
+      "mirror": "lidUpperR",
+      "suggestedPoints": 5
+    },
+    {
+      "id": "lidLowerL",
+      "group": "face",
+      "label": "Left lower lid",
+      "mirror": "lidLowerR",
+      "suggestedPoints": 5
+    },
+    {
+      "id": "lidUpperR",
+      "group": "face",
+      "label": "Right upper lid",
+      "mirror": "lidUpperL",
+      "suggestedPoints": 5
+    },
+    {
+      "id": "lidLowerR",
+      "group": "face",
+      "label": "Right lower lid",
+      "mirror": "lidLowerL",
+      "suggestedPoints": 5
+    },
+    {
+      "id": "lipUpper",
+      "group": "face",
+      "label": "Upper lip",
+      "hint": "Corner to corner across the top lip.",
+      "suggestedPoints": 7
+    },
+    {
+      "id": "lipLower",
+      "group": "face",
+      "label": "Lower lip",
+      "suggestedPoints": 7
+    },
+    {
+      "id": "jawline",
+      "group": "face",
+      "label": "Jawline",
+      "hint": "Ear to chin to ear, following the edge of the jaw.",
+      "suggestedPoints": 9
+    },
+    {
+      "id": "hairline",
+      "group": "face",
+      "label": "Hairline",
+      "optional": true,
+      "suggestedPoints": 7
+    },
+    {
+      "id": "spineCurve",
+      "group": "spine",
+      "label": "Spine curve",
+      "hint": "Down the back from the base of the neck to the tailbone.",
+      "optional": true,
+      "suggestedPoints": 6
+    }
+  ]
+}
