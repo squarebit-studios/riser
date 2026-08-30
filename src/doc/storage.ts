@@ -13,6 +13,7 @@
 // second format to keep in sync and no way for the two to drift.
 // ==========================================================================
 
+import { API_BASE_URL } from '../app/config';
 import type { RiserDocument } from './types';
 import { readUsda } from './usda-reader';
 import { writeUsda } from './usda-writer';
@@ -129,17 +130,21 @@ export class LocalStorageDocuments implements DocumentStorage {
 // -------------------------------------------------------------------------
 
 /**
- * Talks to the `riser` module in the store backend.
+ * Talks to the `riser` module in the store backend
+ * (squarebit-store/packages/backend/src/modules/riser).
  *
  * Authentication is the store's existing httpOnly session cookie, which is why
  * every request sends credentials and none of them touch a token. The cookie
  * is issued on `.squarebitstudios.com`, so it is already valid here - see
- * auth.controller.ts in squarebit-store, which sets COOKIE_DOMAIN.
+ * COOKIE_DOMAIN in that repo's auth.controller.ts.
+ *
+ * `baseUrl` must include the API's global prefix (`api/v1`); see
+ * src/app/config.ts.
  */
 export class ServerDocuments implements DocumentStorage {
   readonly kind = 'server' as const;
 
-  constructor(private readonly baseUrl: string) {}
+  constructor(private readonly baseUrl: string = API_BASE_URL) {}
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     let response: Response;

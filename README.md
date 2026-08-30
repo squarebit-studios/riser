@@ -24,7 +24,7 @@ riser.squarebitstudios.com          static, GitHub Pages
         v
 store backend (NestJS + Prisma)     ../squarebit-store/packages/backend
   auth / user / mail                reused as-is
-  riser module                      documents, assets, jobs           [planned]
+  riser module                      saved documents, scoped per user
         |
         v
 riser USD worker (Python)           worker/
@@ -221,6 +221,24 @@ fails if the committed assets differ from what the generator produces.
 
 ---
 
+## Accounts
+
+Riser is a separate front end but not a separate account system. The store's
+login cookie is issued httpOnly on `.squarebitstudios.com`, so a store session
+is already valid here — the API only needed Riser's origin on its CORS
+allowlist. `src/doc/storage.ts` has two implementations of one interface:
+`LocalStorageDocuments` for anonymous use, `ServerDocuments` for a signed-in
+user, talking to `packages/backend/src/modules/riser` in `squarebit-store`.
+
+Documents are stored server-side as the USD layer text and nothing else, so
+what the browser saved is exactly what the worker opens.
+
+Point the client at an API with `VITE_API_BASE_URL` (include the `api/v1`
+prefix — see `src/app/config.ts`), or set `VITE_SERVER_STORAGE=off` to run
+purely local.
+
+---
+
 ## Deployment
 
 `.github/workflows/ci.yml` builds and publishes to GitHub Pages on `main`.
@@ -232,12 +250,11 @@ build so `riser.squarebitstudios.com` survives.
 
 ## Planned
 
-- **Accounts and persistence.** A `riser` module in the store's NestJS backend
-  (`packages/backend/src/modules/`), reusing its existing auth, user and mail.
-  Its login cookie already carries a configurable `COOKIE_DOMAIN`, so a store
-  session is valid here once Riser's origin joins the CORS allowlist.
-  `src/doc/storage.ts` already has the server adapter behind the same interface
-  the local one implements.
+- **Signing in.** The backend half is done (`riser` module in
+  `squarebit-store`, branch `feature/riser-documents`), and `ServerDocuments`
+  in `src/doc/storage.ts` speaks to it. What remains is the UI: a sign-in
+  state, a document picker, and offering to upload a local document on first
+  login. Anonymous users keep working against `localStorage` throughout.
 - **Upload conversion.** glTF/FBX/OBJ to USD through `sbconversion`, which
   already carries `usd-core` and the converters.
 - The character systems themselves (auto-rig fitting) plug in behind the
