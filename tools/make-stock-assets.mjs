@@ -301,6 +301,215 @@ function writeCharacter(filename, label, parts) {
   );
 }
 
+// -------------------------------------------------------------------------
+// Skeleton (UsdSkel)
+// -------------------------------------------------------------------------
+
+/**
+ * A biped skeleton matching the blockout's proportions.
+ *
+ * `path` is the UsdSkel joint path - the hierarchy lives in the STRING, not in
+ * prim nesting, which is how UsdSkel encodes it. `head` is the joint's own
+ * world position; `tail` is used only for skinning, so distance is measured to
+ * the bone SEGMENT rather than to a point. Measuring to a point would give the
+ * elbow authority over the whole forearm.
+ */
+const BIPED_JOINTS = [
+  { path: 'Root', head: [0, 0, 0], tail: [0, 0.94, 0] },
+  { path: 'Root/Hips', head: [0, 0.94, 0], tail: [0, 1.06, 0] },
+  { path: 'Root/Hips/Spine', head: [0, 1.06, 0], tail: [0, 1.3, 0] },
+  { path: 'Root/Hips/Spine/Chest', head: [0, 1.3, 0], tail: [0, 1.52, 0] },
+  { path: 'Root/Hips/Spine/Chest/Neck', head: [0, 1.52, 0], tail: [0, 1.62, 0] },
+  { path: 'Root/Hips/Spine/Chest/Neck/Head', head: [0, 1.62, 0], tail: [0, 1.82, 0] },
+
+  { path: 'Root/Hips/Spine/Chest/ShoulderL', head: [0.14, 1.45, 0], tail: [0.24, 1.34, 0] },
+  { path: 'Root/Hips/Spine/Chest/ShoulderL/ElbowL', head: [0.31, 1.2, 0], tail: [0.37, 1.08, 0] },
+  { path: 'Root/Hips/Spine/Chest/ShoulderL/ElbowL/WristL', head: [0.43, 0.96, 0], tail: [0.47, 0.84, 0] },
+
+  { path: 'Root/Hips/Spine/Chest/ShoulderR', head: [-0.14, 1.45, 0], tail: [-0.24, 1.34, 0] },
+  { path: 'Root/Hips/Spine/Chest/ShoulderR/ElbowR', head: [-0.31, 1.2, 0], tail: [-0.37, 1.08, 0] },
+  { path: 'Root/Hips/Spine/Chest/ShoulderR/ElbowR/WristR', head: [-0.43, 0.96, 0], tail: [-0.47, 0.84, 0] },
+
+  { path: 'Root/Hips/HipL', head: [0.1, 0.9, 0], tail: [0.1, 0.68, 0] },
+  { path: 'Root/Hips/HipL/KneeL', head: [0.1, 0.47, 0], tail: [0.1, 0.26, 0] },
+  { path: 'Root/Hips/HipL/KneeL/AnkleL', head: [0.1, 0.08, 0], tail: [0.1, 0.02, 0.12] },
+
+  { path: 'Root/Hips/HipR', head: [-0.1, 0.9, 0], tail: [-0.1, 0.68, 0] },
+  { path: 'Root/Hips/HipR/KneeR', head: [-0.1, 0.47, 0], tail: [-0.1, 0.26, 0] },
+  { path: 'Root/Hips/HipR/KneeR/AnkleR', head: [-0.1, 0.08, 0], tail: [-0.1, 0.02, 0.12] }
+];
+
+/** Joint influences per vertex. UsdSkel calls this elementSize. */
+const INFLUENCES_PER_VERTEX = 4;
+
+/**
+ * A USD matrix literal for a pure translation.
+ *
+ * USD is row-vector: the translation lives in the LAST ROW, not the last
+ * column. Writing it column-major would load without complaint and put every
+ * bone in the wrong place.
+ */
+function translationMatrix(t) {
+  return (
+    '( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (' +
+    fmt(t[0]) + ', ' + fmt(t[1]) + ', ' + fmt(t[2]) + ', 1) )'
+  );
+}
+
+function parentPathOf(path) {
+  const at = path.lastIndexOf('/');
+  return at === -1 ? null : path.slice(0, at);
+}
+
+/** Distance from a point to the segment head->tail. */
+function distanceToBone(point, joint) {
+  const ax = joint.head[0], ay = joint.head[1], az = joint.head[2];
+  const bx = joint.tail[0], by = joint.tail[1], bz = joint.tail[2];
+  const abx = bx - ax, aby = by - ay, abz = bz - az;
+  const lengthSq = abx * abx + aby * aby + abz * abz;
+
+  let t = 0;
+  if (lengthSq > 1e-12) {
+    t = ((point[0] - ax) * abx + (point[1] - ay) * aby + (point[2] - az) * abz) / lengthSq;
+    t = Math.max(0, Math.min(1, t));
+  }
+  const dx = point[0] - (ax + abx * t);
+  const dy = point[1] - (ay + aby * t);
+  const dz = point[2] - (az + abz * t);
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+/**
+ * Skin a mesh to the skeleton by inverse-square distance to the nearest bones.
+ *
+ * Crude next to a real bind, and deliberately so: this exists to give the app a
+ * skeleton to reason about - the nearest-joint hint, the UsdSkel load path -
+ * not to deform well. What it must be is normalized. Weights that do not sum
+ * to one shrink the mesh when posed, which reads as a bug in the loader rather
+ * than in the asset.
+ */
+function skinMesh(points, joints) {
+  const indices = [];
+  const weights = [];
+
+  for (const point of points) {
+    const ranked = joints
+      .map((joint, index) => ({ index: index, distance: distanceToBone(point, joint) }))
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, INFLUENCES_PER_VERTEX);
+
+    const raw = ranked.map((r) => 1 / Math.pow(Math.max(r.distance, 1e-3), 2));
+    const total = raw.reduce((sum, w) => sum + w, 0) || 1;
+
+    for (let i = 0; i < INFLUENCES_PER_VERTEX; i++) {
+      indices.push(ranked[i] ? ranked[i].index : 0);
+      weights.push(ranked[i] ? raw[i] / total : 0);
+    }
+  }
+  return { indices: indices, weights: weights };
+}
+
+function skinnedMeshPrim(name, mesh, joints, indent) {
+  const inner = indent + '    ';
+  const skin = skinMesh(mesh.points, joints);
+  const lines = [];
+
+  lines.push(indent + 'def Mesh "' + name + '" (');
+  lines.push(inner + 'prepend apiSchemas = ["SkelBindingAPI"]');
+  lines.push(indent + ')');
+  lines.push(indent + '{');
+  lines.push(inner + 'uniform token subdivisionScheme = "none"');
+  lines.push(inner + 'point3f[] points = ' + wrap(
+    mesh.points.map((p) => '(' + fmt(p[0]) + ', ' + fmt(p[1]) + ', ' + fmt(p[2]) + ')'),
+    inner, 4
+  ));
+  lines.push(inner + 'int[] faceVertexCounts = ' + wrap(
+    new Array(mesh.indices.length / 3).fill('3'), inner, 24
+  ));
+  lines.push(inner + 'int[] faceVertexIndices = ' + wrap(
+    mesh.indices.map(String), inner, 18
+  ));
+  lines.push('');
+  lines.push(inner + 'rel skel:skeleton = </Character/Skel>');
+  lines.push(inner + 'matrix4d primvars:skel:geomBindTransform = ' + translationMatrix([0, 0, 0]));
+  lines.push(inner + 'int[] primvars:skel:jointIndices = ' + wrap(
+    skin.indices.map(String), inner, 20
+  ) + ' (');
+  lines.push(inner + '    elementSize = ' + INFLUENCES_PER_VERTEX);
+  lines.push(inner + '    interpolation = "vertex"');
+  lines.push(inner + ')');
+  lines.push(inner + 'float[] primvars:skel:jointWeights = ' + wrap(
+    skin.weights.map((w) => fmt(w)), inner, 12
+  ) + ' (');
+  lines.push(inner + '    elementSize = ' + INFLUENCES_PER_VERTEX);
+  lines.push(inner + '    interpolation = "vertex"');
+  lines.push(inner + ')');
+  lines.push(indent + '}');
+  return lines.join('\n');
+}
+
+function writeRiggedCharacter(filename, label, parts, joints) {
+  const byPath = new Map(joints.map((j) => [j.path, j]));
+
+  // Rest transforms are LOCAL - each joint relative to its parent. Bind
+  // transforms are WORLD. Getting these the same way round is the difference
+  // between a skeleton that loads and one that folds in on itself.
+  const restTransforms = joints.map((joint) => {
+    const parent = parentPathOf(joint.path);
+    const parentJoint = parent ? byPath.get(parent) : null;
+    const origin = parentJoint ? parentJoint.head : [0, 0, 0];
+    return translationMatrix([
+      joint.head[0] - origin[0],
+      joint.head[1] - origin[1],
+      joint.head[2] - origin[2]
+    ]);
+  });
+
+  const out = [];
+  out.push('#usda 1.0');
+  out.push('(');
+  out.push('    defaultPrim = "Character"');
+  out.push('    metersPerUnit = 1');
+  out.push('    upAxis = "Y"');
+  out.push('    doc = "Riser stock asset: ' + label +
+    '. Generated by tools/make-stock-assets.mjs - do not edit by hand."');
+  out.push(')');
+  out.push('');
+  out.push('def SkelRoot "Character"');
+  out.push('{');
+  out.push('    def Skeleton "Skel"');
+  out.push('    {');
+  out.push('        uniform token[] joints = ' + wrap(
+    joints.map((j) => '"' + j.path + '"'), '        ', 3
+  ));
+  out.push('        uniform matrix4d[] bindTransforms = ' + wrap(
+    joints.map((j) => translationMatrix(j.head)), '        ', 1
+  ));
+  out.push('        uniform matrix4d[] restTransforms = ' + wrap(
+    restTransforms, '        ', 1
+  ));
+  out.push('    }');
+  out.push('');
+  out.push('    def Scope "Geom"');
+  out.push('    {');
+  out.push(skinnedMeshPrim('Body', parts.body, joints, '        '));
+  out.push(skinnedMeshPrim('Head', parts.head, joints, '        '));
+  out.push('    }');
+  out.push('}');
+
+  const text = out.join('\n') + '\n';
+  writeFileSync(join(OUT_DIR, filename), text, 'utf8');
+
+  const tris = parts.body.indices.length / 3 + parts.head.indices.length / 3;
+  console.log(
+    filename.padEnd(28) + ' ' + String(tris).padStart(6) + ' tris  ' +
+    String(joints.length).padStart(3) + ' joints  ' +
+    (text.length / 1024).toFixed(0) + ' KB'
+  );
+}
+
 mkdirSync(OUT_DIR, { recursive: true });
 writeCharacter('biped-blockout.usda', 'biped blockout', bipedParts());
 writeCharacter('quadruped-blockout.usda', 'quadruped blockout', quadrupedParts());
+writeRiggedCharacter('biped-rigged.usda', 'rigged biped', bipedParts(), BIPED_JOINTS);
+

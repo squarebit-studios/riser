@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { USDLoader } from 'three/addons/loaders/USDLoader.js';
 import { CharacterModel } from './CharacterModel';
 import { barycentricAt, evaluateBinding, triangleCount } from '../viewport/Picker';
-import { STOCK_CHARACTERS } from '../app/stock';
+import { RIGGED_STOCK_URLS, STOCK_CHARACTERS } from '../app/stock';
 
 /**
  * These tests read the ACTUAL generated assets through the ACTUAL loader.
@@ -140,3 +140,89 @@ describe('stock asset registry', () => {
     }
   });
 });
+
+/**
+ * The rigged stock character exists so the UsdSkel path is exercised by
+ * something real. Without it, `CharacterModel.skeleton` and the inspector's
+ * nearest-joint hint are code no test ever reaches - and UsdSkel is precisely
+ * the part of three's USD support most likely to change under us.
+ */
+describe.each(RIGGED_STOCK_URLS.map((url) => [url] as const))(
+  'rigged stock asset %s',
+  (url) => {
+    function model(): CharacterModel {
+      return new CharacterModel(loadAsset(url), {
+        ref: url,
+        format: 'usd',
+        metersPerUnit: 1,
+        upAxis: 'Y'
+      });
+    }
+
+    it('loads with a skeleton', () => {
+      const skeleton = model().skeleton;
+      expect(skeleton, 'no skeleton was built from the UsdSkel data').not.toBeNull();
+      expect(skeleton!.bones.length).toBe(18);
+    });
+
+    it('names the joints the rig declares', () => {
+      const names = model().jointNames;
+      for (const expected of ['Root', 'Hips', 'Chest', 'Head', 'ElbowL', 'KneeR']) {
+        expect(names, `missing joint ${expected}`).toContain(expected);
+      }
+    });
+
+    it('builds skinned meshes with skin attributes', () => {
+      for (const mesh of model().meshes) {
+        const skinned = mesh as THREE.SkinnedMesh;
+        expect(skinned.isSkinnedMesh, `${mesh.name} is not skinned`).toBe(true);
+        expect(mesh.geometry.getAttribute('skinIndex')).toBeDefined();
+        expect(mesh.geometry.getAttribute('skinWeight')).toBeDefined();
+      }
+    });
+
+    it('has normalized skin weights', () => {
+      // Weights that do not sum to one shrink the mesh when it is posed, which
+      // reads as a loader bug rather than an asset one.
+      const mesh = model().primaryMesh!;
+      const weights = mesh.geometry.getAttribute('skinWeight');
+      for (let i = 0; i < Math.min(weights.count, 200); i++) {
+        const sum =
+          weights.getX(i) + weights.getY(i) + weights.getZ(i) + weights.getW(i);
+        expect(sum, `vertex ${i} weights sum to ${sum}`).toBeCloseTo(1, 4);
+      }
+    });
+
+    it('answers the nearest-joint question the inspector asks', () => {
+      const m = model();
+      m.root.updateMatrixWorld(true);
+
+      // Near the left elbow, in the rig's own coordinates.
+      const nearElbow = m.nearestJoint(new THREE.Vector3(0.31, 1.2, 0));
+      expect(nearElbow).not.toBeNull();
+      expect(nearElbow!.name).toBe('ElbowL');
+
+      // And near the head.
+      const nearHead = m.nearestJoint(new THREE.Vector3(0, 1.7, 0));
+      expect(nearHead).not.toBeNull();
+      expect(['Head', 'Neck']).toContain(nearHead!.name);
+    });
+
+    it('keeps bindings working on a skinned mesh', () => {
+      // Skinning changes how three builds the geometry; the binding round trip
+      // has to survive that, since a rigged upload is the normal case.
+      const m = model();
+      const mesh = m.primaryMesh!;
+      const tris = triangleCount(mesh.geometry);
+
+      for (const faceIndex of [0, Math.floor(tris / 2), tris - 1]) {
+        const centroid = evaluateBinding(mesh.geometry, faceIndex, [1 / 3, 1 / 3, 1 / 3]);
+        expect(centroid, `face ${faceIndex}`).not.toBeNull();
+        const bary = barycentricAt(mesh.geometry, faceIndex, centroid!);
+        expect(bary, `face ${faceIndex} is degenerate`).not.toBeNull();
+        const back = evaluateBinding(mesh.geometry, faceIndex, bary!);
+        expect(back!.distanceTo(centroid!)).toBeLessThan(1e-5);
+      }
+    });
+  }
+);
