@@ -11,6 +11,7 @@ import { TEMPLATES } from '../../templates';
 import { STOCK_CHARACTERS } from '../stock';
 import { downloadUsda, readUsdaFile } from '../../doc/storage';
 import { SUPPORTED_EXTENSIONS } from '../../io/loadCharacter';
+import { MAX_SUBDIV_LEVEL, MIN_SUBDIV_LEVEL } from '../../viewport/SubdivSurface';
 
 export function Toolbar(): JSX.Element {
   const app = useApp();
@@ -21,6 +22,8 @@ export function Toolbar(): JSX.Element {
   const templateId = useUiStore((s) => s.templateId);
   const symmetry = useUiStore((s) => s.symmetry);
   const xray = useUiStore((s) => s.xray);
+  const subdivLevel = useUiStore((s) => s.subdivLevel);
+  const subdivClamped = useUiStore((s) => s.subdivClamped);
   const dirty = useUiStore((s) => s.dirty);
   // Re-render undo/redo enablement when the document changes.
   useUiStore((s) => s.docRevision);
@@ -117,6 +120,38 @@ export function Toolbar(): JSX.Element {
       >
         X-ray
       </ToggleButton>
+
+      <Divider />
+
+      {/* Subdivision -----------------------------------------------------
+          Display only. Bindings always name a control cage triangle, so
+          changing this never moves a marker the user has placed. */}
+      <label
+        className="flex items-center gap-1.5 px-1 text-ink-dim"
+        title={
+          subdivClamped
+            ? 'Subdivision level was reduced because the mesh is already dense.'
+            : 'Catmull-Clark preview level. Markers still bind to the control cage.'
+        }
+      >
+        <span className="text-[11px] uppercase tracking-wide text-ink-faint">Subdiv</span>
+        <input
+          type="range"
+          min={MIN_SUBDIV_LEVEL}
+          max={MAX_SUBDIV_LEVEL}
+          step={1}
+          value={subdivLevel}
+          onChange={(e) => useUiStore.getState().setSubdivLevel(Number(e.target.value))}
+          className="w-16 accent-guide-placed"
+        />
+        <span
+          className={`w-3 font-mono text-[11px] ${
+            subdivClamped ? 'text-guide-active' : 'text-ink-faint'
+          }`}
+        >
+          {subdivLevel}
+        </span>
+      </label>
 
       <Divider />
 

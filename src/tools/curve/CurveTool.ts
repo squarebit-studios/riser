@@ -28,8 +28,8 @@ import type { Curve, CurvePoint, TemplateDef } from '../../doc/types';
 import {
   aimAtScreen,
   bindingFromPick,
-  type PickResult,
-  type Picker
+  type SurfacePick,
+  type SurfacePicker
 } from '../../viewport/Picker';
 import { LAYER_OVERLAY, type Viewport } from '../../viewport/Viewport';
 import { worldToDocument } from '../../viewport/space';
@@ -44,7 +44,7 @@ const WIDTH_FRACTION = 0.0025;
 
 export interface CurveToolDeps {
   viewport: Viewport;
-  picker: Picker;
+  picker: SurfacePicker;
   layer: CurveLayer;
   store: DocumentStore;
   getCharacter: () => CharacterModel | null;
@@ -262,17 +262,26 @@ export class CurveTool implements Tool {
     };
   }
 
-  private curvePointFromPick(pick: PickResult): CurvePoint {
-    const world = pick.object.localToWorld(pick.localPoint.clone());
+  private curvePointFromPick(surface: SurfacePick): CurvePoint {
+    // The control vertex sits where the user clicked - on the limit surface
+    // when subdivision is on - carried by the binding's offset from the cage
+    // triangle it is bound to. With subdivision off the offset is zero and
+    // this is exactly the old behaviour.
+    const local = surface.pick.localPoint.clone();
+    local.x += surface.offset[0];
+    local.y += surface.offset[1];
+    local.z += surface.offset[2];
+
+    const world = surface.pick.object.localToWorld(local);
     const position = worldToDocument(this.deps.viewport.characterRoot, world);
     return {
       position,
-      normal: [pick.normal.x, pick.normal.y, pick.normal.z],
-      binding: bindingFromPick(pick, [0, 0, 0])
+      normal: [surface.normal.x, surface.normal.y, surface.normal.z],
+      binding: bindingFromPick(surface.pick, surface.offset)
     };
   }
 
-  private mirrorPoint(pick: PickResult): CurvePoint | null {
+  private mirrorPoint(pick: SurfacePick): CurvePoint | null {
     const character = this.deps.getCharacter();
     if (!character) return null;
     const mirrored = mirrorPick(pick, {
@@ -301,7 +310,7 @@ export class CurveTool implements Tool {
     return this.deps.layer.hitTestControlVertex(this.overlayRaycaster);
   }
 
-  private pickSurface(x: number, y: number): PickResult | null {
+  private pickSurface(x: number, y: number): SurfacePick | null {
     const character = this.deps.getCharacter();
     if (!character) return null;
     const { width, height } = this.deps.viewport.size;

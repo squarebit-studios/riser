@@ -82,6 +82,37 @@ def Xform "Riser" ( kind = "assembly" )
 }
 ```
 
+### Squarebit Subdivs — placing on a smooth surface
+
+`@squarebit/subdivs-three` — the same Catmull-Clark core the Unreal plugin runs
+and the store's Eye and Subdivs pages use — drives the viewport display. It is
+here for a reason specific to this app, not for looks: **users place markers on
+a smooth surface, but a binding must name a cage triangle.**
+
+Binding to the refined result would force the Python worker to reproduce
+Catmull-Clark exactly. Instead:
+
+1. The USD mesh stays the binding target. It is the control cage, and the
+   document format does not change at all.
+2. The viewport displays the limit surface, refined once into a stencil table
+   so re-evaluation is a single sparse matrix product.
+3. A click raycasts **both**. The limit surface gives the point the user
+   actually means; the cage gives the triangle to bind to. The vector between
+   them goes into the binding's existing `offset`.
+
+Because `position = evaluate(binding) + offset` already holds on both sides,
+the server recovers the exact clicked point with **no subdivision code at all**
+— `worker/tests/test_document.py::TestSubdivisionIsInvisibleHere` is the proof.
+
+The cage and the limit surface are separated by three.js **layers**, not by
+`visible`: the raycaster is gated by layers alone, so a cage on a layer the
+camera never renders is invisible and still perfectly pickable. At level 0 the
+cage sits on both layers, so the offset falls out as zero with no special case.
+
+The toolbar's Subdiv slider is display-only — changing it never moves a marker
+that has already been placed, because the binding, not the picture, is what
+was recorded.
+
 ### Surface bindings — the load-bearing idea
 
 Every guide and every curve control vertex stores **where it is on the
@@ -114,7 +145,8 @@ Two consequences worth knowing:
 
 ```
 src/
-  viewport/     Viewport, CameraRig, Picker, Overlays, space  — three.js core
+  viewport/     Viewport, CameraRig, Picker, Overlays, space,
+                SubdivSurface                               — three.js core
   io/           loadCharacter, normalize, CharacterModel      — asset pipeline
   doc/          types, mutations, history, storage,
                 usda-writer, usda-reader                      — the document
@@ -155,9 +187,9 @@ from the left checklist, and click the character to place it.
 ## Testing
 
 ```bash
-npm run test           # 143 unit tests
+npm run test           # 156 unit tests
 npm run test:e2e       # 10 Playwright tests, real WebGL via SwiftShader
-cd worker && python -m pytest tests -q    # 39 tests against real OpenUSD
+cd worker && python -m pytest tests -q    # 43 tests against real OpenUSD
 ```
 
 Three layers, each proving something the others cannot:
@@ -197,37 +229,10 @@ build so `riser.squarebitstudios.com` survives.
   session is valid here once Riser's origin joins the CORS allowlist.
   `src/doc/storage.ts` already has the server adapter behind the same interface
   the local one implements.
-- **Squarebit Subdivs in the viewport.** See below.
 - **Upload conversion.** glTF/FBX/OBJ to USD through `sbconversion`, which
   already carries `usd-core` and the converters.
 - The character systems themselves (auto-rig fitting) plug in behind the
   worker's job interface.
-
-### Squarebit Subdivs
-
-`@squarebit/subdivs-three` (the same core the Unreal plugin runs, and what the
-store's Eye and Subdivs product pages use) belongs here for a reason that is
-specific to this app: **users place markers on a smooth surface, but bindings
-must name a cage triangle.**
-
-The design that satisfies both, without the server ever needing to subdivide:
-
-1. The USD mesh is the **control cage** and stays the binding target. Nothing
-   about the document format changes.
-2. The viewport displays the **limit surface** (`buildRefinedSurface` +
-   `applyStencils`, refined once and re-applied — the same path the Eye widget
-   uses), with `recoverQuads` first, since USD and glTF sources arrive
-   triangulated.
-3. A click raycasts **both**: the limit surface for the point the user actually
-   sees and means, and the cage for the triangle to bind to. The difference
-   between the two becomes the binding's existing `offset`.
-
-That last step is the whole trick. `position = evaluate(binding) + offset`
-already holds, so the server recovers the exact point the user clicked with no
-subdivision and no new schema — the worker needs no Subdivs dependency at all.
-
-Consumed the way the store consumes it: a vendored tarball built from
-`../SquarebitSubdivs/web` (`file:./vendor/squarebit-subdivs-three-<version>.tgz`).
 
 ---
 

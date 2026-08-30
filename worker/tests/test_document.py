@@ -79,7 +79,7 @@ class TestLayerIsValidUsd:
 
 class TestGuides:
     def test_all_guides_are_read(self, doc):
-        assert len(doc.guides) == 7
+        assert len(doc.guides) == 8
         assert {g.id for g in doc.guides} == {
             "pelvis",
             "chest",
@@ -88,6 +88,7 @@ class TestGuides:
             "chin",
             "elbowL",
             "root",
+            "chestSubdiv",
         }
 
     def test_groups_survive(self, doc):
@@ -153,6 +154,44 @@ class TestBindingsResolveToTheSamePlace:
                     (resolved[i] - point.position[i]) ** 2 for i in range(3)
                 ) ** 0.5
                 assert distance < 1e-5, f"{curve.id}[{index}] is {distance:.2e} off"
+
+
+class TestSubdivisionIsInvisibleHere:
+    """The worker must never need to know subdivision happened.
+
+    `chestSubdiv` was placed by clicking the smooth Catmull-Clark limit
+    surface. The binding names a triangle of the CONTROL CAGE - the actual USD
+    mesh - and the gap between cage and limit rides in the offset. If the
+    design is right, this file resolves it with the same arithmetic as every
+    other guide, with no subdivision code anywhere on the server.
+    """
+
+    def test_the_subdivided_guide_exists_and_is_bound(self, doc):
+        guide = next(g for g in doc.guides if g.id == "chestSubdiv")
+        assert guide.binding is not None
+        assert guide.binding.prim_path.startswith("/Riser/Character/")
+
+    def test_it_carries_a_real_cage_to_limit_offset(self, doc):
+        guide = next(g for g in doc.guides if g.id == "chestSubdiv")
+        gap = sum(c * c for c in guide.binding.offset) ** 0.5
+        # The limit surface sits inside the cage, so the offset is not zero.
+        # A zero here would mean the fixture silently lost its subdivision.
+        assert gap > 1e-4, f"offset {guide.binding.offset} has no cage-to-limit gap"
+
+    def test_it_resolves_to_the_point_that_was_clicked(self, doc, meshes):
+        guide = next(g for g in doc.guides if g.id == "chestSubdiv")
+        resolved = resolve_binding(guide.binding, meshes)
+        assert resolved is not None
+        distance = sum((resolved[i] - guide.position[i]) ** 2 for i in range(3)) ** 0.5
+        assert distance < 1e-5, (
+            f"server recomputed {resolved}, browser clicked {guide.position} "
+            f"({distance:.2e} apart)"
+        )
+
+    def test_the_cage_triangle_it_names_really_exists(self, doc, meshes):
+        guide = next(g for g in doc.guides if g.id == "chestSubdiv")
+        mesh = meshes[guide.binding.prim_path]
+        assert 0 <= guide.binding.face_index < mesh.triangle_count
 
 
 class TestCurves:

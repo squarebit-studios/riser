@@ -24,7 +24,11 @@ export function Inspector(): JSX.Element {
   const activeCurveId = useUiStore((s) => s.activeCurveId);
   const characterName = useUiStore((s) => s.characterName);
   const hasSkeleton = useUiStore((s) => s.characterHasSkeleton);
+  const subdivLevel = useUiStore((s) => s.subdivLevel);
   useUiStore((s) => s.docRevision);
+  // Read after subscribing to the level, so the stats refresh when it changes.
+  void subdivLevel;
+  const subdiv = app.subdivStats;
 
   const template = getTemplate(templateId);
   const doc = app.store.document;
@@ -42,6 +46,16 @@ export function Inspector(): JSX.Element {
               value={hasSkeleton ? 'present' : 'none'}
               muted={!hasSkeleton}
             />
+            {subdiv && (
+              <Field
+                label="Subdivision"
+                value={
+                  subdiv.level === 0
+                    ? `off - ${subdiv.cageFaces.toLocaleString()} cage faces`
+                    : `level ${subdiv.level} - ${subdiv.limitFaces.toLocaleString()} faces from ${subdiv.cageFaces.toLocaleString()}`
+                }
+              />
+            )}
           </>
         ) : (
           <p className="px-2 py-1 text-ink-faint">

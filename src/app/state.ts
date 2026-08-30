@@ -18,6 +18,7 @@ import { create } from 'zustand';
 import type { ToolId } from '../tools/types';
 import type { ControlVertexRef } from '../tools/curve/CurveLayer';
 import { DEFAULT_TEMPLATE_ID } from '../templates';
+import { DEFAULT_SUBDIV_LEVEL } from '../viewport/SubdivSurface';
 
 export interface UiState {
   templateId: string;
@@ -32,6 +33,13 @@ export interface UiState {
 
   symmetry: boolean;
   xray: boolean;
+  /**
+   * Catmull-Clark level for the displayed surface. 0 shows the raw cage.
+   * Bindings are unaffected - they always name a cage triangle.
+   */
+  subdivLevel: number;
+  /** Set when a mesh was too dense for the requested level. */
+  subdivClamped: boolean;
   showGrid: boolean;
   showMarkers: boolean;
   showCurves: boolean;
@@ -55,6 +63,8 @@ export interface UiState {
   setSelectedPoint: (ref: ControlVertexRef | null) => void;
   toggleSymmetry: () => void;
   toggleXray: () => void;
+  setSubdivLevel: (level: number) => void;
+  setSubdivClamped: (clamped: boolean) => void;
   toggleGrid: () => void;
   toggleMarkers: () => void;
   toggleCurves: () => void;
@@ -77,6 +87,8 @@ export const useUiStore = create<UiState>((set) => ({
 
   symmetry: true,
   xray: true,
+  subdivLevel: DEFAULT_SUBDIV_LEVEL,
+  subdivClamped: false,
   showGrid: true,
   showMarkers: true,
   showCurves: true,
@@ -109,6 +121,8 @@ export const useUiStore = create<UiState>((set) => ({
 
   toggleSymmetry: () => set((s) => ({ symmetry: !s.symmetry })),
   toggleXray: () => set((s) => ({ xray: !s.xray })),
+  setSubdivLevel: (subdivLevel) => set({ subdivLevel }),
+  setSubdivClamped: (subdivClamped) => set({ subdivClamped }),
   toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
   toggleMarkers: () => set((s) => ({ showMarkers: !s.showMarkers })),
   toggleCurves: () => set((s) => ({ showCurves: !s.showCurves })),

@@ -15,6 +15,7 @@
 
 import * as THREE from 'three';
 import type { SurfaceBinding, Vec3 } from '../doc/types';
+import { LAYER_CAGE, LAYER_SCENE } from './Viewport';
 
 export interface PickResult {
   /** The mesh that was hit. */
@@ -182,10 +183,13 @@ export class Picker {
   private readonly raycaster = new THREE.Raycaster();
   private readonly ndc = new THREE.Vector2();
 
-  constructor(private readonly camera: THREE.Camera) {
-    // Only ever test the scene layer; markers and gizmos do their own hit
-    // testing with their own pickers.
-    this.raycaster.layers.set(0);
+  constructor(
+    private readonly camera: THREE.Camera,
+    layer: number = LAYER_SCENE
+  ) {
+    // Only ever test one layer; markers and gizmos do their own hit testing
+    // with their own pickers, and subdivision cages live on LAYER_CAGE.
+    this.raycaster.layers.set(layer);
   }
 
   /**
@@ -295,4 +299,152 @@ export function bindingFromPick(pick: PickResult, offset: Vec3 = [0, 0, 0]): Sur
     barycentric: pick.barycentric,
     offset
   };
+}
+
+// -------------------------------------------------------------------------
+// Two-surface picking (subdivision)
+// -------------------------------------------------------------------------
+
+/**
+ * A pick that separates WHERE THE USER CLICKED from WHAT TO BIND TO.
+ *
+ * With subdivision on, those are different surfaces: the user clicks the
+ * smooth limit surface, but a binding can only name a triangle of the control
+ * cage - which is the USD mesh, and the only thing the server can evaluate.
+ * The gap between the two is carried in `offset`, which the binding format
+ * already has, so nothing downstream needs to know subdivision happened.
+ *
+ * With subdivision off the two surfaces are the same mesh and `offset` is zero.
+ */
+export interface SurfacePick {
+  /** The cage triangle to bind to. */
+  pick: PickResult;
+  /** Cage-local vector from the cage point to the clicked point. */
+  offset: Vec3;
+  /** World-space point the user actually clicked. */
+  worldPoint: THREE.Vector3;
+  /** World-space normal of the surface the user clicked. */
+  normal: THREE.Vector3;
+  /**
+   * That same normal in CAGE-LOCAL space. Offsets live in cage-local space, so
+   * anything that displaces a guide along the normal - the interior-joint push
+   * - has to use this one rather than the world normal.
+   */
+  localNormal: THREE.Vector3;
+}
+
+/**
+ * How far to search back along the normal when the cage ray misses.
+ * A fraction of the mesh's bounding sphere - the cage encloses the limit
+ * surface, so this only has to cross the gap between them.
+ */
+const CAGE_FALLBACK_REACH = 0.25;
+
+/**
+ * Picks the displayed surface and the control cage together.
+ *
+ * Both raycasts use the same screen ray, separated only by layer: the
+ * displayed surface is on LAYER_SCENE, the cage on LAYER_CAGE. At subdivision
+ * level 0 the cage sits on both layers, so the two picks find the same mesh
+ * and the offset falls out as zero without a special case.
+ */
+export class SurfacePicker {
+  private readonly displayed: Picker;
+  private readonly cage: Picker;
+
+  constructor(camera: THREE.Camera) {
+    this.displayed = new Picker(camera, LAYER_SCENE);
+    this.cage = new Picker(camera, LAYER_CAGE);
+  }
+
+  pick(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    targets: THREE.Object3D[]
+  ): SurfacePick | null {
+    const visible = this.displayed.pick(x, y, width, height, targets);
+    if (!visible) return null;
+
+    let cage = this.cage.pick(x, y, width, height, targets);
+
+    if (!cage) {
+      // Near a silhouette the screen ray can graze the limit surface and miss
+      // the cage. The cage encloses the limit surface, so shooting back along
+      // the normal from the clicked point finds it.
+      const radius = boundingRadius(visible.object);
+      const reach = Math.max(radius * CAGE_FALLBACK_REACH, 1e-4);
+      const origin = visible.point.clone().addScaledVector(visible.normal, reach);
+      cage = this.cage.pickRay(
+        origin,
+        visible.normal.clone().negate(),
+        targets,
+        reach * 2
+      );
+    }
+
+    // No cage anywhere means nothing can be bound. Better to place nothing
+    // than to invent a binding the server cannot resolve.
+    if (!cage) return null;
+
+    return buildSurfacePick(cage, visible);
+  }
+
+  /**
+   * The same two-surface pick along an explicit ray. Used by mirroring, which
+   * has a reflected ray rather than a screen position.
+   */
+  pickAlongRay(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    targets: THREE.Object3D[],
+    far = Infinity
+  ): SurfacePick | null {
+    const visible = this.displayed.pickRay(origin, direction, targets, far);
+    if (!visible) return null;
+
+    let cage = this.cage.pickRay(origin, direction, targets, far);
+    if (!cage) {
+      const radius = boundingRadius(visible.object);
+      const reach = Math.max(radius * CAGE_FALLBACK_REACH, 1e-4);
+      cage = this.cage.pickRay(
+        visible.point.clone().addScaledVector(visible.normal, reach),
+        visible.normal.clone().negate(),
+        targets,
+        reach * 2
+      );
+    }
+    if (!cage) return null;
+
+    return buildSurfacePick(cage, visible);
+  }
+}
+
+function buildSurfacePick(cage: PickResult, visible: PickResult): SurfacePick {
+  cage.object.updateWorldMatrix(true, false);
+  const toLocal = new THREE.Matrix4().copy(cage.object.matrixWorld).invert();
+  const localNormal = visible.normal
+    .clone()
+    .applyMatrix3(new THREE.Matrix3().setFromMatrix4(cage.object.matrixWorld).invert())
+    .normalize();
+
+  const localClicked = visible.point.clone().applyMatrix4(toLocal);
+
+  return {
+    pick: cage,
+    offset: [
+      localClicked.x - cage.localPoint.x,
+      localClicked.y - cage.localPoint.y,
+      localClicked.z - cage.localPoint.z
+    ],
+    worldPoint: visible.point.clone(),
+    normal: visible.normal.clone(),
+    localNormal
+  };
+}
+
+function boundingRadius(mesh: THREE.Mesh): number {
+  if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
+  return mesh.geometry.boundingSphere?.radius ?? 1;
 }

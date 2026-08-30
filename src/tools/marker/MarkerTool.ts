@@ -32,8 +32,8 @@ import { unplacedGuideIds } from '../../doc/types';
 import {
   aimAtScreen,
   bindingFromPick,
-  type PickResult,
-  type Picker
+  type SurfacePick,
+  type SurfacePicker
 } from '../../viewport/Picker';
 import { LAYER_OVERLAY, type Viewport } from '../../viewport/Viewport';
 import { worldToDocument } from '../../viewport/space';
@@ -55,7 +55,7 @@ const LIFT_PER_PIXEL_FRACTION = 0.0006;
 
 export interface MarkerToolDeps {
   viewport: Viewport;
-  picker: Picker;
+  picker: SurfacePicker;
   layer: MarkerLayer;
   store: DocumentStore;
   getCharacter: () => CharacterModel | null;
@@ -197,28 +197,34 @@ export class MarkerTool implements Tool {
   private guideFromPick(
     id: string,
     group: string,
-    pick: PickResult,
+    surface: SurfacePick,
     interior: boolean
   ): Guide {
-    // Interior guides start pushed below the skin along the inward normal, so
-    // an elbow lands inside the arm rather than on it.
+    // Two displacements compose into the binding's single offset, both in
+    // cage-local space:
+    //
+    //   surface.offset   cage -> the smooth point the user actually clicked
+    //                    (zero when subdivision is off)
+    //   -localNormal*d   the inward push that puts an interior guide inside
+    //                    the volume rather than on the skin
     const depth = interior ? this.interiorDepth() : 0;
+    const n = surface.localNormal;
     const offset: Vec3 = [
-      -pick.normal.x * depth,
-      -pick.normal.y * depth,
-      -pick.normal.z * depth
+      surface.offset[0] - n.x * depth,
+      surface.offset[1] - n.y * depth,
+      surface.offset[2] - n.z * depth
     ];
 
     // The document stores character-local coordinates, which is the space the
     // server evaluates bindings in.
-    const local = this.localFromPick(pick, offset);
+    const local = this.localFromPick(surface.pick, offset);
 
     return {
       id,
       group,
       position: [local.x, local.y, local.z],
-      normal: [pick.normal.x, pick.normal.y, pick.normal.z],
-      binding: bindingFromPick(pick, offset)
+      normal: [surface.normal.x, surface.normal.y, surface.normal.z],
+      binding: bindingFromPick(surface.pick, offset)
     };
   }
 
@@ -242,12 +248,20 @@ export class MarkerTool implements Tool {
     if (!pick) return true; // Off the mesh - hold position rather than snap away.
 
     const existing = this.deps.store.document.guides.find((g) => g.id === id);
-    // Preserve whatever lift the guide already had; sliding across the surface
-    // should not drag a joint centre back out to the skin.
-    const offset: Vec3 = existing?.binding?.offset ?? [0, 0, 0];
+    // Preserve whatever lift the guide already had, measured along its normal,
+    // so sliding across the surface does not drag a joint centre back out to
+    // the skin. The cage-to-limit part of the offset is recomputed from the new
+    // pick; only the user's own lift carries over.
+    const carriedLift = existing ? this.liftOf(existing) : 0;
+    const n = pick.localNormal;
+    const offset: Vec3 = [
+      pick.offset[0] + n.x * carriedLift,
+      pick.offset[1] + n.y * carriedLift,
+      pick.offset[2] + n.z * carriedLift
+    ];
 
-    const local = this.localFromPick(pick, offset);
-    const binding = bindingFromPick(pick, offset);
+    const local = this.localFromPick(pick.pick, offset);
+    const binding = bindingFromPick(pick.pick, offset);
     const normal: Vec3 = [pick.normal.x, pick.normal.y, pick.normal.z];
 
     this.deps.store.apply(
@@ -323,7 +337,20 @@ export class MarkerTool implements Tool {
     return this.deps.layer.hitTest(this.overlayRaycaster);
   }
 
-  private pickSurface(x: number, y: number): PickResult | null {
+  /**
+   * Signed lift a guide currently carries along its own normal, in cage-local
+   * units. Recovered rather than stored, because the binding keeps one offset
+   * and the cage-to-limit part of it belongs to whichever triangle the guide
+   * is on now.
+   */
+  private liftOf(guide: Guide): number {
+    if (!guide.binding) return 0;
+    const o = guide.binding.offset;
+    const n = guide.normal;
+    return o[0] * n[0] + o[1] * n[1] + o[2] * n[2];
+  }
+
+  private pickSurface(x: number, y: number): SurfacePick | null {
     const character = this.deps.getCharacter();
     if (!character) return null;
     const { width, height } = this.deps.viewport.size;
@@ -335,7 +362,7 @@ export class MarkerTool implements Tool {
    * a real surface pick. Delegates to the shared helper so the marker and
    * curve tools mirror identically.
    */
-  private mirrorPick(pick: PickResult): PickResult | null {
+  private mirrorPick(pick: SurfacePick): SurfacePick | null {
     const character = this.deps.getCharacter();
     if (!character) return null;
     return mirrorPick(pick, {
@@ -347,7 +374,7 @@ export class MarkerTool implements Tool {
   }
 
   /** Pick position plus off-surface offset, in document space. */
-  private localFromPick(pick: PickResult, offset: Vec3): THREE.Vector3 {
+  private localFromPick(pick: { object: THREE.Mesh; localPoint: THREE.Vector3 }, offset: Vec3): THREE.Vector3 {
     const local = pick.localPoint.clone();
     local.x += offset[0];
     local.y += offset[1];

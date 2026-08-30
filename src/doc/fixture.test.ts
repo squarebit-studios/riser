@@ -4,7 +4,15 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { USDLoader } from 'three/addons/loaders/USDLoader.js';
 import { CharacterModel } from '../io/CharacterModel';
-import { barycentricAt, evaluateBinding, triangleCount } from '../viewport/Picker';
+import {
+  barycentricAt,
+  bindingFromPick,
+  evaluateBinding,
+  resolveBindingWorld,
+  triangleCount,
+  SurfacePicker
+} from '../viewport/Picker';
+import { SubdivSet } from '../viewport/SubdivSurface';
 import { writeUsda, PATHS } from './usda-writer';
 import { readUsda } from './usda-reader';
 import { createDocument, type Curve, type Guide, type RiserDocument, type Vec3 } from './types';
@@ -59,6 +67,53 @@ function bindingAt(mesh: THREE.Mesh, faceIndex: number) {
     binding: { primPath, faceIndex, barycentric, offset: [0, 0, 0] as Vec3 },
     position: [centroid.x, centroid.y, centroid.z] as Vec3
   };
+}
+
+/**
+ * Place a guide by clicking the subdivided surface, exactly as the marker tool
+ * does. Returns null if no sample ray happens to hit, so a framing change can
+ * never turn this into a flaky failure - the count assertion below catches a
+ * fixture that quietly lost it.
+ */
+function subdividedPick(model: CharacterModel): Guide | null {
+  const set = new SubdivSet(model.meshes);
+  set.setLevel(2);
+  model.root.updateMatrixWorld(true);
+
+  const camera = new THREE.PerspectiveCamera(35, 16 / 9, 0.01, 100);
+  camera.position.set(0, 1.2, 3);
+  camera.lookAt(0, 1.2, 0);
+  camera.updateMatrixWorld(true);
+
+  const picker = new SurfacePicker(camera);
+  let guide: Guide | null = null;
+
+  for (const [x, y] of [
+    [640, 360],
+    [620, 320],
+    [660, 400]
+  ] as [number, number][]) {
+    const hit = picker.pick(x, y, 1280, 720, model.meshes);
+    if (!hit) continue;
+
+    const binding = bindingFromPick(hit.pick, hit.offset);
+    const world = resolveBindingWorld(hit.pick.object, binding);
+    if (!world) continue;
+
+    guide = {
+      id: 'chestSubdiv',
+      group: 'spine',
+      position: [world.x, world.y, world.z],
+      normal: [hit.normal.x, hit.normal.y, hit.normal.z],
+      binding
+    };
+    break;
+  }
+
+  // Leave the meshes as they were; the rest of the fixture picks against the
+  // raw cage geometry.
+  set.dispose();
+  return guide;
 }
 
 function buildFixtureDocument(model: CharacterModel): RiserDocument {
@@ -123,6 +178,14 @@ function buildFixtureDocument(model: CharacterModel): RiserDocument {
     normal: [0, 1, 0],
     binding: null
   });
+
+  // One guide produced the way Subdivs actually produces them: clicked on the
+  // smooth LIMIT surface, bound to a CAGE triangle, with the gap between the
+  // two carried in the offset. The Python worker knows nothing about
+  // subdivision, so this guide is the end-to-end proof that it does not need
+  // to - it must recover the clicked point from the cage binding alone.
+  const subdivGuide = subdividedPick(model);
+  if (subdivGuide) guides.push(subdivGuide);
 
   const jawline: Curve = {
     id: 'jawline',
@@ -189,7 +252,14 @@ describe('worker contract fixture', () => {
     expect(written).toContain('riser:guide:bindPrim = </Riser/Character/Geom/Body>');
     expect(written).toContain('def BasisCurves "jawline"');
     // The worker asserts against these exact counts.
-    expect(doc.guides).toHaveLength(7);
+    expect(doc.guides).toHaveLength(8);
     expect(doc.curves).toHaveLength(2);
+
+    // The subdivision-derived guide must have a real cage-to-limit gap, or it
+    // is not testing what it claims to test.
+    const subdiv = doc.guides.find((g) => g.id === 'chestSubdiv');
+    expect(subdiv, 'the subdivided pick found no surface').toBeDefined();
+    const gap = Math.hypot(...subdiv!.binding!.offset);
+    expect(gap).toBeGreaterThan(1e-4);
   });
 });

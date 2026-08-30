@@ -119,6 +119,20 @@ def Xform "Riser" (
             float3 riser:guide:normal = (0, 1, 0)
             uniform token riser:guide:bound = "none"
         }
+        def Xform "chestSubdiv"
+        {
+            double3 xformOp:translate = (0.0, 1.2, 0.0845671)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+
+            uniform token riser:guide:id = "chestSubdiv"
+            uniform token riser:guide:group = "spine"
+            float3 riser:guide:normal = (0.0, -0.2488694, 0.968537)
+            uniform token riser:guide:bound = "surface"
+            rel riser:guide:bindPrim = </Riser/Character/Geom/Body>
+            int riser:guide:faceIndex = 21
+            float3 riser:guide:barycentric = (0.5, 0.2173914, 0.2826086)
+            float3 riser:guide:offset = (0, 0, -0.0254329)
+        }
     }
 
     def Scope "Curves"

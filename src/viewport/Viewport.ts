@@ -21,6 +21,16 @@ import { VIEWPORT_COLORS } from './palette';
 export const LAYER_SCENE = 0;
 /** Render layer for markers, curves, grid and gizmos. */
 export const LAYER_OVERLAY = 1;
+/**
+ * Pick-only layer for subdivision control cages.
+ *
+ * The camera never enables this layer, so anything on it is invisible - but
+ * three's raycaster is gated by layers alone (Raycaster.js `intersect` tests
+ * `object.layers`, never `object.visible`), so a cage here stays perfectly
+ * pickable. That is what lets the user click a smooth limit surface while the
+ * binding lands on the cage triangle underneath it.
+ */
+export const LAYER_CAGE = 2;
 
 export interface ViewportOptions {
   /** Start in dark mode. Switchable later via `setTheme`. */

@@ -16,7 +16,7 @@
 // ==========================================================================
 
 import * as THREE from 'three';
-import type { Picker, PickResult } from '../viewport/Picker';
+import type { SurfacePick, SurfacePicker } from '../viewport/Picker';
 import {
   documentToWorld,
   documentToWorldDirection,
@@ -25,7 +25,7 @@ import {
 } from '../viewport/space';
 
 export interface MirrorContext {
-  picker: Picker;
+  picker: SurfacePicker;
   characterRoot: THREE.Object3D;
   meshes: THREE.Object3D[];
   /** Character height in world units; sets the search range. */
@@ -34,12 +34,18 @@ export interface MirrorContext {
 
 /**
  * Mirror a pick, or return null when the far side has no surface to bind to.
+ *
+ * Reflection happens on the DISPLAYED surface - the point and normal the user
+ * actually clicked - and the mirrored ray is then resolved into a fresh
+ * two-surface pick. Reflecting the cage binding instead would be wrong twice
+ * over: the cage triangulation is not perfectly mirror-symmetric, and the
+ * cage-to-limit offset does not simply negate.
  */
-export function mirrorPick(pick: PickResult, ctx: MirrorContext): PickResult | null {
+export function mirrorPick(pick: SurfacePick, ctx: MirrorContext): SurfacePick | null {
   const { picker, characterRoot, meshes, characterHeight } = ctx;
   if (meshes.length === 0) return null;
 
-  const local = worldToDocument(characterRoot, pick.point.clone());
+  const local = worldToDocument(characterRoot, pick.worldPoint.clone());
   const localNormal = worldToDocumentDirection(characterRoot, pick.normal.clone());
 
   const reflected = documentToWorld(characterRoot, [-local[0], local[1], local[2]]);
@@ -55,7 +61,7 @@ export function mirrorPick(pick: PickResult, ctx: MirrorContext): PickResult | n
   const origin = reflected.clone().addScaledVector(reflectedNormal, reach);
   const direction = reflectedNormal.clone().negate();
 
-  return picker.pickRay(origin, direction, meshes, reach * 2);
+  return picker.pickAlongRay(origin, direction, meshes, reach * 2);
 }
 
 /** Reflect a document-space position across the symmetry plane. */

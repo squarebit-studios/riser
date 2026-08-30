@@ -13,8 +13,9 @@
 import * as THREE from 'three';
 import { Viewport } from '../viewport/Viewport';
 import { CameraRig } from '../viewport/CameraRig';
-import { Picker, resolveBindingWorld } from '../viewport/Picker';
+import { SurfacePicker, resolveBindingWorld } from '../viewport/Picker';
 import { Overlays } from '../viewport/Overlays';
+import { SubdivSet } from '../viewport/SubdivSurface';
 import { documentToWorld, documentToWorldDirection } from '../viewport/space';
 import { CharacterModel } from '../io/CharacterModel';
 import {
@@ -47,11 +48,12 @@ export class RiserApp {
   private cameraRig: CameraRig | null = null;
   private toolManager: ToolManager | null = null;
   private overlays: Overlays | null = null;
-  private picker: Picker;
+  private picker: SurfacePicker;
   private markerLayer: MarkerLayer;
   private curveLayer: CurveLayer;
 
   private character: CharacterModel | null = null;
+  private subdivs: SubdivSet | null = null;
   private unsubscribeDoc: () => void;
   private unsubscribeUi: (() => void) | null = null;
   private unsubscribeFrame: (() => void) | null = null;
@@ -63,7 +65,7 @@ export class RiserApp {
     const ui = useUiStore.getState();
 
     this.viewport = new Viewport({ dark: ui.dark });
-    this.picker = new Picker(this.viewport.camera);
+    this.picker = new SurfacePicker(this.viewport.camera);
     this.markerLayer = new MarkerLayer(this.viewport.overlayRoot);
     this.curveLayer = new CurveLayer(this.viewport.overlayRoot);
 
@@ -125,6 +127,8 @@ export class RiserApp {
   }
 
   unmount(): void {
+    this.subdivs?.dispose();
+    this.subdivs = null;
     this.unsubscribeFrame?.();
     this.unsubscribeUi?.();
     this.unsubscribeDoc();
@@ -166,9 +170,18 @@ export class RiserApp {
   }
 
   private setCharacter(model: CharacterModel): void {
+    this.subdivs?.dispose();
+    this.subdivs = null;
     this.viewport.clearCharacter();
     this.character = model;
     this.viewport.characterRoot.add(model.root);
+
+    // Build the subdivision surfaces before framing, so the camera frames what
+    // will actually be on screen.
+    const ui0 = useUiStore.getState();
+    this.subdivs = new SubdivSet(model.meshes);
+    this.subdivs.setLevel(ui0.subdivLevel);
+    ui0.setSubdivClamped(this.subdivs.clamped);
 
     const bounds = model.bounds;
     this.overlays?.fitTo(bounds);
@@ -196,6 +209,11 @@ export class RiserApp {
 
   get characterModel(): CharacterModel | null {
     return this.character;
+  }
+
+  get subdivStats(): { level: number; cageFaces: number; limitFaces: number } | null {
+    if (!this.subdivs) return null;
+    return { level: this.subdivs.currentLevel, ...this.subdivs.totals };
   }
 
   // -----------------------------------------------------------------------
@@ -395,6 +413,13 @@ export class RiserApp {
     }
     if (state.symmetry !== previous.symmetry) {
       this.overlays?.setSymmetryVisible(state.symmetry);
+    }
+    if (state.subdivLevel !== previous.subdivLevel && this.subdivs) {
+      this.subdivs.setLevel(state.subdivLevel);
+      useUiStore.getState().setSubdivClamped(this.subdivs.clamped);
+      // Markers deliberately do NOT move. Their offsets were measured against
+      // the surface the user clicked, and re-deriving them on a level change
+      // would relocate work the user already did.
     }
     if (state.xray !== previous.xray) {
       this.markerLayer.setXray(state.xray);
