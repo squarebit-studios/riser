@@ -13,10 +13,10 @@ def SkelRoot "Character"
         uniform token[] joints = [
             "Root", "Root/Hips", "Root/Hips/Spine",
             "Root/Hips/Spine/Chest", "Root/Hips/Spine/Chest/Neck", "Root/Hips/Spine/Chest/Neck/Head",
-            "Root/Hips/Spine/Chest/ShoulderL", "Root/Hips/Spine/Chest/ShoulderL/ElbowL", "Root/Hips/Spine/Chest/ShoulderL/ElbowL/WristL",
-            "Root/Hips/Spine/Chest/ShoulderR", "Root/Hips/Spine/Chest/ShoulderR/ElbowR", "Root/Hips/Spine/Chest/ShoulderR/ElbowR/WristR",
-            "Root/Hips/HipL", "Root/Hips/HipL/KneeL", "Root/Hips/HipL/KneeL/AnkleL",
-            "Root/Hips/HipR", "Root/Hips/HipR/KneeR", "Root/Hips/HipR/KneeR/AnkleR"
+            "Root/Hips/Spine/Chest/UpperArmL", "Root/Hips/Spine/Chest/UpperArmL/LowerArmL", "Root/Hips/Spine/Chest/UpperArmL/LowerArmL/HandL",
+            "Root/Hips/Spine/Chest/UpperArmR", "Root/Hips/Spine/Chest/UpperArmR/LowerArmR", "Root/Hips/Spine/Chest/UpperArmR/LowerArmR/HandR",
+            "Root/Hips/ThighL", "Root/Hips/ThighL/CalfL", "Root/Hips/ThighL/CalfL/FootL",
+            "Root/Hips/ThighR", "Root/Hips/ThighR/CalfR", "Root/Hips/ThighR/CalfR/FootR"
         ]
         uniform matrix4d[] bindTransforms = [
             ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ),

@@ -26,7 +26,9 @@ function guide(id: string, group: string, pos: Vec3, bound = true): Guide {
           barycentric: [0.2134567, 0.3412345, 0.4453088],
           offset: [0, 0, 0]
         }
-      : null
+      : null,
+    source: 'user',
+    confidence: 1
   };
 }
 

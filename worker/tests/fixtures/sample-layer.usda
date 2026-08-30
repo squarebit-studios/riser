@@ -33,6 +33,8 @@ def Xform "Riser" (
             uniform token riser:guide:id = "pelvis"
             uniform token riser:guide:group = "spine"
             float3 riser:guide:normal = (0, 0, 1)
+            uniform token riser:guide:source = "user"
+            float riser:guide:confidence = 1
             uniform token riser:guide:bound = "surface"
             rel riser:guide:bindPrim = </Riser/Character/Geom/Body>
             int riser:guide:faceIndex = 136
@@ -47,6 +49,8 @@ def Xform "Riser" (
             uniform token riser:guide:id = "chest"
             uniform token riser:guide:group = "spine"
             float3 riser:guide:normal = (0, 0, 1)
+            uniform token riser:guide:source = "user"
+            float riser:guide:confidence = 1
             uniform token riser:guide:bound = "surface"
             rel riser:guide:bindPrim = </Riser/Character/Geom/Body>
             int riser:guide:faceIndex = 272
@@ -61,6 +65,8 @@ def Xform "Riser" (
             uniform token riser:guide:id = "wristL"
             uniform token riser:guide:group = "armL"
             float3 riser:guide:normal = (0, 0, 1)
+            uniform token riser:guide:source = "user"
+            float riser:guide:confidence = 1
             uniform token riser:guide:bound = "surface"
             rel riser:guide:bindPrim = </Riser/Character/Geom/Body>
             int riser:guide:faceIndex = 613
@@ -75,6 +81,8 @@ def Xform "Riser" (
             uniform token riser:guide:id = "kneeR"
             uniform token riser:guide:group = "legR"
             float3 riser:guide:normal = (0, 0, 1)
+            uniform token riser:guide:source = "user"
+            float riser:guide:confidence = 1
             uniform token riser:guide:bound = "surface"
             rel riser:guide:bindPrim = </Riser/Character/Geom/Body>
             int riser:guide:faceIndex = 1091
@@ -89,6 +97,8 @@ def Xform "Riser" (
             uniform token riser:guide:id = "chin"
             uniform token riser:guide:group = "face"
             float3 riser:guide:normal = (0, 0, 1)
+            uniform token riser:guide:source = "user"
+            float riser:guide:confidence = 1
             uniform token riser:guide:bound = "surface"
             rel riser:guide:bindPrim = </Riser/Character/Geom/Head>
             int riser:guide:faceIndex = 212
@@ -103,6 +113,8 @@ def Xform "Riser" (
             uniform token riser:guide:id = "elbowL"
             uniform token riser:guide:group = "armL"
             float3 riser:guide:normal = (1, 0, 0)
+            uniform token riser:guide:source = "user"
+            float riser:guide:confidence = 1
             uniform token riser:guide:bound = "surface"
             rel riser:guide:bindPrim = </Riser/Character/Geom/Body>
             int riser:guide:faceIndex = 477
@@ -117,6 +129,8 @@ def Xform "Riser" (
             uniform token riser:guide:id = "root"
             uniform token riser:guide:group = "spine"
             float3 riser:guide:normal = (0, 1, 0)
+            uniform token riser:guide:source = "user"
+            float riser:guide:confidence = 1
             uniform token riser:guide:bound = "none"
         }
         def Xform "chestSubdiv"
@@ -127,6 +141,8 @@ def Xform "Riser" (
             uniform token riser:guide:id = "chestSubdiv"
             uniform token riser:guide:group = "spine"
             float3 riser:guide:normal = (0.0, -0.2488694, 0.968537)
+            uniform token riser:guide:source = "user"
+            float riser:guide:confidence = 1
             uniform token riser:guide:bound = "surface"
             rel riser:guide:bindPrim = </Riser/Character/Geom/Body>
             int riser:guide:faceIndex = 21

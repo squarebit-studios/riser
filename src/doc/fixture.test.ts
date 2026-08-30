@@ -105,7 +105,9 @@ function subdividedPick(model: CharacterModel): Guide | null {
       group: 'spine',
       position: [world.x, world.y, world.z],
       normal: [hit.normal.x, hit.normal.y, hit.normal.z],
-      binding
+      binding,
+      source: 'user',
+      confidence: 1
     };
     break;
   }
@@ -145,7 +147,9 @@ function buildFixtureDocument(model: CharacterModel): RiserDocument {
       group: group as string,
       position,
       normal: [0, 0, 1] as Vec3,
-      binding
+      binding,
+      source: 'user' as const,
+      confidence: 1
     };
   });
 
@@ -167,7 +171,9 @@ function buildFixtureDocument(model: CharacterModel): RiserDocument {
       elbow.position[2] + elbowOffset[2]
     ],
     normal: [1, 0, 0],
-    binding: { ...elbow.binding, offset: elbowOffset }
+    binding: { ...elbow.binding, offset: elbowOffset },
+    source: 'user',
+    confidence: 1
   });
 
   // And one placed free in space, with no binding at all.
@@ -176,7 +182,9 @@ function buildFixtureDocument(model: CharacterModel): RiserDocument {
     group: 'spine',
     position: [0, 0, 0],
     normal: [0, 1, 0],
-    binding: null
+    binding: null,
+    source: 'user',
+    confidence: 1
   });
 
   // One guide produced the way Subdivs actually produces them: clicked on the

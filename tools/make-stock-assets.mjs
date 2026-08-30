@@ -308,6 +308,13 @@ function writeCharacter(filename, label, parts) {
 /**
  * A biped skeleton matching the blockout's proportions.
  *
+ * Named to the convention Mixamo, Unreal and Rigify share, NOT to Riser's own
+ * guide ids. The two deliberately differ: "shoulder" means the CLAVICLE in
+ * every one of those rigs, while Riser's `shoulderL` guide is the upper-arm
+ * joint. A stock asset that used our vocabulary would make the name matcher
+ * look like it worked while never being tested against the collision that
+ * actually breaks it.
+ *
  * `path` is the UsdSkel joint path - the hierarchy lives in the STRING, not in
  * prim nesting, which is how UsdSkel encodes it. `head` is the joint's own
  * world position; `tail` is used only for skinning, so distance is measured to
@@ -322,21 +329,21 @@ const BIPED_JOINTS = [
   { path: 'Root/Hips/Spine/Chest/Neck', head: [0, 1.52, 0], tail: [0, 1.62, 0] },
   { path: 'Root/Hips/Spine/Chest/Neck/Head', head: [0, 1.62, 0], tail: [0, 1.82, 0] },
 
-  { path: 'Root/Hips/Spine/Chest/ShoulderL', head: [0.14, 1.45, 0], tail: [0.24, 1.34, 0] },
-  { path: 'Root/Hips/Spine/Chest/ShoulderL/ElbowL', head: [0.31, 1.2, 0], tail: [0.37, 1.08, 0] },
-  { path: 'Root/Hips/Spine/Chest/ShoulderL/ElbowL/WristL', head: [0.43, 0.96, 0], tail: [0.47, 0.84, 0] },
+  { path: 'Root/Hips/Spine/Chest/UpperArmL', head: [0.14, 1.45, 0], tail: [0.24, 1.34, 0] },
+  { path: 'Root/Hips/Spine/Chest/UpperArmL/LowerArmL', head: [0.31, 1.2, 0], tail: [0.37, 1.08, 0] },
+  { path: 'Root/Hips/Spine/Chest/UpperArmL/LowerArmL/HandL', head: [0.43, 0.96, 0], tail: [0.47, 0.84, 0] },
 
-  { path: 'Root/Hips/Spine/Chest/ShoulderR', head: [-0.14, 1.45, 0], tail: [-0.24, 1.34, 0] },
-  { path: 'Root/Hips/Spine/Chest/ShoulderR/ElbowR', head: [-0.31, 1.2, 0], tail: [-0.37, 1.08, 0] },
-  { path: 'Root/Hips/Spine/Chest/ShoulderR/ElbowR/WristR', head: [-0.43, 0.96, 0], tail: [-0.47, 0.84, 0] },
+  { path: 'Root/Hips/Spine/Chest/UpperArmR', head: [-0.14, 1.45, 0], tail: [-0.24, 1.34, 0] },
+  { path: 'Root/Hips/Spine/Chest/UpperArmR/LowerArmR', head: [-0.31, 1.2, 0], tail: [-0.37, 1.08, 0] },
+  { path: 'Root/Hips/Spine/Chest/UpperArmR/LowerArmR/HandR', head: [-0.43, 0.96, 0], tail: [-0.47, 0.84, 0] },
 
-  { path: 'Root/Hips/HipL', head: [0.1, 0.9, 0], tail: [0.1, 0.68, 0] },
-  { path: 'Root/Hips/HipL/KneeL', head: [0.1, 0.47, 0], tail: [0.1, 0.26, 0] },
-  { path: 'Root/Hips/HipL/KneeL/AnkleL', head: [0.1, 0.08, 0], tail: [0.1, 0.02, 0.12] },
+  { path: 'Root/Hips/ThighL', head: [0.1, 0.9, 0], tail: [0.1, 0.68, 0] },
+  { path: 'Root/Hips/ThighL/CalfL', head: [0.1, 0.47, 0], tail: [0.1, 0.26, 0] },
+  { path: 'Root/Hips/ThighL/CalfL/FootL', head: [0.1, 0.08, 0], tail: [0.1, 0.02, 0.12] },
 
-  { path: 'Root/Hips/HipR', head: [-0.1, 0.9, 0], tail: [-0.1, 0.68, 0] },
-  { path: 'Root/Hips/HipR/KneeR', head: [-0.1, 0.47, 0], tail: [-0.1, 0.26, 0] },
-  { path: 'Root/Hips/HipR/KneeR/AnkleR', head: [-0.1, 0.08, 0], tail: [-0.1, 0.02, 0.12] }
+  { path: 'Root/Hips/ThighR', head: [-0.1, 0.9, 0], tail: [-0.1, 0.68, 0] },
+  { path: 'Root/Hips/ThighR/CalfR', head: [-0.1, 0.47, 0], tail: [-0.1, 0.26, 0] },
+  { path: 'Root/Hips/ThighR/CalfR/FootR', head: [-0.1, 0.08, 0], tail: [-0.1, 0.02, 0.12] }
 ];
 
 /** Joint influences per vertex. UsdSkel calls this elementSize. */

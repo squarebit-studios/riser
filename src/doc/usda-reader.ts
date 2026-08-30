@@ -22,6 +22,7 @@ import type { UsdSpec } from 'three/addons/loaders/usd/USDAParser.js';
 import {
   DOC_VERSION,
   type Curve,
+  type GuideSource,
   type CurvePoint,
   type Guide,
   type RiserDocument,
@@ -78,6 +79,20 @@ function asVec3(value: unknown, fallback: Vec3 = [0, 0, 0]): Vec3 {
     return [asNumber(value[0]), asNumber(value[1]), asNumber(value[2])];
   }
   return fallback;
+}
+
+const GUIDE_SOURCES: readonly GuideSource[] = [
+  'user',
+  'skeleton',
+  'proportions',
+  'landmarks'
+];
+
+function asGuideSource(value: unknown): GuideSource {
+  const name = asString(value, 'user');
+  return (GUIDE_SOURCES as readonly string[]).includes(name)
+    ? (name as GuideSource)
+    : 'user';
 }
 
 function asNumberArray(value: unknown): number[] {
@@ -173,7 +188,13 @@ function readGuides(specs: Specs): Guide[] {
       group: asString(attrValue(specs, path, 'riser:guide:group')),
       position: asVec3(attrValue(specs, path, 'xformOp:translate')),
       normal: asVec3(attrValue(specs, path, 'riser:guide:normal'), [0, 1, 0]),
-      binding: readBinding(specs, path, 'riser:guide')
+      binding: readBinding(specs, path, 'riser:guide'),
+      // A layer written before provenance existed has no source attribute.
+      // Reading those as `user` is the safe default: it means a later
+      // auto-placement pass leaves them alone rather than overwriting work
+      // whose origin we cannot establish.
+      source: asGuideSource(attrValue(specs, path, 'riser:guide:source')),
+      confidence: asNumber(attrValue(specs, path, 'riser:guide:confidence'), 1)
     });
   }
   return guides;

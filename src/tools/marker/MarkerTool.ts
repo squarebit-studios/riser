@@ -226,7 +226,12 @@ export class MarkerTool implements Tool {
       group,
       position: [local.x, local.y, local.z],
       normal: [surface.normal.x, surface.normal.y, surface.normal.z],
-      binding: bindingFromPick(surface.pick, offset)
+      binding: bindingFromPick(surface.pick, offset),
+      // Anything placed through this tool is a deliberate act, including a
+      // drag that adjusts an auto-placed guide - which is exactly when the
+      // provenance has to flip, so a later fit stops overwriting it.
+      source: 'user',
+      confidence: 1
     };
   }
 

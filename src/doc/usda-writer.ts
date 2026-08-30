@@ -192,6 +192,10 @@ function writeGuide(L: Lines, guide: Guide): void {
   L.push(3, `uniform token riser:guide:id = ${quote(guide.id)}`);
   L.push(3, `uniform token riser:guide:group = ${quote(guide.group)}`);
   L.push(3, `float3 riser:guide:normal = ${fmtVec3(guide.normal)}`);
+  // Provenance travels with the layer so the server knows which positions a
+  // person stood behind and which the app guessed.
+  L.push(3, `uniform token riser:guide:source = ${quote(guide.source)}`);
+  L.push(3, `float riser:guide:confidence = ${fmt(guide.confidence)}`);
 
   if (guide.binding) {
     writeBinding(L, 3, 'riser:guide', guide.binding);

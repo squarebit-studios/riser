@@ -39,6 +39,13 @@ export function removeAllGuides(doc: RiserDocument): RiserDocument {
   return { ...doc, guides: [] };
 }
 
+/**
+ * Move a guide, and mark it as the user's.
+ *
+ * Dragging an auto-placed guide is the moment it stops being a guess. If the
+ * provenance did not flip here, the next automatic pass would silently undo
+ * the adjustment - which is the single most annoying thing an auto-fit can do.
+ */
 export function moveGuide(
   doc: RiserDocument,
   id: string,
@@ -49,7 +56,9 @@ export function moveGuide(
   return {
     ...doc,
     guides: doc.guides.map((g) =>
-      g.id === id ? { ...g, position, normal, binding } : g
+      g.id === id
+        ? { ...g, position, normal, binding, source: 'user' as const, confidence: 1 }
+        : g
     )
   };
 }
@@ -67,7 +76,15 @@ export function setGuideOffset(
   return {
     ...doc,
     guides: doc.guides.map((g) =>
-      g.id === id && g.binding ? { ...g, binding: { ...g.binding, offset } } : g
+      g.id === id && g.binding
+        ? {
+            ...g,
+            binding: { ...g.binding, offset },
+            // Lifting a joint into the volume is a deliberate adjustment too.
+            source: 'user' as const,
+            confidence: 1
+          }
+        : g
     )
   };
 }

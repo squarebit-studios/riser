@@ -51,7 +51,7 @@ class TestItIsValidUsdSkel:
         joints = skeleton.GetJointsAttr().Get()
         assert len(joints) == EXPECTED_JOINT_COUNT
         assert "Root" in joints
-        assert "Root/Hips/Spine/Chest/ShoulderL/ElbowL" in joints
+        assert "Root/Hips/Spine/Chest/UpperArmL/LowerArmL" in joints
 
     def test_joint_paths_describe_a_real_tree(self, skeleton):
         # Every joint but the root must name a parent that is also a joint.

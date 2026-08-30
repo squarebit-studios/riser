@@ -167,7 +167,16 @@ describe.each(RIGGED_STOCK_URLS.map((url) => [url] as const))(
 
     it('names the joints the rig declares', () => {
       const names = model().jointNames;
-      for (const expected of ['Root', 'Hips', 'Chest', 'Head', 'ElbowL', 'KneeR']) {
+      // Conventional names, matching Mixamo/Unreal/Rigify rather than Riser's
+      // own guide vocabulary - see tools/make-stock-assets.mjs.
+      for (const expected of [
+        'Root',
+        'Hips',
+        'Chest',
+        'Head',
+        'LowerArmL',
+        'CalfR'
+      ]) {
         expect(names, `missing joint ${expected}`).toContain(expected);
       }
     });
@@ -200,7 +209,7 @@ describe.each(RIGGED_STOCK_URLS.map((url) => [url] as const))(
       // Near the left elbow, in the rig's own coordinates.
       const nearElbow = m.nearestJoint(new THREE.Vector3(0.31, 1.2, 0));
       expect(nearElbow).not.toBeNull();
-      expect(nearElbow!.name).toBe('ElbowL');
+      expect(nearElbow!.name).toBe('LowerArmL');
 
       // And near the head.
       const nearHead = m.nearestJoint(new THREE.Vector3(0, 1.7, 0));

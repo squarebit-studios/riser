@@ -44,6 +44,24 @@ export interface SurfaceBinding {
   offset: Vec3;
 }
 
+/**
+ * Where a guide's position came from.
+ *
+ * This is not bookkeeping. Auto-placement runs repeatedly - on load, on a
+ * template change, when the user asks again - and it must never overwrite a
+ * position someone placed by hand. Without provenance the only safe options
+ * are to never re-run it or to always clobber, and both are wrong.
+ *
+ * It also tells the server what to trust: a guide the app guessed deserves
+ * different treatment from one a person confirmed.
+ *
+ *   user         placed or adjusted by hand. Never overwritten.
+ *   skeleton     taken from the asset's own rig. Exact, when there is one.
+ *   proportions  fitted from the mesh's shape and standard proportions.
+ *   landmarks    predicted by a vision model.
+ */
+export type GuideSource = 'user' | 'skeleton' | 'proportions' | 'landmarks';
+
 /** A single named guide marker from the active template. */
 export interface Guide {
   /** Template guide id, e.g. `wristL`. Unique within a document. */
@@ -59,6 +77,13 @@ export interface Guide {
    * legal, but the server can only take `position` at face value in that case.
    */
   binding: SurfaceBinding | null;
+  /** How this position was arrived at. Defaults to `user`. */
+  source: GuideSource;
+  /**
+   * How much the source trusts it, 0..1. Always 1 for `user` - a person
+   * putting a marker somewhere is the definition of certain.
+   */
+  confidence: number;
 }
 
 /** One control vertex of a curve. */
@@ -162,6 +187,21 @@ export function createDocument(
     guides: [],
     curves: []
   };
+}
+
+/** True for a guide the user placed or adjusted, which must not be overwritten. */
+export function isUserPlaced(guide: Guide): boolean {
+  return guide.source === 'user';
+}
+
+/**
+ * Guides that automatic placement is allowed to replace.
+ *
+ * Everything except the ones a person put there. Re-running a fit should
+ * improve its own previous guesses and leave hand work alone.
+ */
+export function autoReplaceableIds(doc: RiserDocument): Set<string> {
+  return new Set(doc.guides.filter((g) => !isUserPlaced(g)).map((g) => g.id));
 }
 
 export function findGuide(doc: RiserDocument, id: string): Guide | undefined {

@@ -15,7 +15,9 @@ function g(id: string, pos: Vec3 = [0, 1, 0]): Guide {
       faceIndex: 7,
       barycentric: [0.3, 0.3, 0.4],
       offset: [0, 0, 0]
-    }
+    },
+    source: 'user',
+    confidence: 1
   };
 }
 
