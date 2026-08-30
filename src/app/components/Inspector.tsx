@@ -132,6 +132,15 @@ function GuideDetails({
         <p className="mt-2 px-2 text-ink-faint">Not placed yet.</p>
       ) : (
         <>
+          <Field
+            label="Source"
+            value={
+              guide.source === 'user'
+                ? 'placed by you'
+                : `${guide.source} (${Math.round(guide.confidence * 100)}% confidence)`
+            }
+            muted={guide.source !== 'user'}
+          />
           <Field label="Position" value={formatVec(guide.position)} mono />
           {guide.binding ? (
             <>

@@ -10,6 +10,12 @@
 export const GUIDE_COLORS = {
   unplaced: 0x5a616b,
   placed: 0x4ea3ff,
+  /**
+   * Auto-placed and not yet confirmed by a person. Deliberately a different
+   * hue rather than a dimmer blue: the user needs to see at a glance which
+   * markers are the app's guesses and still want checking.
+   */
+  suggested: 0x9b8cff,
   active: 0xffc447,
   hover: 0xffffff,
   error: 0xff5c5c

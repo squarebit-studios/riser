@@ -32,6 +32,12 @@ export function Checklist(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [docRevision, doc]
   );
+  /** Placed by the app rather than by the user, and still worth checking. */
+  const suggestedGuides = useMemo(
+    () => new Set(doc.guides.filter((g) => g.source !== 'user').map((g) => g.id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [docRevision, doc]
+  );
   const curvePointCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const curve of doc.curves) counts.set(curve.id, curve.points.length);
@@ -100,6 +106,7 @@ export function Checklist(): JSX.Element {
                     interior={def.interior}
                     active={def.id === activeGuideId}
                     done={placedGuides.has(def.id)}
+                    suggested={suggestedGuides.has(def.id)}
                     onClick={() => {
                       useUiStore.getState().setActiveGuideId(def.id);
                       useUiStore.getState().setSelectedGuideId(
@@ -134,6 +141,8 @@ interface ListRowProps {
    */
   testId: string;
   label: string;
+  /** Filled in automatically, and not yet confirmed by the user. */
+  suggested?: boolean;
   hint?: string;
   optional?: boolean;
   interior?: boolean;
@@ -151,6 +160,7 @@ function ListRow({
   interior,
   active,
   done,
+  suggested,
   trailing,
   onClick
 }: ListRowProps): JSX.Element {
@@ -168,11 +178,14 @@ function ListRow({
         className={[
           'h-2 w-2 shrink-0 rounded-full ring-1 transition-colors',
           done
-            ? 'bg-guide-placed ring-guide-placed'
+            ? suggested
+              ? 'bg-guide-suggested ring-guide-suggested'
+              : 'bg-guide-placed ring-guide-placed'
             : active
               ? 'bg-guide-active ring-guide-active'
               : 'bg-transparent ring-guide-unplaced'
         ].join(' ')}
+        title={suggested ? 'Placed automatically - check it' : undefined}
       />
       <span className="flex-1 truncate">{label}</span>
       {interior && (

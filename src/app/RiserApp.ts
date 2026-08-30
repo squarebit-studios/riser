@@ -27,6 +27,7 @@ import { DocumentStore } from '../doc/history';
 import * as M from '../doc/mutations';
 import { createDocument, type RiserDocument, type Vec3 } from '../doc/types';
 import { getTemplate } from '../templates';
+import { placeGuidesFromSkeleton } from '../tools/autoplace/fromSkeleton';
 import { ToolManager } from '../tools/ToolManager';
 import { MarkerLayer } from '../tools/marker/MarkerLayer';
 import { MarkerTool } from '../tools/marker/MarkerTool';
@@ -205,6 +206,66 @@ export class RiserApp {
       .getState()
       .setCharacter(basename(model.source.ref), model.skeleton !== null);
     this.syncFromDocument();
+
+    // A rigged character already contains the answer, so use it rather than
+    // opening on an empty checklist and asking the user to place what the file
+    // already knows.
+    if (model.skeleton) this.autoPlaceFromSkeleton({ announce: true });
+  }
+
+  /**
+   * Fill in guides from the character's own skeleton.
+   *
+   * Never touches a guide the user placed - see `autoReplaceableIds`. Safe to
+   * run repeatedly, which is why it can be both automatic on load and a button.
+   */
+  autoPlaceFromSkeleton(options: { announce?: boolean } = {}): number {
+    const ui = useUiStore.getState();
+    const character = this.character;
+    if (!character) return 0;
+
+    if (!character.skeleton) {
+      if (options.announce) {
+        ui.setNotice('This character has no skeleton, so there is nothing to read.');
+      }
+      return 0;
+    }
+
+    const template = getTemplate(ui.templateId);
+    const result = placeGuidesFromSkeleton(
+      character,
+      this.documentRoot,
+      template,
+      this.store.document
+    );
+
+    if (result.guides.length === 0) {
+      if (options.announce) {
+        ui.setNotice(
+          'The skeleton did not match any of this template\'s guides. Place them by hand.'
+        );
+      }
+      return 0;
+    }
+
+    this.store.apply(
+      (d) => M.placeGuides(d, result.guides),
+      `Place ${result.guides.length} guides from skeleton`
+    );
+
+    if (options.announce) {
+      const remaining = result.unmatched.length;
+      ui.setNotice(
+        `Placed ${result.guides.length} guides from the rig` +
+          (remaining > 0 ? `. ${remaining} still need placing by hand.` : '.')
+      );
+    }
+
+    // Point the checklist at the first thing still to do.
+    const next = result.unmatched[0];
+    if (next) ui.setActiveGuideId(next);
+
+    return result.guides.length;
   }
 
   get characterModel(): CharacterModel | null {
@@ -252,11 +313,13 @@ export class RiserApp {
         id: guide.id,
         position: this.resolveWorld(guide.position, guide.binding),
         state:
-          guide.id === ui.selectedGuideId
+          guide.id === ui.selectedGuideId || guide.id === ui.activeGuideId
             ? 'active'
-            : guide.id === ui.activeGuideId
-              ? 'active'
-              : 'placed'
+            : // A guess the app made reads differently from a position the
+              // user stood behind.
+              guide.source === 'user'
+              ? 'placed'
+              : 'suggested'
       }))
     );
 

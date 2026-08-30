@@ -23,6 +23,7 @@ export default {
         guide: {
           unplaced: '#5a616b',
           placed: '#4ea3ff',
+          suggested: '#9b8cff',
           active: '#ffc447',
           hover: '#ffffff',
           error: '#ff5c5c'

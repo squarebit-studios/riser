@@ -22,6 +22,7 @@ export function Toolbar(): JSX.Element {
   const templateId = useUiStore((s) => s.templateId);
   const symmetry = useUiStore((s) => s.symmetry);
   const xray = useUiStore((s) => s.xray);
+  const hasSkeleton = useUiStore((s) => s.characterHasSkeleton);
   const subdivLevel = useUiStore((s) => s.subdivLevel);
   const subdivClamped = useUiStore((s) => s.subdivClamped);
   const dirty = useUiStore((s) => s.dirty);
@@ -152,6 +153,23 @@ export function Toolbar(): JSX.Element {
           {subdivLevel}
         </span>
       </label>
+
+      <Divider />
+
+      {/* Auto-place. Only offered when there is a rig to read; it never
+          overwrites anything placed by hand, so it is safe to press twice. */}
+      <button
+        className="rs-button"
+        onClick={() => app.autoPlaceFromSkeleton({ announce: true })}
+        disabled={!hasSkeleton}
+        title={
+          hasSkeleton
+            ? "Place guides from the character's own skeleton. Your own placements are kept."
+            : 'This character has no skeleton to read guides from.'
+        }
+      >
+        Auto-place
+      </button>
 
       <Divider />
 

@@ -14,6 +14,7 @@ interface GuideSnapshot {
   id: string;
   position: [number, number, number];
   binding: { primPath: string; faceIndex: number } | null;
+  source: string;
 }
 
 declare global {
@@ -35,6 +36,7 @@ declare global {
         primPaths: string[];
       } | null;
       loadFromUrl(url: string): Promise<void>;
+      autoPlaceFromSkeleton(options?: { announce?: boolean }): number;
     };
   }
 }
@@ -279,5 +281,79 @@ test.describe('appearance', () => {
       // tolerance configured in playwright.config.ts.
       fullPage: false
     });
+  });
+});
+
+test.describe('automatic placement from a rig', () => {
+  /** Load the RIGGED stock character, which carries a UsdSkel skeleton. */
+  async function loadRigged(page: Page): Promise<void> {
+    await page.evaluate(() => window.__riser!.loadFromUrl('/assets/biped-rigged.usda'));
+    await page.waitForFunction(
+      () => (window.__riser!.characterModel?.meshes.length ?? 0) > 0
+    );
+  }
+
+  test('a rigged character fills its own guides on load', async ({ page }) => {
+    await openApp(page);
+    await loadRigged(page);
+
+    // No clicking. The rig already contains the answer, so the app reads it.
+    await page.waitForFunction(
+      () => window.__riser!.store.document.guides.length > 0
+    );
+
+    const placed = await guides(page);
+    expect(placed.length).toBeGreaterThanOrEqual(15);
+
+    for (const guide of placed) {
+      // Marked as the app's work, not the user's, so a later pass may improve
+      // it and the UI can show it as a suggestion.
+      expect(guide.source).toBe('skeleton');
+      // And bound to a real triangle, or the server could not resolve it.
+      expect(guide.binding, `${guide.id} is unbound`).not.toBeNull();
+      expect(guide.binding!.primPath).toMatch(/^\/Riser\/Character\/Geom\//);
+    }
+  });
+
+  test('an unrigged character places nothing on its own', async ({ page }) => {
+    await openApp(page);
+    await loadBiped(page);
+    await page.waitForTimeout(600);
+    expect(await guides(page)).toHaveLength(0);
+  });
+
+  test('the auto-place button is offered only when there is a rig', async ({ page }) => {
+    await openApp(page);
+    await loadBiped(page);
+    await expect(page.getByRole('button', { name: 'Auto-place' })).toBeDisabled();
+
+    await loadRigged(page);
+    await expect(page.getByRole('button', { name: 'Auto-place' })).toBeEnabled();
+  });
+
+  test('placing by hand survives a re-run', async ({ page }) => {
+    await openApp(page);
+    await loadRigged(page);
+    await page.waitForFunction(
+      () => window.__riser!.store.document.guides.length > 0
+    );
+
+    // Adjust one guide by hand, then ask the app to auto-place again.
+    await page.getByTestId('guide-chest').click();
+    await clickViewport(page);
+    await page.waitForFunction(
+      () =>
+        window.__riser!.store.document.guides.find((g) => g.id === 'chest')?.source ===
+        'user'
+    );
+    const handPlaced = (await guides(page)).find((g) => g.id === 'chest')!;
+
+    await page.getByRole('button', { name: 'Auto-place' }).click();
+    await page.waitForTimeout(400);
+
+    const after = (await guides(page)).find((g) => g.id === 'chest')!;
+    expect(after.source).toBe('user');
+    expect(after.position[0]).toBeCloseTo(handPlaced.position[0], 6);
+    expect(after.position[1]).toBeCloseTo(handPlaced.position[1], 6);
   });
 });
