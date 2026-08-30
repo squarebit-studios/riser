@@ -211,6 +211,20 @@ export class RiserApp {
     return this.character;
   }
 
+  /**
+   * The anchor for DOCUMENT space - the loaded asset's own root, not the
+   * viewport's character root.
+   *
+   * Between the two sit transforms that exist only for display: the units
+   * scale and up-axis flip three's USD composer applies, and the ground-align
+   * and recentre from normalize.ts. None of them exist on the stage the worker
+   * opens, so anchoring above them would store positions the server cannot
+   * reproduce. See src/io/document-space.test.ts.
+   */
+  get documentRoot(): THREE.Object3D {
+    return this.character?.root ?? this.viewport.characterRoot;
+  }
+
   get subdivStats(): { level: number; cageFaces: number; limitFaces: number } | null {
     if (!this.subdivs) return null;
     return { level: this.subdivs.currentLevel, ...this.subdivs.totals };
@@ -284,7 +298,7 @@ export class RiserApp {
     if (samples.length < 2) return undefined;
 
     const worldNormals = normals.map((n) =>
-      vec3(documentToWorldDirection(this.viewport.characterRoot, n))
+      vec3(documentToWorldDirection(this.documentRoot, n))
     );
     const height = this.character.bounds.getSize(new THREE.Vector3()).y;
 
@@ -318,7 +332,7 @@ export class RiserApp {
         if (world) return world;
       }
     }
-    return documentToWorld(this.viewport.characterRoot, position);
+    return documentToWorld(this.documentRoot, position);
   }
 
   // -----------------------------------------------------------------------
@@ -465,6 +479,7 @@ export class RiserApp {
       layer: this.markerLayer,
       store: this.store,
       getCharacter: () => this.character,
+      getDocumentRoot: () => this.documentRoot,
       getTemplate: () => getTemplate(useUiStore.getState().templateId),
       getActiveGuideId: () => useUiStore.getState().activeGuideId,
       setActiveGuideId: (id: string | null) =>
@@ -484,6 +499,7 @@ export class RiserApp {
       layer: this.curveLayer,
       store: this.store,
       getCharacter: () => this.character,
+      getDocumentRoot: () => this.documentRoot,
       getTemplate: () => getTemplate(useUiStore.getState().templateId),
       getActiveCurveId: () => useUiStore.getState().activeCurveId,
       setActiveCurveId: (id: string | null) => useUiStore.getState().setActiveCurveId(id),

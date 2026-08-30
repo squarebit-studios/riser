@@ -138,6 +138,15 @@ Two consequences worth knowing:
   `/Character/Geom/Body`; after the layer references the asset onto
   `/Riser/Character`, OpenUSD sees `/Riser/Character/Geom/Body`. The browser
   writes the latter.
+- **Positions live in the ASSET's space, not the world's.** Between the two sit
+  three transforms that exist only for display: the units scale and up-axis
+  flip three's composer applies, and the ground-align/recentre from
+  `normalize.ts`. None of them exist on the stage the worker opens, so document
+  space is anchored at the loaded asset's own root (`RiserApp.documentRoot`).
+  Conversely the worker bakes each mesh prim's accumulated transform into its
+  points, so a head offset onto a body resolves where the browser put it.
+  Pinned by `src/io/document-space.test.ts` and
+  `worker/tests/test_prim_transforms.py`.
 
 ---
 
@@ -187,9 +196,9 @@ from the left checklist, and click the character to place it.
 ## Testing
 
 ```bash
-npm run test           # 156 unit tests
+npm run test           # 159 unit tests
 npm run test:e2e       # 10 Playwright tests, real WebGL via SwiftShader
-cd worker && python -m pytest tests -q    # 43 tests against real OpenUSD
+cd worker && python -m pytest tests -q    # 48 tests against real OpenUSD
 ```
 
 Three layers, each proving something the others cannot:

@@ -59,6 +59,8 @@ export interface MarkerToolDeps {
   layer: MarkerLayer;
   store: DocumentStore;
   getCharacter: () => CharacterModel | null;
+  /** Anchor for document space - see RiserApp.documentRoot. */
+  getDocumentRoot: () => THREE.Object3D;
   getTemplate: () => TemplateDef;
   getActiveGuideId: () => string | null;
   setActiveGuideId: (id: string | null) => void;
@@ -367,7 +369,7 @@ export class MarkerTool implements Tool {
     if (!character) return null;
     return mirrorPick(pick, {
       picker: this.deps.picker,
-      characterRoot: this.deps.viewport.characterRoot,
+      characterRoot: this.deps.getDocumentRoot(),
       meshes: character.meshes,
       characterHeight: this.characterHeight()
     });
@@ -380,7 +382,7 @@ export class MarkerTool implements Tool {
     local.y += offset[1];
     local.z += offset[2];
     const world = pick.object.localToWorld(local);
-    const doc = worldToDocument(this.deps.viewport.characterRoot, world);
+    const doc = worldToDocument(this.deps.getDocumentRoot(), world);
     return new THREE.Vector3(doc[0], doc[1], doc[2]);
   }
 

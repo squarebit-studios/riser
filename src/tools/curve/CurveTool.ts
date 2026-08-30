@@ -48,6 +48,8 @@ export interface CurveToolDeps {
   layer: CurveLayer;
   store: DocumentStore;
   getCharacter: () => CharacterModel | null;
+  /** Anchor for document space - see RiserApp.documentRoot. */
+  getDocumentRoot: () => THREE.Object3D;
   getTemplate: () => TemplateDef;
   getActiveCurveId: () => string | null;
   setActiveCurveId: (id: string | null) => void;
@@ -273,7 +275,7 @@ export class CurveTool implements Tool {
     local.z += surface.offset[2];
 
     const world = surface.pick.object.localToWorld(local);
-    const position = worldToDocument(this.deps.viewport.characterRoot, world);
+    const position = worldToDocument(this.deps.getDocumentRoot(), world);
     return {
       position,
       normal: [surface.normal.x, surface.normal.y, surface.normal.z],
@@ -286,7 +288,7 @@ export class CurveTool implements Tool {
     if (!character) return null;
     const mirrored = mirrorPick(pick, {
       picker: this.deps.picker,
-      characterRoot: this.deps.viewport.characterRoot,
+      characterRoot: this.deps.getDocumentRoot(),
       meshes: character.meshes,
       characterHeight: this.characterHeight()
     });
@@ -326,7 +328,7 @@ export class CurveTool implements Tool {
     const character = this.deps.getCharacter();
     if (!character) return WIDTH_FRACTION;
     const worldHeight = this.characterHeight();
-    const root = this.deps.viewport.characterRoot;
+    const root = this.deps.getDocumentRoot();
     root.updateWorldMatrix(true, false);
     const scale = root.matrixWorld.getMaxScaleOnAxis() || 1;
     return (worldHeight / scale) * WIDTH_FRACTION;

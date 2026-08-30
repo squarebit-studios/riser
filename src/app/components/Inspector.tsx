@@ -115,7 +115,7 @@ function GuideDetails({
   const nearest =
     guide && model
       ? model.nearestJoint(
-          documentToWorld(app.viewport.characterRoot, guide.position)
+          documentToWorld(app.documentRoot, guide.position)
         )
       : null;
 

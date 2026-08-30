@@ -384,11 +384,7 @@ export class SurfacePicker {
       );
     }
 
-    // No cage anywhere means nothing can be bound. Better to place nothing
-    // than to invent a binding the server cannot resolve.
-    if (!cage) return null;
-
-    return buildSurfacePick(cage, visible);
+    return finishSurfacePick(cage, visible);
   }
 
   /**
@@ -415,10 +411,29 @@ export class SurfacePicker {
         reach * 2
       );
     }
-    if (!cage) return null;
-
-    return buildSurfacePick(cage, visible);
+    return finishSurfacePick(cage, visible);
   }
+}
+
+/**
+ * Resolve the cage pick, falling back to the displayed surface itself.
+ *
+ * When no subdivision surface has been built, nothing is on LAYER_CAGE and the
+ * cage raycast finds nothing - but the mesh the user clicked IS the cage in
+ * that case, so binding to it is exactly right. Returning null here instead
+ * would make picking silently depend on a SubdivSet having been created, which
+ * is coupling no caller should have to know about.
+ *
+ * The fallback is gated on a prim path, so it can never bind to a generated
+ * limit mesh: those are created by SubdivSurface and never carry one.
+ */
+function finishSurfacePick(
+  cage: PickResult | null,
+  visible: PickResult
+): SurfacePick | null {
+  if (cage) return buildSurfacePick(cage, visible);
+  if (!visible.primPath) return null;
+  return buildSurfacePick(visible, visible);
 }
 
 function buildSurfacePick(cage: PickResult, visible: PickResult): SurfacePick {

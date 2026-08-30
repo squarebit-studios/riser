@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pxr import Usd, UsdGeom
+from pxr import Gf, Usd, UsdGeom
 
 from .mesh import TriangulatedMesh, Vec3, triangulate
 
@@ -225,6 +225,18 @@ def _read_curve(prim: Usd.Prim, curve_id: str) -> Curve:
 def collect_meshes(stage: Usd.Stage) -> dict[str, TriangulatedMesh]:
     """Every mesh on the stage, triangulated in the browser's triangle order.
 
+    Points are baked into STAGE space, not left in the mesh prim's own space.
+
+    That matters whenever anything between the mesh and the stage root carries
+    an xformOp - a rig group offsetting a head, an asset placing its parts.
+    The browser stores guide positions relative to the referenced asset's root
+    (see src/io/document-space.test.ts), so evaluating a binding here without
+    the prim transforms would answer in a different coordinate system and every
+    guide would appear to have moved.
+
+    /Riser and /Riser/Character carry no transform of their own - the layer
+    authors none - so stage space and the asset's own space are the same thing.
+
     Meshes that cannot be triangulated compatibly are omitted; the validation
     pass reports them by name rather than letting a binding resolve wrongly.
     """
@@ -233,11 +245,13 @@ def collect_meshes(stage: Usd.Stage) -> dict[str, TriangulatedMesh]:
         if not prim.IsA(UsdGeom.Mesh):
             continue
         mesh = UsdGeom.Mesh(prim)
-        points = [_vec3(p) for p in (mesh.GetPointsAttr().Get() or [])]
+        raw_points = mesh.GetPointsAttr().Get() or []
         counts = [int(c) for c in (mesh.GetFaceVertexCountsAttr().Get() or [])]
         indices = [int(i) for i in (mesh.GetFaceVertexIndicesAttr().Get() or [])]
-        if not points or not counts:
+        if len(raw_points) == 0 or not counts:
             continue
+
+        points = _points_in_stage_space(prim, raw_points)
 
         path = prim.GetPath().pathString
         try:
@@ -246,3 +260,22 @@ def collect_meshes(stage: Usd.Stage) -> dict[str, TriangulatedMesh]:
             # Reported by validate.py, which has the context to explain it.
             continue
     return meshes
+
+
+def _points_in_stage_space(prim: Usd.Prim, raw_points) -> list[Vec3]:
+    """Apply the prim's accumulated transform to its points."""
+    xform = UsdGeom.Xformable(prim)
+    if not xform:
+        return [_vec3(p) for p in raw_points]
+
+    matrix = xform.ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+    if matrix == Gf.Matrix4d(1.0):
+        # Identity is overwhelmingly the common case; skip the arithmetic and
+        # keep the exact float values the file declared.
+        return [_vec3(p) for p in raw_points]
+
+    out: list[Vec3] = []
+    for p in raw_points:
+        t = matrix.Transform(Gf.Vec3d(float(p[0]), float(p[1]), float(p[2])))
+        out.append((t[0], t[1], t[2]))
+    return out
