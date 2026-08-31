@@ -245,11 +245,28 @@ whenever you press **Auto-place**, and it must never undo work you did by hand.
 Provenance is what lets it improve its own guesses and leave yours alone.
 
 The tiers are tried best first. A skeleton is exact, so it always wins. Failing
-that, Riser measures the character: where the legs stop, where the torso
-narrows, how far the arms reach. That is a fallback and says so through the
-confidence it records, which the inspector shows beside the source. If the
-shape does not measure like a two-legged figure, Riser places nothing and tells
-you so, rather than scattering human guides over an animal.
+that, Riser measures the character. That is a fallback and says so through the
+confidence it records, which the inspector shows beside the source.
+
+**What gets measured depends on the template you chose**, because the two body
+plans are measured along different axes:
+
+| Template | How it is measured |
+|---|---|
+| Biped, Face | Sliced by **height**: where the legs stop, where the torso narrows, how far the arms reach. |
+| Quadruped | Sliced along its **length**: where the two leg pairs sit, how far apart they are, where the topline runs and where the belly is. |
+
+The quadruped measurement assumes no particular animal. Leg positions come from
+the two groups of geometry near the ground, and the joints up each leg are
+placed as fractions of the measured belly-to-ground distance, so a dachshund
+gets dachshund legs. Which end the head is on is read from the topline, since a
+quadruped's highest point is its skull or its ears.
+
+If the shape does not measure like the template you picked - a horse under the
+biped template, or something taller than it is long under the quadruped one -
+Riser places nothing and tells you so, rather than scattering guides in the
+wrong places. Switching to the right template and pressing **Auto-place** is
+usually all that is needed.
 
 In the checklist and the viewport, a guide the app placed shows **violet**;
 one you placed or adjusted shows **blue**. Touch an automatic guide in any way

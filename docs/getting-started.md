@@ -27,7 +27,9 @@ its units, its up axis, and whether it carries a skeleton.
 Three characters are bundled:
 
 - **Biped (blockout)**, a plain two-legged figure with no rig.
-- **Quadruped (blockout)**, a four-legged figure with no rig.
+- **Quadruped (blockout)**, a four-legged figure with no rig. Switch the
+  **Template** to Quadruped before loading it, so Riser measures it as an
+  animal rather than as a person.
 - **Biped (rigged)**, the same biped carrying a real UsdSkel skeleton.
 
 You can also load your own: use the **Upload** button, or drop a file on the

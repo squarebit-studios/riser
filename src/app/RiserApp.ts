@@ -36,6 +36,7 @@ import {
 import { getTemplate } from '../templates';
 import { placeGuidesFromSkeleton } from '../tools/autoplace/fromSkeleton';
 import { placeGuidesFromProportions } from '../tools/autoplace/fromProportions';
+import { placeGuidesFromQuadruped } from '../tools/autoplace/fromQuadruped';
 import { ToolManager } from '../tools/ToolManager';
 import { MarkerLayer } from '../tools/marker/MarkerLayer';
 import { MarkerTool } from '../tools/marker/MarkerTool';
@@ -335,12 +336,19 @@ export class RiserApp {
     if (!character) return 0;
 
     const template = getTemplate(ui.templateId);
-    const result = placeGuidesFromProportions(
-      character,
-      this.documentRoot,
-      template,
-      this.store.document
-    );
+    // Which measurement to use is a property of the TEMPLATE, not of the mesh.
+    // A four-legged animal has to be sliced along its length rather than its
+    // height, and the user has already told us which they are working on by
+    // choosing the template.
+    const result =
+      template.id === 'quadruped'
+        ? placeGuidesFromQuadruped(character, this.documentRoot, template, this.store.document)
+        : placeGuidesFromProportions(
+            character,
+            this.documentRoot,
+            template,
+            this.store.document
+          );
 
     if (result.guides.length === 0) {
       if (options.announce && result.reason) ui.setNotice(result.reason);
@@ -665,6 +673,16 @@ export class RiserApp {
   syncFromDocument(): void {
     const doc = this.store.document;
     const ui = useUiStore.getState();
+
+    // The document is the source of truth for which template is in use, and
+    // the UI store only mirrors it. Reconciling here rather than at each call
+    // site covers switching, undo, redo and opening a saved document at once.
+    //
+    // Worth stating because the failure was quiet: switching the template used
+    // to write the document alone, React re-rendered the picker back to the
+    // old value, and from then on the two disagreed - so choosing Quadruped
+    // and loading a horse still ran the biped measurement and placed nothing.
+    if (ui.templateId !== doc.templateId) ui.setTemplateId(doc.templateId);
 
     this.markerLayer.setMarkers(
       doc.guides.map((guide) => ({

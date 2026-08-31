@@ -61,7 +61,12 @@ export default defineConfig({
     // --host 127.0.0.1 is required, not cosmetic: Vite otherwise binds to
     // "localhost", which resolves to ::1 first on Windows, leaving the IPv4
     // address Playwright polls unreachable and the server apparently dead.
-    command: `npm run preview -- --port ${PORT} --strictPort --host 127.0.0.1`,
+    // Build first, every time. `vite preview` serves whatever is already in
+    // dist/, so without this the suite silently tests the last build rather
+    // than the working tree - a change can appear to fail, or worse to pass,
+    // for reasons that have nothing to do with the change.
+    command:
+      `npm run build && npm run preview -- --port ${PORT} --strictPort --host 127.0.0.1`,
     url: `http://127.0.0.1:${PORT}`,
     // Never reuse. Vite's default preview port is shared across every Vite
     // project on this machine, and reusing whatever already answers there

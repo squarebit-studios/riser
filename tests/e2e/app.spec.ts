@@ -436,6 +436,63 @@ test.describe('automatic placement from a rig', () => {
     expect(after.position[0]).toBeCloseTo(handPlaced.position[0], 6);
     expect(after.position[1]).toBeCloseTo(handPlaced.position[1], 6);
   });
+
+  test('the quadruped template measures a four-legged character', async ({
+    page
+  }) => {
+    // The other half of "measuring refuses a character that is not a biped":
+    // told which animal it is looking at, it should measure the horse rather
+    // than refuse it. Riser shipped this template and this character, and for
+    // a while choosing both still gave an empty checklist.
+    await openApp(page);
+    await page.getByTitle('Which rig layout to place').selectOption('quadruped');
+    await page.evaluate(() =>
+      window.__riser!.loadFromUrl('/assets/quadruped-blockout.usda')
+    );
+    await page.waitForFunction(
+      () => window.__riser!.store.document.guides.length > 0
+    );
+
+    const placed = await guides(page);
+    expect(placed.length).toBeGreaterThanOrEqual(35);
+    expect(placed.every((g) => g.source === 'proportions')).toBe(true);
+    // Every guide names a real triangle on the horse, which is what the worker
+    // will re-evaluate.
+    expect(placed.every((g) => g.binding !== null)).toBe(true);
+
+    // The checklist should show it, not just the document.
+    await expect(page.getByTestId('guide-hoofFL')).toBeVisible();
+
+    const byId = new Map(placed.map((g) => [g.id, g]));
+    // Front hooves on the ground, withers above them: the horse is standing.
+    expect(byId.get('hoofFL')!.position[1]).toBeLessThan(
+      byId.get('shoulderFL')!.position[1]
+    );
+  });
+
+  test('the chosen template survives loading a character', async ({ page }) => {
+    // It used not to. Switching the template wrote the document but not the UI
+    // store, React re-rendered the picker back to its old value, and the two
+    // disagreed from then on - so the app measured a horse as a biped and
+    // quietly placed nothing.
+    const picker = page.getByTitle('Which rig layout to place');
+
+    await openApp(page);
+    await picker.selectOption('quadruped');
+    await expect(picker).toHaveValue('quadruped');
+
+    await page.evaluate(() =>
+      window.__riser!.loadFromUrl('/assets/quadruped-blockout.usda')
+    );
+    await page.waitForFunction(
+      () => (window.__riser!.characterModel?.meshes.length ?? 0) > 0
+    );
+
+    await expect(picker).toHaveValue('quadruped');
+    expect(
+      await page.evaluate(() => window.__riser!.store.document.templateId)
+    ).toBe('quadruped');
+  });
 });
 
 test.describe('curves are actually drawn', () => {

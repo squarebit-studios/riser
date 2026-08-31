@@ -126,6 +126,12 @@ The naming follows animal anatomy, which does not line up with human intuition.
 The front leg's visible "knee" is a wrist, and the back leg's backward-bending
 joint is an ankle. The hints in the checklist say so where it matters.
 
+Choose this template **before** loading the character. Automatic placement uses
+it to decide how to measure - along the body's length rather than its height -
+so a horse loaded under the biped template fills nothing, and the same horse
+under this one fills the whole checklist. See
+[Provenance](concepts.md#provenance-who-placed-this).
+
 ## Spine and head
 
 | Guide | Where it goes | |

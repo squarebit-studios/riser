@@ -211,7 +211,7 @@ function describeSlab(points: readonly Vec3[], y: number, centerX: number): Slab
   };
 }
 
-interface Mass {
+export interface Mass {
   min: number;
   max: number;
 }
@@ -226,7 +226,11 @@ interface Mass {
  * the gap is a tenth of the width and any threshold loose enough to catch it
  * also splits a lumpy torso.
  */
-function findMasses(xs: readonly number[], minX: number, width: number): Mass[] {
+export function findMasses(
+  xs: readonly number[],
+  minX: number,
+  width: number
+): Mass[] {
   if (width <= 0) return [{ min: minX, max: minX }];
 
   const counts = new Array<number>(CLUSTER_BINS).fill(0);

@@ -70,7 +70,7 @@ export interface ProportionOptions {
  * centre does not, and forcing it to the surface would put it on the outside
  * of the arm.
  */
-interface Target {
+export interface Target {
   id: string;
   world: THREE.Vector3;
   surface: boolean;
@@ -104,55 +104,16 @@ export function placeGuidesFromProportions(
     };
   }
 
-  const replaceable = options.overwriteUserPlaced ? null : autoReplaceableIds(doc);
-  const placedAlready = new Set(doc.guides.map((g) => g.id));
-  const allowed = (id: string): boolean =>
-    !placedAlready.has(id) || replaceable === null || replaceable.has(id);
+  const allowed = allowedGuideIds(template, doc, options.overwriteUserPlaced ?? false);
+  const targets = buildTargets(profile, landmarks).filter((t) => allowed.has(t.id));
 
-  const wanted = new Set(template.guides.map((g) => g.id));
-  const interiorIds = new Set(
-    template.guides.filter((g) => g.interior).map((g) => g.id)
+  const guides = bindTargets(
+    character,
+    documentRoot,
+    template,
+    targets,
+    landmarks.confidence
   );
-  const groupById = new Map(template.guides.map((g) => [g.id, g.group]));
-
-  const targets = buildTargets(profile, landmarks).filter(
-    (t) => wanted.has(t.id) && allowed(t.id)
-  );
-
-  const guides: Guide[] = [];
-  for (const target of targets) {
-    const nearest = nearestPointOnMeshes(character.meshes, target.world);
-    if (!nearest) continue;
-
-    // A guide that belongs on the skin is snapped to it; one that belongs
-    // inside keeps the offset that puts it there. The template already knows
-    // which is which, so this does not need a second list.
-    const interior = interiorIds.has(target.id) && !target.surface;
-    const anchor = interior ? target.world : nearest.worldPoint;
-    const offset = interior ? offsetToTarget(nearest, target.world) : ([0, 0, 0] as Vec3);
-
-    const normal = anchor
-      .clone()
-      .sub(nearest.worldPoint)
-      .normalize();
-
-    guides.push({
-      id: target.id,
-      group: groupById.get(target.id) ?? '',
-      position: worldToDocument(documentRoot, anchor.clone()),
-      normal: Number.isFinite(normal.x) && normal.lengthSq() > 0.5
-        ? [normal.x, normal.y, normal.z]
-        : [0, 0, 1],
-      binding: {
-        primPath: nearest.primPath,
-        faceIndex: nearest.faceIndex,
-        barycentric: nearest.barycentric,
-        offset
-      },
-      source: 'proportions',
-      confidence: target.confidence * landmarks.confidence
-    });
-  }
 
   const placed = new Set(guides.map((g) => g.id));
   const unmatched = template.guides
@@ -160,6 +121,84 @@ export function placeGuidesFromProportions(
     .map((g) => g.id);
 
   return { guides, landmarks, unmatched, reason: null };
+}
+
+/**
+ * Turn target positions into bound guides.
+ *
+ * Shared by every measurement path, because binding is the part that must not
+ * differ between them: a guide is only useful if
+ * `position = evaluate(binding) + offset` holds, and two implementations of
+ * that would eventually disagree in a way no test of either alone would catch.
+ *
+ * A guide that belongs on the skin is snapped to it; one that belongs inside
+ * keeps the offset that puts it there. The template already records which is
+ * which, so this needs no second list.
+ */
+export function bindTargets(
+  character: CharacterModel,
+  documentRoot: THREE.Object3D,
+  template: TemplateDef,
+  targets: readonly Target[],
+  overallConfidence: number
+): Guide[] {
+  const interiorIds = new Set(
+    template.guides.filter((g) => g.interior).map((g) => g.id)
+  );
+  const groupById = new Map(template.guides.map((g) => [g.id, g.group]));
+
+  const guides: Guide[] = [];
+  for (const target of targets) {
+    const nearest = nearestPointOnMeshes(character.meshes, target.world);
+    if (!nearest) continue;
+
+    const interior = interiorIds.has(target.id) && !target.surface;
+    const anchor = interior ? target.world : nearest.worldPoint;
+    const offset = interior
+      ? offsetToTarget(nearest, target.world)
+      : ([0, 0, 0] as Vec3);
+
+    const normal = anchor.clone().sub(nearest.worldPoint).normalize();
+
+    guides.push({
+      id: target.id,
+      group: groupById.get(target.id) ?? '',
+      position: worldToDocument(documentRoot, anchor.clone()),
+      normal:
+        Number.isFinite(normal.x) && normal.lengthSq() > 0.5
+          ? [normal.x, normal.y, normal.z]
+          : [0, 0, 1],
+      binding: {
+        primPath: nearest.primPath,
+        faceIndex: nearest.faceIndex,
+        barycentric: nearest.barycentric,
+        offset
+      },
+      source: 'proportions',
+      confidence: target.confidence * overallConfidence
+    });
+  }
+  return guides;
+}
+
+/**
+ * Which guides an automatic pass may write, given what is already placed.
+ *
+ * Shared so that every measurement path honours the same rule: never overwrite
+ * a guide the user placed.
+ */
+export function allowedGuideIds(
+  template: TemplateDef,
+  doc: RiserDocument,
+  overwriteUserPlaced: boolean
+): Set<string> {
+  const replaceable = overwriteUserPlaced ? null : autoReplaceableIds(doc);
+  const placed = new Set(doc.guides.map((g) => g.id));
+  return new Set(
+    template.guides
+      .map((g) => g.id)
+      .filter((id) => !placed.has(id) || replaceable === null || replaceable.has(id))
+  );
 }
 
 // -------------------------------------------------------------------------
