@@ -74,3 +74,28 @@ describe('eye texture options', () => {
     expect(eye.sbeScleraMap?.value).toBe(sclera);
   });
 });
+
+describe('look parameters', () => {
+  it('are read from `params`, and ignored anywhere else', () => {
+    // The whole look was being spread at the top level, where
+    // `makeEyeUniforms` does not look for it: it merges `opts.params` over its
+    // defaults and drops the rest. So all 56 authored values were discarded
+    // and every character rendered with the widget's defaults, which is what
+    // "the pupil and iris are huge" was.
+    const nested = makeEyeUniforms({ params: { limbusRadius: 0.4059 } }) as UniformSet;
+    expect(nested.sbeLimbusRadius?.value).toBeCloseTo(0.4059, 6);
+
+    const topLevel = makeEyeUniforms({ limbusRadius: 0.4059 }) as UniformSet;
+    expect(
+      topLevel.sbeLimbusRadius?.value,
+      'a top level look value should NOT reach the shader, which is why it has to be nested'
+    ).not.toBeCloseTo(0.4059, 6);
+  });
+
+  it('has no pupilRadius option, so it has to travel through updateProjector', () => {
+    // `sbePupilRadius` is not derived from the param block at all. A look that
+    // authored one had it silently replaced by the 0.1667 default.
+    const eye = makeEyeUniforms({ params: { pupilRadius: 0.05 } }) as UniformSet;
+    expect(eye.sbePupilRadius?.value).not.toBeCloseTo(0.05, 6);
+  });
+});

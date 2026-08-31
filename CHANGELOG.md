@@ -2,6 +2,14 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.8.6] - 2026-08-31
+
+### Fixed
+- Every setting on an eye was being ignored. The 56 authored values have to be passed nested under `params`, and they were being spread at the top level where the module does not look for them, so each eye rendered with the widget's defaults: the iris and pupil came out at full size instead of the 0.8 and 0.7 the look asked for
+- The pupil radius reaches the shader by a different route again, and was falling back to its default whatever a look authored
+- The eyes stopped working the moment smoothing was touched. The view modes cache each mesh's own material the first time they see it, and the eyes arrive later than that, so turning smoothing on restored a material from before they existed
+- Turning smoothing off left the wireframe drawing quads. Off means the renderer really is drawing triangles, so it now shows them again, and turning it back on returns to the level you had chosen
+
 ## [0.8.5] - 2026-08-31
 
 ### Changed

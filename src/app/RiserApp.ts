@@ -207,7 +207,14 @@ export class RiserApp {
       () => this.subdivs?.displayedMeshes() ?? this.character?.meshes ?? [],
       // Quad edges when the surface is subdivided, so a wireframe shows the
       // edge flow rather than the triangulation underneath it.
-      (mesh) => this.subdivs?.quadWireframe(mesh) ?? null
+      (mesh) =>
+        // Quads only while smoothing is ON. With it off the renderer really is
+        // drawing triangles and the triangle wireframe is the honest picture,
+        // so turning smoothing off has to put the triangulation back rather
+        // than leaving the quads behind and looking like it did nothing.
+        useUiStore.getState().smoothing
+          ? (this.subdivs?.quadWireframe(mesh) ?? null)
+          : null
     );
 
     this.cameraRig = new CameraRig(this.viewport.camera, canvas);
@@ -320,6 +327,37 @@ export class RiserApp {
    * here leaves the white stand-in that was already there and never costs the
    * character.
    */
+  /**
+   * Re-assert the eye materials as the meshes' own.
+   *
+   * Runs after shading and again after every subdivision rebuild. Both are
+   * needed and for different reasons: the view modes cached each mesh's
+   * material before the eyes existed, and a freshly built limit surface is a
+   * new object that has never been told what it is meant to be shaded with.
+   *
+   * Covers the cage and whatever is displayed in its place, so the eye holds
+   * through turning smoothing on, changing the level, and turning it off.
+   */
+  private adoptEyeMaterials(): void {
+    const modes = this.viewModes;
+    const model = this.character;
+    if (!modes || !model) return;
+
+    const displayed = this.subdivs?.displayedMeshes() ?? [];
+    for (const [primPath, material] of this.eyes.shaded()) {
+      for (const mesh of model.meshes) {
+        if ((mesh.userData.primPath as string) !== primPath) continue;
+        modes.adoptOriginal(mesh, material);
+        // The limit surface stands in for the cage and is parented to it.
+        for (const shown of displayed) {
+          if (shown !== mesh && shown.parent === mesh) {
+            modes.adoptOriginal(shown, material);
+          }
+        }
+      }
+    }
+  }
+
   private async shadeEyes(model: CharacterModel): Promise<void> {
     // Re-fetched rather than plumbed through the loader. The browser has the
     // file in cache from the load that just happened, so this is cheap, and it
@@ -354,6 +392,10 @@ export class RiserApp {
         model.root,
         model.source.metersPerUnit
       );
+      // The view modes cached each mesh's material before these existed, and
+      // that cache is what gets restored on every subdivision change.
+      this.adoptEyeMaterials();
+
       if (shaded > 0) {
         useUiStore
           .getState()
@@ -1325,6 +1367,9 @@ export class RiserApp {
       // Changing the level rebuilds the displayed meshes, so the shading has
       // to be put back on the new ones.
       this.viewModes?.refresh();
+      // Including the eyes, whose materials are not the asset's own and so are
+      // not what a rebuilt surface inherits.
+      this.adoptEyeMaterials();
       // Markers deliberately do NOT move. Their offsets were measured against
       // the surface the user clicked, and re-deriving them on a level change
       // would relocate work the user already did.

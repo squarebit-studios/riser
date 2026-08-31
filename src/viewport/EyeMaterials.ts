@@ -117,6 +117,11 @@ export class EyeMaterials {
     return this.applied.size;
   }
 
+  /** Every eye this has shaded, by prim path. */
+  shaded(): ReadonlyMap<string, THREE.Material> {
+    return this.applied;
+  }
+
   /**
    * Shade every mesh that has a look.
    *
@@ -229,9 +234,17 @@ export class EyeMaterials {
       maps[option] = texture;
     }
 
+    // The look goes in `params`, NESTED.
+    //
+    // `makeEyeUniforms` merges `opts.params` over its defaults and ignores
+    // anything else at the top level, so spreading the look there meant every
+    // one of the 56 authored values was silently dropped and the eye rendered
+    // with the widget's defaults: a pupil and iris the wrong size on every
+    // character, with nothing to say so. The maps are the exception and belong
+    // at the top level, which is what made the mistake easy to make.
     const eye = makeEyeUniforms({
-      ...numericParams(params),
-      ...maps
+      ...maps,
+      params: numericParams(params)
     }) as EyeUniforms;
 
     applyEyeShader(material, EYE_CORE_GLSL, eye);
@@ -256,7 +269,13 @@ export class EyeMaterials {
       updateProjector(eye, projector ?? mesh, {
         // USD is Y-up and authors the projector looking down +Z, which is the
         // module's native convention rather than three's lookAt.
-        forwardAxis: 'z'
+        forwardAxis: 'z',
+        // The pupil radius reaches the shader ONLY here. It is not a
+        // `makeEyeUniforms` option, so a look that authored one had it ignored
+        // and got the default 0.1667 whatever it asked for.
+        ...(typeof params.pupilRadius === 'number'
+          ? { pupilRadius: params.pupilRadius }
+          : {})
       });
     } catch {
       // Without a usable projector the iris sits at the shader's default
@@ -349,6 +368,10 @@ function numericParams(
 ): Record<string, number | number[]> {
   const out: Record<string, number | number[]> = {};
   for (const [key, value] of Object.entries(params)) {
+    // The projector matrix is a transform, not a shader parameter. It is
+    // sixteen numbers, so it passes the type check and would be merged into
+    // the param block as if it were a look value.
+    if (key === 'projectorMatrix') continue;
     if (typeof value === 'number' || Array.isArray(value)) out[key] = value;
   }
   return out;

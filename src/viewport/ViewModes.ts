@@ -270,6 +270,30 @@ export class ViewModeController {
     return this.wireMaterial;
   }
 
+  /**
+   * Tell the view modes that a mesh's OWN material has changed.
+   *
+   * `stashOriginal` records a mesh's material the first time it is seen and
+   * never looks again. That is right for an asset's own shading and wrong for
+   * anything that arrives late, and the eyes arrive late by construction:
+   * shading them means fetching the character file back to read the look out
+   * of it, so the stash was taken while they were still the loader's plain
+   * material.
+   *
+   * The consequence was not a wrong colour but a vanishing one. The stash is
+   * what `restore` puts back, and restore runs whenever the displayed mesh
+   * changes, which is every subdivision level change. Turning smoothing on
+   * handed the cage its pre-eye material and turning it off again showed it:
+   * the eyes worked until you touched the smoothing control, then never again.
+   */
+  adoptOriginal(mesh: THREE.Mesh, material: THREE.Material | THREE.Material[]): void {
+    mesh.userData[ORIGINAL] = material;
+    // Applied at once when the mesh is already on screen, so the eye appears
+    // now rather than at whatever happens to trigger the next refresh.
+    if (this.touched.has(mesh)) this.applyTo(mesh);
+    else mesh.material = material;
+  }
+
   private stashOriginal(mesh: THREE.Mesh): void {
     if (mesh.userData[ORIGINAL] === undefined) {
       mesh.userData[ORIGINAL] = mesh.material;
