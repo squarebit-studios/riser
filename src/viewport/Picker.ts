@@ -227,47 +227,93 @@ export class Picker {
     return result;
   }
 
+  /**
+   * Every surface the ray crosses, near to far.
+   *
+   * The entry and exit points of a limb are what make a joint CENTRE
+   * measurable rather than guessed: click an elbow, the ray enters the front
+   * of the forearm and leaves the back, and the midpoint of those two is the
+   * centre of the volume at that point. Nothing about it assumes a thickness,
+   * a species, or a scale.
+   *
+   * Returns hits in distance order, so [0] is what the user sees and [1] is
+   * the far side of the same piece of geometry.
+   */
+  pickThrough(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    targets: THREE.Object3D[],
+    limit = 8
+  ): PickResult[] {
+    this.ndc.set((x / width) * 2 - 1, -(y / height) * 2 + 1);
+    this.raycaster.setFromCamera(this.ndc, this.camera);
+
+    const results: PickResult[] = [];
+    for (const hit of this.raycaster.intersectObjects(targets, true)) {
+      const result = this.resultFromHit(hit);
+      if (result) results.push(result);
+      if (results.length >= limit) break;
+    }
+    return results;
+  }
+
   /** Build a `PickResult` from whatever ray the raycaster currently holds. */
   private pickWithCurrentRay(targets: THREE.Object3D[]): PickResult | null {
     const hits = this.raycaster.intersectObjects(targets, true);
     for (const hit of hits) {
-      const mesh = hit.object as THREE.Mesh;
-      if (!mesh.isMesh || hit.faceIndex === undefined || hit.faceIndex === null) continue;
-
-      // World -> local, because bindings live in the mesh's own space and must
-      // survive the character being moved or rescaled afterwards.
-      mesh.updateWorldMatrix(true, false);
-      const localPoint = hit.point.clone().applyMatrix4(
-        new THREE.Matrix4().copy(mesh.matrixWorld).invert()
-      );
-
-      const barycentric = barycentricAt(mesh.geometry, hit.faceIndex, localPoint);
-      if (!barycentric) continue;
-
-      const localNormal = evaluateBindingNormal(
-        mesh.geometry,
-        hit.faceIndex,
-        barycentric
-      );
-      const normal = localNormal
-        ? localNormal
-            .clone()
-            .applyMatrix3(_normalMatrix.getNormalMatrix(mesh.matrixWorld))
-            .normalize()
-        : new THREE.Vector3(0, 1, 0);
-
-      return {
-        object: mesh,
-        primPath: (mesh.userData.primPath as string) ?? '',
-        point: hit.point.clone(),
-        localPoint,
-        normal,
-        faceIndex: hit.faceIndex,
-        barycentric,
-        distance: hit.distance
-      };
+      const result = this.resultFromHit(hit);
+      if (result) return result;
     }
     return null;
+  }
+
+  /**
+   * One intersection, expressed in the terms a binding needs.
+   *
+   * Returns null for a hit that cannot be bound - no face index, or a
+   * degenerate triangle with no barycentric coordinate. Callers skip those and
+   * carry on to the next hit rather than failing the whole pick.
+   */
+  private resultFromHit(hit: THREE.Intersection): PickResult | null {
+    const mesh = hit.object as THREE.Mesh;
+    if (!mesh.isMesh || hit.faceIndex === undefined || hit.faceIndex === null) {
+      return null;
+    }
+
+    // World -> local, because bindings live in the mesh's own space and must
+    // survive the character being moved or rescaled afterwards.
+    mesh.updateWorldMatrix(true, false);
+    const localPoint = hit.point
+      .clone()
+      .applyMatrix4(new THREE.Matrix4().copy(mesh.matrixWorld).invert());
+
+    const barycentric = barycentricAt(mesh.geometry, hit.faceIndex, localPoint);
+    if (!barycentric) return null;
+
+    const localNormal = evaluateBindingNormal(
+      mesh.geometry,
+      hit.faceIndex,
+      barycentric
+    );
+    const normal = localNormal
+      ? localNormal
+          .clone()
+          .applyMatrix3(_normalMatrix.getNormalMatrix(mesh.matrixWorld))
+          .normalize()
+      : new THREE.Vector3(0, 1, 0);
+
+    return {
+      object: mesh,
+      primPath: (mesh.userData.primPath as string) ?? '',
+      point: hit.point.clone(),
+      localPoint,
+      normal,
+      faceIndex: hit.faceIndex,
+      barycentric,
+      distance: hit.distance
+    };
   }
 }
 
@@ -385,6 +431,24 @@ export class SurfacePicker {
     }
 
     return finishSurfacePick(cage, visible);
+  }
+
+  /**
+   * Every DISPLAYED surface the ray crosses, near to far.
+   *
+   * The displayed surface rather than the cage, because this measures the
+   * volume the user can see: on a subdivided character the cage sits outside
+   * the limit surface, so measuring across it would report a limb thicker than
+   * the one on screen.
+   */
+  pickThrough(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    targets: THREE.Object3D[]
+  ): PickResult[] {
+    return this.displayed.pickThrough(x, y, width, height, targets);
   }
 
   /**

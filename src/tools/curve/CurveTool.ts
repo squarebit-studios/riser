@@ -29,6 +29,7 @@ import type { Curve, CurvePoint, TemplateDef } from '../../doc/types';
 import {
   aimAtScreen,
   bindingFromPick,
+  type PickResult,
   type SurfacePick,
   type SurfacePicker
 } from '../../viewport/Picker';
@@ -36,6 +37,7 @@ import { LAYER_OVERLAY, type Viewport } from '../../viewport/Viewport';
 import { worldToDocument } from '../../viewport/space';
 import { curveDef } from '../../templates';
 import { mirrorPick } from '../mirror';
+import { resolvePlacement, type PlacementMode } from '../placement';
 import type { Tool, ToolPointerEvent } from '../types';
 import { insertionIndex } from './geometry';
 import type { ControlVertexRef, CurveLayer } from './CurveLayer';
@@ -46,6 +48,8 @@ const WIDTH_FRACTION = 0.0025;
 export interface CurveToolDeps {
   viewport: Viewport;
   picker: SurfacePicker;
+  /** How a click should be interpreted: on the skin, inside, or free. */
+  getPlacementMode?: () => PlacementMode;
   layer: CurveLayer;
   store: DocumentStore;
   getCharacter: () => CharacterModel | null;
@@ -102,7 +106,7 @@ export class CurveTool implements Tool {
     if (!pick) return true; // Off the mesh - hold rather than snap away.
 
     const { curveId, index } = this.dragging;
-    const point = this.curvePointFromPick(pick);
+    const point = this.curvePointFromPick(pick, this.pickThrough(event.x, event.y));
     this.deps.store.apply(
       (d) => M.moveCurvePoint(d, curveId, index, point),
       `Move ${this.curveLabel(curveId)} point`,
@@ -176,7 +180,7 @@ export class CurveTool implements Tool {
 
     const doc = this.deps.store.document;
     const existing = doc.curves.find((c) => c.id === activeId);
-    const point = this.curvePointFromPick(pick);
+    const point = this.curvePointFromPick(pick, this.pickThrough(event.x, event.y));
 
     // Mirrored curves are built alongside, so both sides stay in step and one
     // undo removes both points.
@@ -265,22 +269,52 @@ export class CurveTool implements Tool {
     };
   }
 
-  private curvePointFromPick(surface: SurfacePick): CurvePoint {
+  private placementMode(): PlacementMode {
+    return this.deps.getPlacementMode?.() ?? 'auto';
+  }
+
+  /** Every surface the click ray crosses, near to far. */
+  private pickThrough(x: number, y: number): PickResult[] {
+    const character = this.deps.getCharacter();
+    if (!character) return [];
+    const { width, height } = this.deps.viewport.size;
+    return this.deps.picker.pickThrough(x, y, width, height, character.meshes);
+  }
+
+  private curvePointFromPick(
+    surface: SurfacePick,
+    through?: readonly PickResult[]
+  ): CurvePoint {
     // The control vertex sits where the user clicked - on the limit surface
     // when subdivision is on - carried by the binding's offset from the cage
     // triangle it is bound to. With subdivision off the offset is zero and
     // this is exactly the old behaviour.
     const local = surface.pick.localPoint.clone();
-    local.x += surface.offset[0];
-    local.y += surface.offset[1];
-    local.z += surface.offset[2];
+    // The placement mode decides what the click meant. A curve is usually a
+    // surface feature - a brow, a lip line - which is why `auto` leaves it on
+    // the skin; but a spine curve genuinely belongs inside the torso, and
+    // centre mode is how you say so.
+    //
+    // Curve points carry no `interior` flag of their own, so `auto` here is
+    // simply the surface. Anyone wanting a curve through the volume asks for
+    // it explicitly.
+    const placement = resolvePlacement(this.placementMode(), surface, {
+      interior: false,
+      through,
+      characterHeight: this.characterHeight()
+    });
+    const offset = placement.offset;
+
+    local.x += offset[0];
+    local.y += offset[1];
+    local.z += offset[2];
 
     const world = surface.pick.object.localToWorld(local);
     const position = worldToDocument(this.deps.getDocumentRoot(), world);
     return {
       position,
       normal: [surface.normal.x, surface.normal.y, surface.normal.z],
-      binding: bindingFromPick(surface.pick, surface.offset)
+      binding: bindingFromPick(surface.pick, offset)
     };
   }
 

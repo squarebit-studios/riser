@@ -25,6 +25,7 @@ import { TEMPLATES } from '../../templates';
 import { downloadUsda, readUsdaFile, type DocumentSummary } from '../../doc/storage';
 import { SUPPORTED_EXTENSIONS } from '../../io/loadCharacter';
 import { VIEW_MODES } from '../../viewport/ViewModes';
+import { PLACEMENT_MODES } from '../../tools/placement';
 import {
   MenuBar as Bar,
   MenuBarMenu,
@@ -45,6 +46,7 @@ export function MenuBar(): JSX.Element {
   const hasSkeleton = useUiStore((s) => s.characterHasSkeleton);
   const templateId = useUiStore((s) => s.templateId);
   const viewMode = useUiStore((s) => s.viewMode);
+  const placementMode = useUiStore((s) => s.placementMode);
   const guided = useUiStore((s) => s.guided);
   const ui = useUiStore();
   useUiStore((s) => s.docRevision);
@@ -200,6 +202,18 @@ export function MenuBar(): JSX.Element {
                 );
             }}
           />
+
+          <MenuSeparator />
+          <MenuLabel>Where clicks land</MenuLabel>
+          {PLACEMENT_MODES.map((mode) => (
+            <MenuItem
+              key={mode.id}
+              label={mode.label}
+              checked={placementMode === mode.id}
+              description={mode.hint}
+              onSelect={() => useUiStore.getState().setPlacementMode(mode.id)}
+            />
+          ))}
 
           <MenuSeparator />
           <MenuItem

@@ -20,6 +20,7 @@ import type { ControlVertexRef } from '../tools/curve/CurveLayer';
 import { DEFAULT_TEMPLATE_ID } from '../templates';
 import { DEFAULT_SUBDIV_LEVEL } from '../viewport/SubdivSurface';
 import { DEFAULT_VIEW_MODE, type ViewMode } from '../viewport/ViewModes';
+import { DEFAULT_PLACEMENT_MODE, type PlacementMode } from '../tools/placement';
 
 /**
  * Which guides the template list is showing.
@@ -48,6 +49,7 @@ interface PersistedUi {
   showGrid: boolean;
   viewMode: ViewMode;
   subdivLevel: number;
+  placementMode: PlacementMode;
 }
 
 const LAYOUT_KEY = 'riser.ui.v1';
@@ -97,6 +99,14 @@ function loadLayout(): Partial<PersistedUi> {
     ) {
       out.subdivLevel = parsed.subdivLevel;
     }
+    if (
+      parsed.placementMode === 'auto' ||
+      parsed.placementMode === 'surface' ||
+      parsed.placementMode === 'center' ||
+      parsed.placementMode === 'free'
+    ) {
+      out.placementMode = parsed.placementMode;
+    }
     return out;
   } catch {
     // A private window, cleared site data, or a browser that refuses storage.
@@ -127,6 +137,11 @@ export interface UiState {
   subdivClamped: boolean;
   /** How the character is shaded: lit, flat, wireframe, or lit with wires. */
   viewMode: ViewMode;
+  /**
+   * What a click on the character means: the surface, the centre of the volume
+   * under it, or a free point in space.
+   */
+  placementMode: PlacementMode;
   showGrid: boolean;
   showMarkers: boolean;
   showCurves: boolean;
@@ -176,6 +191,7 @@ export interface UiState {
   toggleXray: () => void;
   setSubdivLevel: (level: number) => void;
   setViewMode: (mode: ViewMode) => void;
+  setPlacementMode: (mode: PlacementMode) => void;
   setSubdivClamped: (clamped: boolean) => void;
   toggleGrid: () => void;
   toggleMarkers: () => void;
@@ -212,6 +228,7 @@ export const useUiStore = create<UiState>((set) => ({
   subdivLevel: DEFAULT_SUBDIV_LEVEL,
   subdivClamped: false,
   viewMode: DEFAULT_VIEW_MODE,
+  placementMode: DEFAULT_PLACEMENT_MODE,
   showGrid: true,
   showMarkers: true,
   showCurves: true,
@@ -256,6 +273,7 @@ export const useUiStore = create<UiState>((set) => ({
   toggleXray: () => set((s) => ({ xray: !s.xray })),
   setSubdivLevel: (subdivLevel) => set({ subdivLevel }),
   setViewMode: (viewMode) => set({ viewMode }),
+  setPlacementMode: (placementMode) => set({ placementMode }),
   setSubdivClamped: (subdivClamped) => set({ subdivClamped }),
   toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
   toggleMarkers: () => set((s) => ({ showMarkers: !s.showMarkers })),
@@ -303,7 +321,8 @@ useUiStore.subscribe((state, previous) => {
     state.guided !== previous.guided ||
     state.showGrid !== previous.showGrid ||
     state.viewMode !== previous.viewMode ||
-    state.subdivLevel !== previous.subdivLevel;
+    state.subdivLevel !== previous.subdivLevel ||
+    state.placementMode !== previous.placementMode;
   if (!changed) return;
 
   const persisted: PersistedUi = {
@@ -314,7 +333,8 @@ useUiStore.subscribe((state, previous) => {
     guided: state.guided,
     showGrid: state.showGrid,
     viewMode: state.viewMode,
-    subdivLevel: state.subdivLevel
+    subdivLevel: state.subdivLevel,
+    placementMode: state.placementMode
   };
   try {
     localStorage.setItem(LAYOUT_KEY, JSON.stringify(persisted));

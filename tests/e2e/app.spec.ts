@@ -40,6 +40,7 @@ declare global {
       autoPlaceFromSkeleton(options?: { announce?: boolean }): number;
       autoPlaceFromProportions(options?: { announce?: boolean }): number;
       clearGuides(): void;
+      surfaceDepth(guideId: string): number;
       saveSessionNow(): boolean;
       forgetSession(): void;
       saveDocument(name?: string): Promise<unknown>;
@@ -299,6 +300,81 @@ test.describe('placing guides', () => {
       before
     );
     expect((await guides(page)).length).toBeLessThan(before);
+  });
+});
+
+test.describe('choosing where a click lands', () => {
+  /** Pick a placement mode from the toolbar dropdown. */
+  async function setPlacement(page: Page, id: string): Promise<void> {
+    await page.getByTestId('placement-menu').click();
+    await page.getByTestId(`placement-${id}`).click();
+  }
+
+  test('surface mode leaves the marker on the skin', async ({ page }) => {
+    await openApp(page);
+    await loadBiped(page);
+    await clearGuides(page);
+    await setPlacement(page, 'surface');
+
+    await page.getByTestId('guide-chest').click();
+    await clickViewport(page);
+    await page.waitForFunction(
+      () => window.__riser!.store.document.guides.length > 0
+    );
+
+    const chest = (await guides(page)).find((g) => g.id === 'chest')!;
+    // On the skin means the binding resolves to the position with no
+    // displacement of its own.
+    const depth = await page.evaluate(() => window.__riser!.surfaceDepth('chest'));
+    expect(Math.abs(depth)).toBeLessThan(0.005);
+    expect(chest.binding).not.toBeNull();
+  });
+
+  test('centre mode puts the marker inside the body', async ({ page }) => {
+    // The reason the mode exists: a joint is not on the skin, and how far in
+    // it belongs depends on how thick that limb actually is.
+    await openApp(page);
+    await loadBiped(page);
+    await clearGuides(page);
+    await setPlacement(page, 'center');
+
+    await page.getByTestId('guide-chest').click();
+    await clickViewport(page);
+    await page.waitForFunction(
+      () => window.__riser!.store.document.guides.length > 0
+    );
+
+    const depth = await page.evaluate(() => window.__riser!.surfaceDepth('chest'));
+    // Well inside, and measured rather than a token nudge.
+    expect(depth).toBeGreaterThan(0.02);
+  });
+
+  test('centre goes deeper than surface at the same spot', async ({ page }) => {
+    await openApp(page);
+    await loadBiped(page);
+
+    const place = async (mode: string): Promise<number> => {
+      await clearGuides(page);
+      await setPlacement(page, mode);
+      await page.getByTestId('guide-chest').click();
+      await clickViewport(page);
+      await page.waitForFunction(
+        () => window.__riser!.store.document.guides.length > 0
+      );
+      return page.evaluate(() => window.__riser!.surfaceDepth('chest'));
+    };
+
+    const onSurface = await place('surface');
+    const inCentre = await place('center');
+    expect(inCentre).toBeGreaterThan(onSurface + 0.02);
+  });
+
+  test('the chosen mode survives a reload', async ({ page }) => {
+    await openApp(page);
+    await setPlacement(page, 'center');
+    await page.reload();
+    await page.waitForFunction(() => window.__riser !== undefined);
+    await expect(page.getByTestId('placement-menu')).toContainText('Centre');
   });
 });
 

@@ -32,23 +32,23 @@ import { unplacedGuideIds } from '../../doc/types';
 import {
   aimAtScreen,
   bindingFromPick,
+  type PickResult,
   type SurfacePick,
   type SurfacePicker
 } from '../../viewport/Picker';
 import { LAYER_OVERLAY, type Viewport } from '../../viewport/Viewport';
-import { worldToDocument } from '../../viewport/space';
+import { documentToWorld, worldToDocument } from '../../viewport/space';
 import { mirrorPick } from '../mirror';
+import {
+  pointOnCameraPlane,
+  resolvePlacement,
+  type PlacementMode
+} from '../placement';
+import { nearestPointOnMeshes, offsetToTarget } from '../../viewport/nearest';
 import { guideDef } from '../../templates';
 import type { Tool, ToolPointerEvent } from '../types';
 import type { MarkerLayer } from './MarkerLayer';
 
-/**
- * How far a guide marked `interior` is pushed below the surface on placement,
- * as a fraction of the character's height. An elbow centre sits roughly a
- * third of the forearm's thickness in; this gets it close enough that the user
- * is nudging rather than dragging from scratch.
- */
-const INTERIOR_DEPTH_FRACTION = 0.012;
 
 /** Metres of lift per pixel of alt-drag, scaled by character height. */
 const LIFT_PER_PIXEL_FRACTION = 0.0006;
@@ -56,6 +56,8 @@ const LIFT_PER_PIXEL_FRACTION = 0.0006;
 export interface MarkerToolDeps {
   viewport: Viewport;
   picker: SurfacePicker;
+  /** How a click should be interpreted: on the skin, inside, or free. */
+  getPlacementMode?: () => PlacementMode;
   layer: MarkerLayer;
   store: DocumentStore;
   getCharacter: () => CharacterModel | null;
@@ -82,6 +84,8 @@ export class MarkerTool implements Tool {
   private dragMode: DragMode = 'none';
   private dragGuideId: string | null = null;
   private liftAccumulator = 0;
+  /** Owned rather than allocated per move: free dragging fires every frame. */
+  private readonly freeRaycaster = new THREE.Raycaster();
 
   constructor(private readonly deps: MarkerToolDeps) {
     this.overlayRaycaster.layers.set(LAYER_OVERLAY);
@@ -120,8 +124,12 @@ export class MarkerTool implements Tool {
 
   onPointerMove(event: ToolPointerEvent): boolean {
     if (this.dragMode !== 'none' && this.dragGuideId) {
-      return this.dragMode === 'lift'
-        ? this.dragLift(event)
+      if (this.dragMode === 'lift') return this.dragLift(event);
+      // Free placement means the marker does not stick to the mesh, so the
+      // drag moves it in the plane of the screen instead of sliding it along
+      // the surface. Alt still lifts, in every mode.
+      return this.placementMode() === 'free'
+        ? this.dragFreely(event)
         : this.dragAcrossSurface(event);
     }
     this.updateHover(event);
@@ -173,7 +181,14 @@ export class MarkerTool implements Tool {
     const def = guideDef(template, activeId);
     if (!def) return false;
 
-    const guides: Guide[] = [this.guideFromPick(activeId, def.group, pick, !!def.interior)];
+    // Every crossing of the click ray, so a centre placement can be measured
+    // rather than assumed. Gathered once and reused by the mirrored guide,
+    // which shoots its own ray.
+    const through = this.pickThrough(event.x, event.y);
+
+    const guides: Guide[] = [
+      this.guideFromPick(activeId, def.group, pick, !!def.interior, through)
+    ];
 
     // Mirror before committing, so both guides land in one undo step.
     if (this.deps.isSymmetryEnabled() && def.mirror) {
@@ -200,22 +215,31 @@ export class MarkerTool implements Tool {
     id: string,
     group: string,
     surface: SurfacePick,
-    interior: boolean
+    interior: boolean,
+    through?: readonly PickResult[]
   ): Guide {
-    // Two displacements compose into the binding's single offset, both in
-    // cage-local space:
+    // The placement mode decides what the click meant; the result is a single
+    // cage-local offset that composes the two displacements at play:
     //
     //   surface.offset   cage -> the smooth point the user actually clicked
     //                    (zero when subdivision is off)
-    //   -localNormal*d   the inward push that puts an interior guide inside
-    //                    the volume rather than on the skin
-    const depth = interior ? this.interiorDepth() : 0;
-    const n = surface.localNormal;
-    const offset: Vec3 = [
-      surface.offset[0] - n.x * depth,
-      surface.offset[1] - n.y * depth,
-      surface.offset[2] - n.z * depth
-    ];
+    //   -localNormal*d   the inward push that puts a joint inside the volume
+    //                    rather than on the skin
+    const placement = resolvePlacement(this.placementMode(), surface, {
+      interior,
+      through,
+      characterHeight: this.characterHeight()
+    });
+    const offset = placement.offset;
+
+    if (!placement.measured) {
+      // Worth saying: this is the one case where the depth is a guess rather
+      // than a measurement, and the user is the only one who can fix it.
+      this.deps.onNotice?.(
+        'Could not measure the thickness here, so this joint was placed at an ' +
+          'estimated depth. Alt-drag to set it.'
+      );
+    }
 
     // The document stores character-local coordinates, which is the space the
     // server evaluates bindings in.
@@ -273,6 +297,62 @@ export class MarkerTool implements Tool {
 
     this.deps.store.apply(
       (d) => M.moveGuide(d, id, [local.x, local.y, local.z], normal, binding),
+      `Move ${guideDef(this.deps.getTemplate(), id)?.label ?? id}`,
+      { coalesceKey: `move:${id}` }
+    );
+    return true;
+  }
+
+  /**
+   * Move a marker in the plane of the screen, ignoring the mesh.
+   *
+   * The plane passes through the marker's current position, so the marker
+   * tracks the cursor exactly and does not jump on the first movement.
+   *
+   * It is still bound afterwards - to the nearest point on the character, with
+   * the rest carried as offset. A marker that did not bind could not be
+   * re-evaluated against new geometry by the worker, and re-evaluation is the
+   * whole reason the document stores bindings rather than coordinates.
+   */
+  private dragFreely(event: ToolPointerEvent): boolean {
+    const id = this.dragGuideId;
+    const character = this.deps.getCharacter();
+    if (!id || !character) return false;
+
+    const guide = this.deps.store.document.guides.find((g) => g.id === id);
+    if (!guide) return false;
+
+    const current = documentToWorld(this.deps.getDocumentRoot(), guide.position);
+    const { width, height } = this.deps.viewport.size;
+    aimAtScreen(
+      this.freeRaycaster,
+      this.deps.viewport.camera,
+      event.x,
+      event.y,
+      width,
+      height
+    );
+    const target = pointOnCameraPlane(
+      this.freeRaycaster,
+      this.deps.viewport.camera,
+      current
+    );
+    if (!target) return true;
+
+    const nearest = nearestPointOnMeshes(character.meshes, target);
+    if (!nearest) return true;
+
+    const offset = offsetToTarget(nearest, target);
+    const local = worldToDocument(this.deps.getDocumentRoot(), target.clone());
+    const binding = {
+      primPath: nearest.primPath,
+      faceIndex: nearest.faceIndex,
+      barycentric: nearest.barycentric,
+      offset
+    };
+
+    this.deps.store.apply(
+      (d) => M.moveGuide(d, id, local, guide.normal, binding),
       `Move ${guideDef(this.deps.getTemplate(), id)?.label ?? id}`,
       { coalesceKey: `move:${id}` }
     );
@@ -391,8 +471,16 @@ export class MarkerTool implements Tool {
     return new THREE.Vector3(doc[0], doc[1], doc[2]);
   }
 
-  private interiorDepth(): number {
-    return this.characterHeight() * INTERIOR_DEPTH_FRACTION;
+  private placementMode(): PlacementMode {
+    return this.deps.getPlacementMode?.() ?? 'auto';
+  }
+
+  /** Every surface the click ray crosses, near to far. */
+  private pickThrough(x: number, y: number): PickResult[] {
+    const character = this.deps.getCharacter();
+    if (!character) return [];
+    const { width, height } = this.deps.viewport.size;
+    return this.deps.picker.pickThrough(x, y, width, height, character.meshes);
   }
 
   private characterHeight(): number {

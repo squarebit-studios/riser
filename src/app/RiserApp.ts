@@ -19,6 +19,7 @@ import { SubdivSet } from '../viewport/SubdivSurface';
 import { ViewModeController } from '../viewport/ViewModes';
 import { SkeletonView } from '../viewport/SkeletonView';
 import { documentToWorld, documentToWorldDirection } from '../viewport/space';
+import { nearestPointOnMeshes } from '../viewport/nearest';
 import { CharacterModel } from '../io/CharacterModel';
 import {
   loadCharacterFromFile,
@@ -730,7 +731,13 @@ export class RiserApp {
         return {
           id: curve.id,
           points,
-          polyline: this.projectCurve(points, curve.points.map((p) => p.normal), curve.closed),
+          polyline: hugsSurface(curve, this.characterHeight)
+            ? this.projectCurve(
+                points,
+                curve.points.map((p) => p.normal),
+                curve.closed
+              )
+            : undefined,
           closed: curve.closed,
           active: curve.id === ui.activeCurveId
         };
@@ -747,6 +754,12 @@ export class RiserApp {
    * vertices. Returns undefined when there is no character to project against,
    * which tells the layer to interpolate plainly instead.
    */
+  /** The character's height in document units, for depth comparisons. */
+  private get characterHeight(): number {
+    if (!this.character) return 1;
+    return Math.max(this.character.bounds.getSize(new THREE.Vector3()).y, 1e-3);
+  }
+
   private projectCurve(
     worldPoints: Vec3[],
     normals: Vec3[],
@@ -860,6 +873,23 @@ export class RiserApp {
         ),
       `Switch to ${template.label}`
     );
+  }
+
+  /**
+   * How far a guide sits from the character's surface, in document units.
+   *
+   * Exposed for the end-to-end tests, which need to assert on the difference
+   * between placement modes. Asserting on the OUTCOME - this marker is inside
+   * the body - rather than on the offset arithmetic is what makes the test
+   * survive a change in how the offset is composed.
+   */
+  surfaceDepth(guideId: string): number {
+    const guide = this.store.document.guides.find((g) => g.id === guideId);
+    if (!guide || !this.character) return 0;
+
+    const world = documentToWorld(this.documentRoot, guide.position);
+    const nearest = nearestPointOnMeshes(this.character.meshes, world);
+    return nearest ? nearest.worldPoint.distanceTo(world) : 0;
   }
 
   clearGuides(): void {
@@ -1025,6 +1055,7 @@ export class RiserApp {
       getCharacter: () => this.character,
       getDocumentRoot: () => this.documentRoot,
       getTemplate: () => getTemplate(useUiStore.getState().templateId),
+      getPlacementMode: () => useUiStore.getState().placementMode,
       getActiveGuideId: () => useUiStore.getState().activeGuideId,
       setActiveGuideId: (id: string | null) =>
         useUiStore.getState().setActiveGuideId(id),
@@ -1045,6 +1076,7 @@ export class RiserApp {
       getCharacter: () => this.character,
       getDocumentRoot: () => this.documentRoot,
       getTemplate: () => getTemplate(useUiStore.getState().templateId),
+      getPlacementMode: () => useUiStore.getState().placementMode,
       getActiveCurveId: () => useUiStore.getState().activeCurveId,
       setActiveCurveId: (id: string | null) => useUiStore.getState().setActiveCurveId(id),
       getSelectedPoint: () => useUiStore.getState().selectedPoint,
@@ -1064,3 +1096,46 @@ function basename(path: string): string {
   const clean = path.split(/[?#]/)[0] ?? path;
   return clean.split(/[\\/]/).pop() || clean;
 }
+
+/**
+ * Whether a curve is meant to lie on the skin.
+ *
+ * The display projection pulls a curve's samples back onto the mesh, because a
+ * smooth curve otherwise cuts through convex forms and floats off concave ones
+ * - a traced jawline vanishes inside the head between control vertices.
+ *
+ * But that is exactly the wrong thing to do to a curve the user deliberately
+ * placed INSIDE the character. A spine curve run through the torso would be
+ * dragged straight back out to the skin, silently undoing the placement mode
+ * they chose.
+ *
+ * Decided by measurement rather than by a flag in the format: how far each
+ * control vertex sits below its own surface, which the binding's offset
+ * already records. Cage-to-limit offsets from subdivision are a fraction of a
+ * face; a centre placement is half a limb thick. The two are not close.
+ */
+function hugsSurface(
+  curve: { points: readonly { normal: Vec3; binding: { offset: Vec3 } | null }[] },
+  characterHeight: number
+): boolean {
+  const limit = characterHeight * INTERIOR_CURVE_FRACTION;
+
+  for (const point of curve.points) {
+    const offset = point.binding?.offset;
+    if (!offset) continue;
+    // Depth below the surface is the inward component of the offset.
+    const depth = -(
+      offset[0] * point.normal[0] +
+      offset[1] * point.normal[1] +
+      offset[2] * point.normal[2]
+    );
+    if (depth > limit) return false;
+  }
+  return true;
+}
+
+/**
+ * Below this fraction of the character's height, an offset is subdivision
+ * gap rather than a deliberate placement inside the volume.
+ */
+const INTERIOR_CURVE_FRACTION = 0.01;

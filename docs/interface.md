@@ -44,6 +44,7 @@ Left to right.
 |---|---|
 | **Markers** / **Curves** | Switches the active tool. Also `1` and `2`. |
 | **Mirror** | Mirrors placements across the character's centre line, and shows the symmetry plane in the viewport. On by default. Also `S`. |
+| **Placement** | Where a click lands: on the surface, inside the volume, or free. See below. |
 | **Auto-place** | Fills in markers automatically: from the character's own skeleton when it has one, otherwise by measuring its shape. Disabled until a character is loaded. Never overwrites anything you placed. |
 | **Shading** | How the character is drawn: Lit, Flat, Wire or Lit wire. See below. |
 | **Show** | What is drawn: the character, markers, curves, the skeleton, the ground grid, and whether markers show through the body. The button turns amber and counts what is hidden, so nothing can be invisible without the interface saying so. |
@@ -52,6 +53,36 @@ Left to right.
 | **Frame** | Frames the whole character. Also `A`. |
 
 Saving, loading and exporting live in the **File** menu.
+
+### Where clicks land
+
+A marker is not always meant to sit on the skin. A joint is inside the limb,
+and how far inside depends on how thick that particular limb is.
+
+| Mode | Where the marker goes |
+|---|---|
+| **Auto** | The template decides. Guides it marks as interior - hips, shoulders, elbows, knees - go to the centre of the volume; everything else goes on the surface. The default, and right for almost everything. |
+| **On surface** | Always on the skin, whatever the template says. |
+| **Centre of volume** | Always in the middle of the limb or body under the cursor. |
+| **Free** | Wherever you put it. Dragging moves the marker in the plane of the screen instead of sliding it along the mesh, so it can be placed off the character entirely. |
+
+**Centre is measured, not estimated.** The ray from your click enters the front
+of the limb and leaves through the back; the marker goes halfway between. That
+is right on a thin wrist and a heavy thigh on the same character, and on a
+dachshund's leg and a giant's arm, without knowing anything about anatomy.
+
+If the ray never comes back out - an open mesh, or a click right on the
+silhouette - Riser places the marker at an estimated depth and says so in the
+status bar. That is the one case where it is guessing, so it tells you.
+
+Curves take the same modes. Curves are usually surface features, so **Auto**
+leaves them on the skin; **Centre of volume** is how you run a spine curve
+through the torso rather than down the back. A curve placed inside the body is
+not pulled back onto the surface for display, the way a surface curve is.
+
+Whatever the mode, a marker is always bound to a triangle of the character.
+That is what lets the server recompute its position against new geometry, and
+what makes a marker survive a retopo.
 
 ### Smoothing
 

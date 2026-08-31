@@ -30,6 +30,7 @@ import { useApp } from '../AppContext';
 import { useUiStore } from '../state';
 import { MAX_SUBDIV_LEVEL, MIN_SUBDIV_LEVEL } from '../../viewport/SubdivSurface';
 import { VIEW_MODES } from '../../viewport/ViewModes';
+import { PLACEMENT_MODES } from '../../tools/placement';
 import { Button, IconButton, SegmentedControl } from './ui/Button';
 import { Slider } from './ui/Controls';
 import { DropdownMenu, MenuItem, MenuLabel, MenuSeparator } from './ui/Menu';
@@ -43,6 +44,7 @@ export function Toolbar(): JSX.Element {
   const hasSkeleton = useUiStore((s) => s.characterHasSkeleton);
   const characterName = useUiStore((s) => s.characterName);
   const viewMode = useUiStore((s) => s.viewMode);
+  const placementMode = useUiStore((s) => s.placementMode);
   const subdivLevel = useUiStore((s) => s.subdivLevel);
   const subdivClamped = useUiStore((s) => s.subdivClamped);
   const showGeometry = useUiStore((s) => s.showGeometry);
@@ -55,6 +57,8 @@ export function Toolbar(): JSX.Element {
   useUiStore((s) => s.docRevision);
 
   const currentMode = VIEW_MODES.find((m) => m.id === viewMode) ?? VIEW_MODES[0]!;
+  const currentPlacement =
+    PLACEMENT_MODES.find((m) => m.id === placementMode) ?? PLACEMENT_MODES[0]!;
   // Anything hidden is worth saying out loud - "why can't I see my markers" is
   // otherwise a genuinely hard question to answer from the viewport alone.
   const hiddenCount = [!showGeometry, !showMarkers, !showCurves].filter(Boolean).length;
@@ -77,6 +81,35 @@ export function Toolbar(): JSX.Element {
         active={symmetry}
         onClick={() => useUiStore.getState().toggleSymmetry()}
       />
+
+      {/* Where a click lands ------------------------------------------- */}
+      <DropdownMenu
+        label="Placement"
+        trigger={(props) => (
+          <Button
+            {...props}
+            ref={props.ref}
+            icon="layers"
+            trailingIcon="chevronDown"
+            title="Where a click on the character puts the marker"
+            data-testid="placement-menu"
+          >
+            {currentPlacement.label}
+          </Button>
+        )}
+      >
+        <MenuLabel>Place</MenuLabel>
+        {PLACEMENT_MODES.map((mode) => (
+          <MenuItem
+            key={mode.id}
+            label={mode.label}
+            checked={placementMode === mode.id}
+            description={mode.hint}
+            data-testid={`placement-${mode.id}`}
+            onSelect={() => useUiStore.getState().setPlacementMode(mode.id)}
+          />
+        ))}
+      </DropdownMenu>
 
       <div className="rs-divider" />
 

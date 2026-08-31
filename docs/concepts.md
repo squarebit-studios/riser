@@ -240,6 +240,27 @@ counted across the **whole character**, not per mesh - a production asset
 arrives as thirty or forty pieces, each small enough to look harmless on its
 own while the sum is far too heavy to subdivide.
 
+## Placing on the skin, inside, or anywhere
+
+Every marker is stored as a binding plus an offset, and the offset is what the
+placement mode chooses:
+
+- **On the surface** the offset is zero, and the marker is the surface point.
+- **At the centre of a volume** the offset carries the marker inward by half
+  the thickness of whatever the click ray passed through.
+- **Free** placement carries whatever displacement the drag produced.
+
+Because all three are the same arithmetic, none of them changes the document
+format or what the server has to do. `position = evaluate(binding) + offset`
+holds in every mode, which is why a freely placed marker still follows the
+character when the mesh is swapped for a denser build.
+
+The measurement matters more than it sounds. The old behaviour pushed interior
+guides in by a fixed fraction of the character's height, which is a number that
+knows nothing about the limb it is being applied to - too deep for a wrist, far
+too shallow for a thigh. Measuring the actual thickness under the cursor makes
+the same rule correct on both.
+
 ## Provenance: who placed this
 
 Every guide records how its position was arrived at, and the inspector shows it
