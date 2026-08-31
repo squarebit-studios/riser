@@ -176,9 +176,21 @@ function GuidedCard({
   const remaining = template.guides.filter((g) => !g.optional && !state.has(g.id));
   const placedCount = template.guides.filter((g) => state.has(g.id)).length;
 
-  // The active guide when it is still unplaced, otherwise simply the next one.
-  const current =
-    remaining.find((g) => g.id === activeGuideId) ?? remaining[0] ?? null;
+  // Whatever the user is working on, placed or not.
+  //
+  // Deliberately not "the next unplaced guide": placing a marker no longer
+  // moves the selection, because the first placement is rarely the final one
+  // and having the card jump on meant a nudge went to the wrong guide. The
+  // card follows the user; Next is how they move it.
+  const active = activeGuideId
+    ? (template.guides.find((g) => g.id === activeGuideId) ?? null)
+    : null;
+  const current = active ?? remaining[0] ?? null;
+  const isPlaced = current !== null && state.has(current.id);
+
+  /** The next thing needing attention after this one. */
+  const nextUp =
+    remaining.find((g) => g.id !== current?.id) ?? null;
 
   if (!characterName) {
     return (
@@ -213,11 +225,15 @@ function GuidedCard({
   const isNext = current.id === activeGuideId;
 
   return (
-    <Card>
+    <Card tone={isPlaced ? 'done' : 'default'}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-accent">
-            {isNext ? 'Place this' : 'Next'}
+          <p
+            className={`text-[11px] font-medium uppercase tracking-wide ${
+              isPlaced ? 'text-curve' : 'text-accent'
+            }`}
+          >
+            {isPlaced ? 'Placed' : isNext ? 'Place this' : 'Next'}
           </p>
           <p className="mt-0.5 truncate font-medium text-ink">{current.label}</p>
         </div>
@@ -238,26 +254,29 @@ function GuidedCard({
       )}
 
       <div className="mt-2.5 flex items-center gap-1.5">
+        {/* Next is the primary action once something is placed, because
+            placing no longer advances on its own - the marker stays selected
+            so it can be adjusted, and moving on is the user's call. */}
         <Button
-          variant="primary"
+          variant={isPlaced ? 'primary' : 'default'}
           size="sm"
-          onClick={() => useUiStore.getState().setActiveGuideId(current.id)}
-          disabled={isNext}
+          icon={isPlaced ? 'next' : undefined}
+          data-testid="guided-next"
+          onClick={() => useUiStore.getState().setActiveGuideId(nextUp?.id ?? null)}
+          disabled={!nextUp}
         >
-          {isNext ? 'Click the character' : 'Start'}
+          {nextUp ? 'Next' : 'All placed'}
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          icon="skip"
-          onClick={() => {
-            const next = remaining.find((g) => g.id !== current.id);
-            useUiStore.getState().setActiveGuideId(next?.id ?? null);
-          }}
-          disabled={remaining.length < 2}
-        >
-          Skip
-        </Button>
+        {!isPlaced && (
+          <Button
+            variant={isNext ? 'ghost' : 'primary'}
+            size="sm"
+            onClick={() => useUiStore.getState().setActiveGuideId(current.id)}
+            disabled={isNext}
+          >
+            {isNext ? 'Click the character' : 'Start'}
+          </Button>
+        )}
         <div className="flex-1" />
         <IconButton
           icon="close"

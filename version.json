@@ -1,9 +1,9 @@
 {
   "riser": {
     "MAJOR": 0,
-    "MINOR": 6,
+    "MINOR": 7,
     "PATCH": 0
   },
-  "version": "0.6.0",
-  "builtAt": "2026-08-31T14:11:34.420Z"
+  "version": "0.7.0",
+  "builtAt": "2026-08-31T17:18:54.939Z"
 }

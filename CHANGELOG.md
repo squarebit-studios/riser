@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0] - 2026-08-31
+- Maya navigation: Alt+left tumbles, Alt+middle pans, Alt+right zooms — the plain bindings still work without Alt, so no modifier is required to look at anything
+- Blend shape panel — fire a character's shapes to check your markers still sit right when the face moves; nothing there changes the document
+- Touch: a long press opens the viewport menu, since an iPad has no right button. Pinch and two-finger gestures are untouched
+- Fixed: a right drag panned the camera AND opened the viewport menu, over the very thing you had just moved into view
+- Fixed: placing a marker jumped the selection to the next unplaced guide, so a nudge to what you just placed moved a different guide entirely. The marker stays selected; Next advances
+
 ## [0.6.0] - 2026-08-31
 - Placement modes — a click can mean the surface, the centre of the volume, or a free point in space
 - Centre placement is measured from the geometry, so it is right on a thin wrist and a heavy thigh on the same character

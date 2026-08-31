@@ -19,9 +19,25 @@ describe('reading the changelog', () => {
   });
 
   it('puts the newest release first', () => {
+    // Ordered against the versions in the file itself rather than a literal,
+    // which would need editing on every release and would fail as a reminder
+    // rather than as a finding.
     const markdown = readFileSync(join(process.cwd(), 'CHANGELOG.md'), 'utf8');
-    const [first] = parseChangelog(markdown);
-    expect(first!.version).toBe('0.6.0');
+    const versions = parseChangelog(markdown).map((r) =>
+      r.version.split('.').map(Number)
+    );
+
+    for (let i = 1; i < versions.length; i++) {
+      const [aMajor, aMinor, aPatch] = versions[i - 1]! as [number, number, number];
+      const [bMajor, bMinor, bPatch] = versions[i]! as [number, number, number];
+      const newer =
+        aMajor > bMajor ||
+        (aMajor === bMajor && aMinor > bMinor) ||
+        (aMajor === bMajor && aMinor === bMinor && aPatch > bPatch);
+      expect(newer, `${versions[i - 1]!.join('.')} should precede ${versions[i]!.join('.')}`).toBe(
+        true
+      );
+    }
   });
 
   it('matches the version the app reports', () => {

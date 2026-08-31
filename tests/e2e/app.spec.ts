@@ -47,6 +47,8 @@ declare global {
       openDocument(id: string): Promise<boolean>;
       listDocuments(): Promise<{ id: string; name: string }[]>;
       currentDocumentId: string | null;
+      /** The three.js viewport, for asserting on the camera. */
+      viewport: { camera: { position: { x: number; y: number; z: number } } };
     };
   }
 }
@@ -261,7 +263,12 @@ test.describe('placing guides', () => {
     }
   });
 
-  test('the checklist advances to the next unplaced guide', async ({ page }) => {
+  test('the checklist stays on the guide you just placed', async ({ page }) => {
+    // This test used to assert the opposite - that placing advanced the
+    // checklist to the next unplaced guide. That was the behaviour, and it was
+    // wrong: the first placement is rarely the final one, so moving the
+    // selection meant a nudge to the marker you had just put down instead
+    // moved a different guide. Advancing is now something the user asks for.
     await openApp(page);
     await loadBiped(page);
 
@@ -275,10 +282,10 @@ test.describe('placing guides', () => {
       () => window.__riser!.store.document.guides.length > 0
     );
 
-    // The prompt should now name a different guide.
-    await expect(
-      page.getByText('Click the character to place Pelvis.')
-    ).not.toBeVisible();
+    // Still Pelvis, and now shown as placed rather than pending.
+    const panel = page.locator('aside[aria-label="Markers"]');
+    await expect(panel).toContainText('Pelvis');
+    await expect(panel).toContainText('Placed');
   });
 
   test('undo removes a placed guide', async ({ page }) => {
@@ -1117,6 +1124,155 @@ test.describe('view modes', () => {
       'the wireframe was lost when the subdivision level changed'
     ).toBeGreaterThan(5000);
     void atDefault;
+  });
+});
+
+test.describe('camera navigation and the viewport menu', () => {
+  async function cameraPosition(page: Page): Promise<[number, number, number]> {
+    return page.evaluate(() => {
+      const p = window.__riser!.viewport.camera.position;
+      return [p.x, p.y, p.z] as [number, number, number];
+    });
+  }
+
+  const moved = (
+    a: [number, number, number],
+    b: [number, number, number]
+  ): boolean => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) > 1e-4;
+
+  async function centre(page: Page): Promise<{ x: number; y: number }> {
+    const box = (await page.locator('canvas').boundingBox())!;
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  }
+
+  test('a right drag pans without opening the menu', async ({ page }) => {
+    // The bug: the viewport menu opened at the end of every pan, over the
+    // very thing the user had just moved into view. A contextmenu event
+    // cannot tell a click from the end of a drag on its own.
+    await openApp(page);
+    await loadBiped(page);
+    const before = await cameraPosition(page);
+    const { x, y } = await centre(page);
+
+    await page.mouse.move(x, y);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(x + 90, y + 40, { steps: 8 });
+    await page.mouse.up({ button: 'right' });
+    await page.waitForTimeout(300);
+
+    expect(moved(before, await cameraPosition(page)), 'camera did not pan').toBe(true);
+    await expect(page.getByRole('menu')).toHaveCount(0);
+  });
+
+  test('a right click with no drag does open the menu', async ({ page }) => {
+    await openApp(page);
+    await loadBiped(page);
+    const { x, y } = await centre(page);
+
+    await page.mouse.click(x, y, { button: 'right' });
+    await expect(page.getByRole('menu')).toBeVisible();
+  });
+
+  test('alt with the middle button pans, and with the right button zooms', async ({
+    page
+  }) => {
+    // Maya's bindings, which are muscle memory for anyone who has rigged a
+    // character - and everyone this tool is for has.
+    await openApp(page);
+    await loadBiped(page);
+    const { x, y } = await centre(page);
+
+    await page.keyboard.down('Alt');
+
+    const start = await cameraPosition(page);
+    await page.mouse.move(x, y);
+    await page.mouse.down({ button: 'middle' });
+    await page.mouse.move(x + 70, y, { steps: 6 });
+    await page.mouse.up({ button: 'middle' });
+    await page.waitForTimeout(250);
+    const afterPan = await cameraPosition(page);
+    expect(moved(start, afterPan), 'alt+middle did not pan').toBe(true);
+
+    await page.mouse.move(x, y);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(x, y - 80, { steps: 6 });
+    await page.mouse.up({ button: 'right' });
+    await page.waitForTimeout(250);
+    expect(moved(afterPan, await cameraPosition(page)), 'alt+right did not zoom').toBe(
+      true
+    );
+
+    await page.keyboard.up('Alt');
+    // And an alt-drag is still a drag, so no menu.
+    await expect(page.getByRole('menu')).toHaveCount(0);
+  });
+
+  test('the plain bindings still work without alt', async ({ page }) => {
+    // A consumer product cannot require a modifier key to look at something.
+    await openApp(page);
+    await loadBiped(page);
+    const { x, y } = await centre(page);
+    const before = await cameraPosition(page);
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 60, y + 30, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+
+    expect(moved(before, await cameraPosition(page)), 'left drag did not tumble').toBe(
+      true
+    );
+  });
+});
+
+test.describe('the marker you are placing stays selected', () => {
+  test('placing does not move the selection on', async ({ page }) => {
+    // It used to jump to the next unplaced guide the moment a marker landed,
+    // so a nudge to the marker you had just put down instead moved a
+    // different guide entirely.
+    await openApp(page);
+    await loadBiped(page);
+    await clearGuides(page);
+
+    await page.getByTestId('guide-chest').click();
+    await clickViewport(page, 0, -60);
+    await page.waitForFunction(
+      () => window.__riser!.store.document.guides.length > 0
+    );
+
+    expect((await guides(page)).map((g) => g.id)).toContain('chest');
+    // The card still shows Chest, now as placed.
+    const panel = page.locator('aside[aria-label="Markers"]');
+    await expect(panel).toContainText('Placed');
+    await expect(panel).toContainText('Chest');
+  });
+
+  test('Next is what advances', async ({ page }) => {
+    await openApp(page);
+    await loadBiped(page);
+    await clearGuides(page);
+
+    await page.getByTestId('guide-chest').click();
+    await clickViewport(page, 0, -60);
+    await page.waitForFunction(
+      () => window.__riser!.store.document.guides.length > 0
+    );
+
+    await page.getByTestId('guided-next').click();
+    // Something else is now active, and it is not the guide just placed.
+    await expect
+      .poll(async () =>
+        page.evaluate(() => window.__riser!.store.document.guides.length)
+      )
+      .toBe(1);
+    const active = await page.evaluate(
+      () => document.querySelector('[data-testid="guided-next"]') !== null
+    );
+    expect(active).toBe(true);
+    await expect(page.locator('aside[aria-label="Markers"]')).not.toContainText(
+      'Placed'
+    );
   });
 });
 

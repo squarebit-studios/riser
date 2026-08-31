@@ -28,7 +28,6 @@ import type { CharacterModel } from '../../io/CharacterModel';
 import type { DocumentStore } from '../../doc/history';
 import * as M from '../../doc/mutations';
 import type { Guide, TemplateDef, Vec3 } from '../../doc/types';
-import { unplacedGuideIds } from '../../doc/types';
 import {
   aimAtScreen,
   bindingFromPick,
@@ -224,7 +223,17 @@ export class MarkerTool implements Tool {
 
     this.deps.store.apply((d) => M.placeGuides(d, guides), `Place ${def.label}`);
     this.deps.setSelectedGuideId(activeId);
-    this.advanceToNextUnplaced(guides.map((g) => g.id));
+    // The guide the user was placing STAYS the active one.
+    //
+    // It used to jump to the next unplaced guide the moment a marker landed,
+    // which is wrong for the way people actually work: the first placement is
+    // rarely the final one. Having the selection move on meant a nudge to the
+    // marker you had just put down instead moved a different guide, or placed
+    // one somewhere you were not looking - and getting back to what you were
+    // doing meant hunting for it in a list of forty.
+    //
+    // Advancing is now something the user asks for: Next in the guided card,
+    // or clicking another row.
     return true;
   }
 
@@ -277,14 +286,6 @@ export class MarkerTool implements Tool {
       source: 'user',
       confidence: 1
     };
-  }
-
-  /** Move the checklist on to whatever still needs placing. */
-  private advanceToNextUnplaced(justPlaced: string[]): void {
-    const template = this.deps.getTemplate();
-    const remaining = unplacedGuideIds(this.deps.store.document, template);
-    const next = remaining.find((id) => !justPlaced.includes(id));
-    this.deps.setActiveGuideId(next ?? null);
   }
 
   // -----------------------------------------------------------------------

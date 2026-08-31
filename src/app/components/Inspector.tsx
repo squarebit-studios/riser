@@ -13,6 +13,7 @@ import React from 'react';
 import { useApp } from '../AppContext';
 import { useUiStore } from '../state';
 import { Button } from './ui/Button';
+import { BlendShapePanel } from './BlendShapePanel';
 import { curveDef, getTemplate, guideDef } from '../../templates';
 import * as M from '../../doc/mutations';
 import { documentToWorld } from '../../viewport/space';
@@ -359,6 +360,7 @@ function Field({
       >
         {value}
       </span>
+      <BlendShapePanel />
     </div>
   );
 }

@@ -7,6 +7,24 @@
 // and the behaviour we actually need on top of it is framing, not a different
 // navigation model. The one thing tools require is the ability to stand the
 // camera down mid-interaction, which `setEnabled` provides.
+//
+// NAVIGATION BINDINGS. Two sets, and which one is live depends on whether Alt
+// is held:
+//
+//              plain                 with Alt held
+//   left       tumble                tumble
+//   middle     zoom                  pan
+//   right      pan                   zoom
+//
+// The Alt set is Maya's, and it is muscle memory for anyone who has rigged a
+// character before - which is everyone this tool is for. The plain set is what
+// a browser user expects from any 3D viewer, and it stays, because a consumer
+// product cannot require a modifier key to look at something.
+//
+// Implemented by swapping `OrbitControls.mouseButtons` when Alt goes down and
+// up. OrbitControls reads that table at pointerdown, so the swap only has to
+// beat the press, not the drag - which is why this needs no fight with event
+// ordering and no reimplementation of the controls.
 // ==========================================================================
 
 import * as THREE from 'three';
@@ -53,7 +71,64 @@ export class CameraRig {
     this.controls.maxPolarAngle = Math.PI - 0.01;
     this.controls.zoomSpeed = 0.9;
     this.controls.rotateSpeed = 0.85;
+
+    this.applyButtons(false);
+    this.listenForAlt();
   }
+
+  /**
+   * Which mouse button does what, with and without Alt.
+   *
+   * Kept as data rather than branching at the call site, so the two mappings
+   * can be read side by side and neither can drift.
+   */
+  private applyButtons(altHeld: boolean): void {
+    this.controls.mouseButtons = altHeld
+      ? {
+          LEFT: THREE.MOUSE.ROTATE,
+          MIDDLE: THREE.MOUSE.PAN,
+          RIGHT: THREE.MOUSE.DOLLY
+        }
+      : {
+          LEFT: THREE.MOUSE.ROTATE,
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: THREE.MOUSE.PAN
+        };
+  }
+
+  /**
+   * Follow the Alt key.
+   *
+   * On `window`, not the canvas: Alt can be pressed before the pointer is over
+   * the viewport, and a listener on the canvas alone would miss it and give
+   * the user the wrong mapping for their first drag.
+   *
+   * A blur reset matters more than it looks. Alt-Tab fires keydown and then
+   * takes the focus away, so the keyup never arrives - and without this the
+   * controls would stay in the Alt mapping indefinitely, with right-drag
+   * zooming when the user expects it to pan.
+   */
+  private listenForAlt(): void {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.altKey) this.applyButtons(true);
+    };
+    const onKeyUp = (event: KeyboardEvent): void => {
+      if (!event.altKey) this.applyButtons(false);
+    };
+    const onBlur = (): void => this.applyButtons(false);
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+
+    this.stopListening = () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+    };
+  }
+
+  private stopListening: (() => void) | null = null;
 
   /**
    * Tools call this while dragging so a marker drag does not also tumble the
@@ -164,6 +239,8 @@ export class CameraRig {
   }
 
   dispose(): void {
+    this.stopListening?.();
+    this.stopListening = null;
     this.controls.dispose();
   }
 }

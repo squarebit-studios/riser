@@ -19,7 +19,8 @@ import { TemplateBrowser } from './components/TemplateBrowser';
 import { Inspector } from './components/Inspector';
 import { StatusBar } from './components/StatusBar';
 import { SidePanel } from './components/ui/SidePanel';
-import { ContextMenu, MenuItem, MenuLabel, MenuSeparator, useContextMenu } from './components/ui/Menu';
+import { ContextMenu, MenuItem, MenuLabel, MenuSeparator } from './components/ui/Menu';
+import { useViewportMenu } from './components/ui/useViewportMenu';
 import { VIEW_MODES } from '../viewport/ViewModes';
 import { useUiStore } from './state';
 
@@ -91,7 +92,10 @@ function Shell(): JSX.Element {
  */
 function ViewportArea(): JSX.Element {
   const app = useApp();
-  const menu = useContextMenu();
+  // Not the plain context-menu hook the lists use: the viewport's right button
+  // also pans the camera, so a press that moved has to be told from one that
+  // did not. See useViewportMenu.
+  const menu = useViewportMenu();
   const viewMode = useUiStore((s) => s.viewMode);
   const showGeometry = useUiStore((s) => s.showGeometry);
   const showMarkers = useUiStore((s) => s.showMarkers);
