@@ -116,6 +116,7 @@ What Riser read from the file you loaded.
 | Field | Meaning |
 |---|---|
 | **Asset** | The file name of the loaded character. |
+| **Reference** | The asset path written into the exported layer, and editable. Defaults to a relative path beside the layer, which resolves when the two files sit in one directory. Point it at your pipeline path if the asset lives elsewhere. |
 | **Units** | Metres per unit, as the asset declares it. |
 | **Up axis** | `Y` or `Z`. |
 | **Skeleton** | `present` or `none`. With a skeleton, Auto-place reads exact joint positions; without one it measures the shape instead, which is approximate. |

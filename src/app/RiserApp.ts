@@ -44,6 +44,7 @@ import {
 } from '../tools/curve/project';
 import {
   clearSession,
+  exportRefFor,
   isReloadableRef,
   isWorthSaving,
   loadSession,
@@ -87,6 +88,14 @@ export class RiserApp {
    */
   private restoring = false;
   private autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Where the current character was fetched from.
+   *
+   * Kept apart from the document's `characterRef`, which is what gets written
+   * into an exported layer. This is a URL this browser can request again; that
+   * is a relative path meant to resolve beside the exported file.
+   */
+  private characterUrl = '';
 
   constructor() {
     const ui = useUiStore.getState();
@@ -193,10 +202,14 @@ export class RiserApp {
   // -----------------------------------------------------------------------
 
   async loadFromUrl(url: string): Promise<void> {
+    this.characterUrl = url;
     await this.withLoading(`Loading ${basename(url)}`, () => loadCharacterFromUrl(url));
   }
 
   async loadFromFile(file: File): Promise<void> {
+    // An upload cannot be fetched again, so there is no URL to remember: the
+    // bytes came from the user's file picker and were never ours to keep.
+    this.characterUrl = '';
     await this.withLoading(`Loading ${file.name}`, () => loadCharacterFromFile(file));
   }
 
@@ -243,11 +256,15 @@ export class RiserApp {
     // A new character means new geometry; existing bindings are re-evaluated
     // against it rather than trusted, which is what makes swapping a mesh for
     // a higher-resolution build non-destructive.
+    // The EXPORTED reference: a relative path beside the layer, not the served
+    // path the browser fetched from. The latter resolves only inside this app,
+    // so a layer carrying it opens nowhere else - which is the whole point of
+    // referencing the asset rather than copying it.
     this.store.apply(
       (d) =>
         M.setCharacterRef(
           d,
-          model.source.ref,
+          exportRefFor(model.source.ref),
           model.source.metersPerUnit ?? d.metersPerUnit,
           model.source.upAxis ?? d.upAxis
         ),
@@ -416,10 +433,15 @@ export class RiserApp {
     const doc = this.store.document;
     if (!isWorthSaving(doc)) return false;
     try {
-      return saveSession(doc, window.localStorage);
+      return saveSession(doc, window.localStorage, this.characterUrl);
     } catch {
       return false;
     }
+  }
+
+  /** Change the reference written into the exported layer. */
+  setCharacterRef(ref: string): void {
+    this.store.apply((d) => M.setCharacterRef(d, ref), 'Set character reference');
   }
 
   /** Forget the stored session. Used by "start over". */
@@ -455,18 +477,19 @@ export class RiserApp {
     this.store.reset(snapshot.doc);
     if (snapshot.doc.templateId) ui.setTemplateId(snapshot.doc.templateId);
 
-    const ref = snapshot.characterRef;
-    if (!isReloadableRef(ref)) {
+    const url = snapshot.loadUrl;
+    if (!isReloadableRef(url)) {
       this.restoring = false;
       this.syncFromDocument();
       ui.setNotice(
-        `Restored your last document. Load ${ref || 'the character'} again to ` +
-          'see the markers on the mesh.'
+        `Restored your last document. Load ${
+          snapshot.doc.characterRef.replace(/^\.\//, '') || 'the character'
+        } again to see the markers on the mesh.`
       );
       return;
     }
 
-    void this.loadFromUrl(ref)
+    void this.loadFromUrl(url)
       .then(() => {
         ui.setNotice('Restored your last document.');
       })

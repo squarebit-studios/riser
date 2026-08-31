@@ -39,6 +39,20 @@ export function Inspector(): JSX.Element {
         {characterName ? (
           <>
             <Field label="Asset" value={characterName} mono />
+            {/* Editable, because this is what an exported layer references
+                and only the user knows where the asset lives in their
+                pipeline. It defaults to a path beside the exported file,
+                which is the portable choice. */}
+            <label className="flex items-baseline gap-2 px-2 py-0.5">
+              <span className="w-24 shrink-0 text-ink-faint">Reference</span>
+              <input
+                className="min-w-0 flex-1 rounded bg-panel-light px-1.5 py-0.5 font-mono text-[11px] text-ink-dim outline-none focus:text-ink"
+                value={doc.characterRef}
+                spellCheck={false}
+                onChange={(e) => app.setCharacterRef(e.target.value)}
+                title="The asset path written into the exported USD layer. Relative paths resolve beside the exported file."
+              />
+            </label>
             <Field label="Units" value={`${doc.metersPerUnit} m per unit`} />
             <Field label="Up axis" value={doc.upAxis} />
             <Field

@@ -130,7 +130,14 @@ test.describe('loading a character', () => {
       '/Riser/Character/Geom/Body',
       '/Riser/Character/Geom/Head'
     ]);
-    expect(model.ref).toContain('biped-blockout.usda');
+
+    // The reference written into an exported layer is a path relative to that
+    // layer, NOT the URL the browser fetched from. A served path like
+    // /assets/biped-blockout.usda resolves only inside this app, so a layer
+    // carrying it opens nowhere else - every guide present and every one of
+    // them unresolvable.
+    expect(model.ref).toBe('./biped-blockout.usda');
+    expect(model.ref.startsWith('./')).toBe(true);
     await expect(page.getByText('biped-blockout.usda')).toBeVisible();
   });
 });
@@ -474,41 +481,64 @@ test.describe('curves are actually drawn', () => {
   }
 
   /**
-   * Trace a curve down the torso long enough to measure reliably.
+   * Put a long, known curve down the character's spine.
    *
-   * Clicking a fixed list of offsets is not good enough: some clicks miss the
-   * mesh and some land on an existing control vertex and select it instead of
-   * adding one, so the curve's length - and therefore how many pixels the line
-   * covers - varied from run to run. That made the measurement swing between
-   * hundreds of pixels and a couple of dozen, which is flakiness rather than a
-   * finding. Placing a dense spread and asserting the count makes the input
-   * deterministic enough to draw a conclusion from.
+   * Built directly in the document rather than by clicking. Clicking is the
+   * subject of a different test; here the subject is RENDERING, and letting
+   * the input vary made the measurement vary with it - some clicks miss the
+   * mesh, some land on an existing control vertex and select it instead of
+   * adding one, so the curve's length and the pixels it covers swung between
+   * runs. A test that measures a different thing each time cannot tell you
+   * whether the line drew.
+   *
+   * The control vertices are left unbound, which is legal, and the samples
+   * between them still go through the real projection path.
    */
-  async function traceLongCurve(page: Page): Promise<void> {
+  async function buildLongCurve(page: Page): Promise<void> {
     await clearGuides(page);
     await page.getByRole('button', { name: 'Curves', exact: true }).click();
+    // Selecting it in the checklist is what makes it the ACTIVE curve, which
+    // is what draws it in the active colour with its control vertices shown.
     await page.getByTestId('curve-spineCurve').click();
 
-    for (const dy of [-90, -70, -50, -30, -10, 10, 30, 50, 70, 90]) {
-      await clickViewport(page, 0, dy);
-      await page.waitForTimeout(90);
-    }
+    await page.evaluate(() => {
+      const app = window.__riser as unknown as {
+        store: { apply(fn: (d: unknown) => unknown, label: string): void };
+      };
+      const heights = [0.95, 1.05, 1.15, 1.25, 1.35, 1.45];
+      app.store.apply(
+        (doc) => ({
+          ...(doc as Record<string, unknown>),
+          curves: [
+            {
+              id: 'spineCurve',
+              group: 'spine',
+              closed: false,
+              width: 0.005,
+              points: heights.map((y) => ({
+                position: [0, y, 0.12],
+                normal: [0, 0, 1],
+                binding: null
+              }))
+            }
+          ]
+        }),
+        'Build a test curve'
+      );
+    });
 
-    const placed = await page.evaluate(
-      () => window.__riser!.store.document.curves[0]?.points.length ?? 0
+    await page.waitForFunction(
+      () => (window.__riser!.store.document.curves[0]?.points.length ?? 0) === 6
     );
-    expect(placed, 'could not trace a long enough curve').toBeGreaterThanOrEqual(6);
     await page.waitForTimeout(300);
   }
 
   /**
    * Fatten the curve lines, purely to make the measurement unambiguous.
    *
-   * The subject is whether the line draws at all, and a 2.5px antialiased line
-   * a few dozen pixels long sits close enough to the noise floor that the
-   * count wandered between runs. Width is converted to pixels USING the
-   * resolution, so a stale resolution still produces nothing at any width -
-   * the property under test is untouched, the signal is just louder.
+   * Width is converted to pixels USING the resolution, so a stale resolution
+   * still draws nothing at any width - the property under test is untouched,
+   * the signal is just loud enough to sit nowhere near the noise floor.
    */
   async function fattenLines(page: Page, width: number): Promise<void> {
     await page.evaluate((width) => {
@@ -551,7 +581,7 @@ test.describe('curves are actually drawn', () => {
     await openApp(page);
     await loadBiped(page);
 
-    await traceLongCurve(page);
+    await buildLongCurve(page);
 
     // Hiding ONLY the line materials isolates the line: the control vertices
     // stay drawn, so whatever changes is the line and nothing else.
@@ -583,7 +613,7 @@ test.describe('curves are actually drawn', () => {
     await openApp(page);
     await loadBiped(page);
 
-    await traceLongCurve(page);
+    await buildLongCurve(page);
 
     // Resize with no further document edits, then measure. Deliberately
     // LARGER: shrinking works too, but it also shortens the curve on screen,

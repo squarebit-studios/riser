@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   SESSION_KEY,
   clearSession,
+  exportRefFor,
   isReloadableRef,
   isWorthSaving,
   loadSession,
@@ -63,13 +64,15 @@ describe('saving and restoring a session', () => {
     const storage = fakeStorage();
     const doc = populated();
 
-    expect(saveSession(doc, storage)).toBe(true);
+    expect(saveSession(doc, storage, '/assets/biped-blockout.usda')).toBe(true);
     const restored = loadSession(storage);
 
     expect(restored).not.toBeNull();
     expect(restored!.doc.guides.map((g) => g.id)).toEqual(['pelvis', 'chest']);
     expect(restored!.doc.templateId).toBe('biped');
-    expect(restored!.characterRef).toBe('/assets/biped-blockout.usda');
+    // The URL the app can fetch again, which is NOT the reference written into
+    // the exported layer.
+    expect(restored!.loadUrl).toBe('/assets/biped-blockout.usda');
   });
 
   it('keeps bindings and provenance intact', () => {
@@ -133,7 +136,7 @@ describe('a broken session must never stop the app starting', () => {
     const storage = fakeStorage();
     storage.setItem(
       SESSION_KEY,
-      JSON.stringify({ version: 1, usda: 'garbage', savedAt: '', characterRef: '' })
+      JSON.stringify({ version: 1, usda: 'garbage', savedAt: '', loadUrl: '' })
     );
     expect(loadSession(storage)).toBeNull();
   });
@@ -186,6 +189,38 @@ describe('isWorthSaving', () => {
       points: []
     });
     expect(isWorthSaving(doc)).toBe(true);
+  });
+});
+
+describe('exportRefFor', () => {
+  it('writes a relative path beside the layer', () => {
+    // The conventional and most portable choice in USD: put the two files in
+    // one directory and the reference resolves, for any tool, anywhere.
+    expect(exportRefFor('/assets/biped-blockout.usda')).toBe('./biped-blockout.usda');
+    expect(exportRefFor('https://cdn.example.com/rigs/hero.usdc')).toBe('./hero.usdc');
+  });
+
+  it('does not carry the served path into the exported file', () => {
+    // A path like /assets/x.usda resolves only inside this app. A layer
+    // carrying it opens nowhere else, which defeats referencing the asset
+    // rather than copying it.
+    expect(exportRefFor('/assets/x.usda')).not.toContain('/assets/');
+  });
+
+  it('handles a bare upload name and a windows path', () => {
+    expect(exportRefFor('hero.fbx')).toBe('./hero.fbx');
+    // Escaped backslashes: an upload's name on Windows really does arrive with
+    // them, and an unescaped literal here would collapse to no separators at
+    // all and quietly test nothing.
+    expect(exportRefFor('C:\\shows\\hero\\hero.usdc')).toBe('./hero.usdc');
+  });
+
+  it('strips a query string', () => {
+    expect(exportRefFor('/assets/x.usda?v=3')).toBe('./x.usda');
+  });
+
+  it('is empty for an empty input', () => {
+    expect(exportRefFor('')).toBe('');
   });
 });
 

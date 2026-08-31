@@ -174,12 +174,18 @@ def Xform "Riser" ( kind = "assembly" )
   them, with the same binding data as arrays.
 - The character is **referenced**, not copied. Your asset is untouched.
 
-**About that reference.** It points at wherever the character came from. If you
-uploaded a file, it is that file's name, so keep the exported layer beside the
-character and it resolves. If you loaded a bundled character, it points at the
-path the app served it from, which will not resolve on your machine. Edit the
-`references = @...@` line to point at your copy of the asset, or open the layer
-in a tool that lets you repoint it.
+**About that reference.** Riser writes a relative path beside the layer, such as
+`@./hero.usdc@`. Put the exported `.usda` in the same directory as the character
+and it resolves, in any USD tool, on any machine.
+
+If your asset lives somewhere else, change it before exporting: the
+**Reference** field in the inspector, under Character, writes straight into the
+layer. A studio pointing at its own pipeline path, for example
+`@/show/assets/hero/hero.usd@`, sets it once and the exported layer opens
+without editing.
+
+You can also edit the `references = @...@` line in the exported file by hand,
+or repoint it in any tool that lets you.
 
 The positions in the file are a hint. The authoritative values are what OpenUSD
 computes by evaluating each binding against the geometry the reference actually
