@@ -18,6 +18,17 @@
 // someone can hold the button still for a second and still mean "menu", and
 // can flick a fast pan in under a hundred milliseconds.
 //
+// THE MENU OPENS ON POINTERUP, NOT ON `contextmenu`, and that is not a
+// preference. WHEN `contextmenu` fires is platform-specific: Windows raises it
+// when the right button is RELEASED, X11 raises it when the button is PRESSED.
+// Deciding there meant the check worked perfectly on Windows and failed on
+// Linux, where the event arrives before the drag it is supposed to notice -
+// caught by CI, which runs Linux, after passing locally every time.
+//
+// `pointerup` happens after the movement on every platform, which is the whole
+// requirement. `contextmenu` is still handled, but only to suppress the
+// browser's own menu.
+//
 // TOUCH. There is no right button on an iPad, so a long press opens the menu
 // instead - the platform convention, and the same gesture that opens a context
 // menu everywhere else on the device. It is cancelled by movement, so a
@@ -100,26 +111,32 @@ export function useViewportMenu(): ViewportMenuState {
     [cancelLongPress]
   );
 
-  const finish = useCallback(() => {
+  const onPointerUp = useCallback(
+    (event: React.PointerEvent) => {
+      cancelLongPress();
+      const wasDrag = moved.current;
+      const openedAlready = openedByTouch.current;
+      origin.current = null;
+
+      // Right button, released where it was pressed: a menu request. A drag
+      // panned the camera and is not one, and a long press has already opened
+      // the menu itself.
+      if (event.button === 2 && !wasDrag && !openedAlready) {
+        setPoint({ x: event.clientX, y: event.clientY });
+      }
+    },
+    [cancelLongPress]
+  );
+
+  const onPointerCancel = useCallback(() => {
     cancelLongPress();
-    // `moved` is deliberately NOT reset here. The contextmenu event arrives
-    // after pointerup, and it is the flag set during the drag that has to
-    // still be readable when it does.
     origin.current = null;
   }, [cancelLongPress]);
 
   const onContextMenu = useCallback((event: React.MouseEvent) => {
-    // Always suppress the browser's own menu - the viewport has its own, and
-    // the native one over a 3D canvas offers nothing but "save image".
+    // Suppression only. The browser's own menu over a 3D canvas offers nothing
+    // but "save image", and WHEN this fires differs by platform - see above.
     event.preventDefault();
-
-    // A right-drag that panned the camera is not a request for a menu.
-    if (moved.current) return;
-    // A long press already opened it; the platform then synthesises a
-    // contextmenu, which would immediately reopen it at the same spot.
-    if (openedByTouch.current) return;
-
-    setPoint({ x: event.clientX, y: event.clientY });
   }, []);
 
   return {
@@ -128,8 +145,8 @@ export function useViewportMenu(): ViewportMenuState {
     props: {
       onPointerDown,
       onPointerMove,
-      onPointerUp: finish,
-      onPointerCancel: finish,
+      onPointerUp,
+      onPointerCancel,
       onContextMenu
     }
   };
