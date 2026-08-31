@@ -1,49 +1,81 @@
 # Changelog
 
+A summary of what is new in each release of Riser.
+
+## [0.8.5] - 2026-08-31
+
+### Changed
+- Every entry in this changelog now carries an Added, Fixed or Changed label, in the app and in the docs, the same way the product changelogs on the store site do
+
 ## [0.8.4] - 2026-08-31
-- Fixed: the eyes projected their iris from the eyeball's own transform instead of from the projector the exporter recorded. The matrix was in the file the whole time and nothing was reading it
-- The projector now lands exactly on the eye centre on both eyes, where before it sat 1.7 metres away beside the origin
+
+### Fixed
+- The eyes projected their iris from the eyeball's own transform instead of from the projector the exporter recorded. The matrix was in the file the whole time and nothing was reading it. The projector now lands exactly on the eye centre on both eyes, where before it sat 1.7 metres away beside the origin
 
 ## [0.8.3] - 2026-08-31
-- Fixed: the eyes rendered black. The iris and sclera maps were being assigned to uniform names that do not exist, so they never reached the shader and it sampled nothing
+
+### Fixed
+- The eyes rendered black. The iris and sclera maps were being assigned to uniform names that do not exist, so they never reached the shader and it sampled nothing
+- Hiding a piece in the Scene tab could not be undone. The list was cached against the character alone, so the row never learned it was hidden and clicking again hid it a second time
+
+### Changed
 - Smoothing is on or off independently of the level, so level 0 is a real choice: the mesh as the file describes it, drawn as quads rather than as its triangulation
 - The Smooth button now reads accent blue when it is on and grey when it is off
-- Fixed: hiding a piece in the Scene tab could not be undone. The list was cached against the character alone, so the row never learned it was hidden and clicking again hid it a second time
 
 ## [0.8.2] - 2026-08-31
-- Fixed: the eyes were shaded but blank. Their iris and sclera maps are packed inside the .usdz, and Riser was looking for them beside it, so the shader ran with no textures. The dev server answered those requests with the app's own HTML instead of a 404, which is why nothing ever reported an error
+
+### Fixed
+- The eyes were shaded but blank. Their iris and sclera maps are packed inside the .usdz, and Riser was looking for them beside it, so the shader ran with no textures. The dev server answered those requests with the app's own HTML instead of a 404, which is why nothing ever reported an error
 
 ## [0.8.1] - 2026-08-31
+
+### Added
 - Scene tab listing every piece a character is made of, with its triangle count and whether it is skinned
 - Select a piece to see which one it is in the viewport, and hide it to reach whatever is underneath. On a clothed character that is how a hip marker gets onto the hip rather than the spacesuit
-- Smoothing is now a button with the level behind a menu, the way Unreal does it, instead of a slider. Turning it on returns to the level you last chose
-- Wireframe follows the quads on a smoothed surface instead of the triangles it is drawn with, so the edge flow is readable rather than buried under diagonals
 - Gary's eyes render as real Squarebit Eyes rather than white spheres. The look was always in the file: 56 attributes per eye, which nothing was reading
 
+### Changed
+- Smoothing is now a button with the level behind a menu, the way Unreal does it, instead of a slider. Turning it on returns to the level you last chose
+- Wireframe follows the quads on a smoothed surface instead of the triangles it is drawn with, so the edge flow is readable rather than buried under diagonals
+
 ## [0.7.2] - 2026-08-31
-- Markers place instantly again on heavy characters: 1.7s down to under 0.2s on a 137k-triangle production character
-- Raycasting is now accelerated with a bounding volume hierarchy, so picking cost barely grows with triangle count
-- Alt+right drag zooms sideways as well as up and down, the way Maya does
+
+### Added
 - Animation tab in the right panel. Play a clip on the loaded character and scrub it, to check your markers against motion
 - Clips a character shipped with are found on load; clips from another file can be added, and one that names bones the character does not have is refused with the names it wanted rather than played silently
 - Bundled animated biped, so there is something that moves out of the box
-- Note while a clip plays: markers stay where the resting mesh put them, because a binding names a triangle of the neutral character
-- A clip is opt-in. A character that ships with animation now loads at its rest pose, because a marker belongs on the neutral character and every automatic placement measures the resting silhouette
+
+### Fixed
+- Markers place instantly again on heavy characters: 1.7s down to under 0.2s on a 137k-triangle production character
 - Subdivision keeps a mesh's material groups, so a character whose body and clothing share one mesh no longer vanishes when smoothing is turned on
-- Fixed: the blend shape panel was being rendered inside every labelled row of the inspector
+- The blend shape panel was being rendered inside every labelled row of the inspector
+
+### Changed
+- Raycasting is now accelerated with a bounding volume hierarchy, so picking cost barely grows with triangle count
+- Alt+right drag zooms sideways as well as up and down, the way Maya does
+- A clip is opt-in. A character that ships with animation now loads at its rest pose, because a marker belongs on the neutral character and every automatic placement measures the resting silhouette
+
+### Notes
+- While a clip plays, markers stay where the resting mesh put them, because a binding names a triangle of the neutral character
 
 ## [0.7.0] - 2026-08-31
+
+### Added
 - Gary is now a rigged, textured production character: 482 joints, clothing over skin, and 46 of 49 markers placed exactly from his own skeleton
 - Studio rig naming is understood: `_bind`, `_jnt` and similar suffixes are ignored, and twist, bend and roll chains are never mistaken for real joints
-- A rig carrying both a clavicle and a shoulder now gets both right, without breaking conventions where "shoulder" means the clavicle
 - Face joints (chin, nose, ears, mouth corners) are matched when a rig names them anatomically
 - Maya navigation: Alt+left tumbles, Alt+middle pans, Alt+right zooms. The plain bindings still work without Alt, so no modifier is required to look at anything
 - Blend shape panel. Fire a character's shapes to check your markers still sit right when the face moves; nothing there changes the document
 - Touch: a long press opens the viewport menu, since an iPad has no right button. Pinch and two-finger gestures are untouched
-- Fixed: a right drag panned the camera AND opened the viewport menu, over the very thing you had just moved into view
-- Fixed: placing a marker jumped the selection to the next unplaced guide, so a nudge to what you just placed moved a different guide entirely. The marker stays selected; Next advances
+
+### Fixed
+- A rig carrying both a clavicle and a shoulder now gets both right, without breaking conventions where "shoulder" means the clavicle
+- A right drag panned the camera AND opened the viewport menu, over the very thing you had just moved into view
+- Placing a marker jumped the selection to the next unplaced guide, so a nudge to what you just placed moved a different guide entirely. The marker stays selected; Next advances
 
 ## [0.6.0] - 2026-08-31
+
+### Added
 - Placement modes: a click can mean the surface, the centre of the volume, or a free point in space
 - Centre placement is measured from the geometry, so it is right on a thin wrist and a heavy thigh on the same character
 - Auto placement mode follows the template: joints go inside the body, everything else on the skin
@@ -54,34 +86,40 @@
 - Version pill beside the Riser wordmark; clicking it shows what changed
 - In-app changelog, read from the same CHANGELOG.md everyone edits
 - Documentation is now in the app, under Help: six pages with images, searchable, and "?" opens it
-- Dev server changes to viewport or tool code now force a full reload, instead of leaving the app running old code
 - Depth readout in the details panel: "on the surface", or how far inside
 - Menu bar (File, Edit, View, Template, Help) carrying every action, including what the toolbar has no room for
 - Searchable template browser with All / Left / Suggested / Mine filters, collapsible groups and per-group progress
 - Step-by-step guidance, on by default and switchable off for good: one marker to place at a time, with its hint
 - Right-click menus in the viewport and on marker rows
 - Resizable, collapsible panels that remember their size between visits
-- Shading collapsed into one dropdown; visibility grouped under an eye menu that counts what is hidden
 - Skeleton display. Riser could read a rig but never show one
 - Quadruped automatic placement: four-legged characters are measured along their length rather than their height
 - Gary added as a bundled character: a production asset, 34 meshes, 137k triangles, no rig
 - tools/mb-to-usd.py converts Maya scenes to USD through mayapy
+
+### Fixed
+- Choosing a template wrote the document but not the interface, so a horse under the Quadruped template was still measured as a person
+- Centre placement measured nothing at all. Back faces are culled when raycasting a front-facing material, so the far side was never found
+- Centre placement on a clothed character measured the gap between the clothes and the skin
+- Centre placement on a character authored in centimetres was applied a hundred times too small
+- Curves placed inside the body were pulled back onto the surface by the display projection
+- Automatic placement refused stylised characters by treating leg length as diagnostic of a biped
+- Mirrored placement measured the other limb independently, so a symmetric pair landed centimetres apart in depth
+- The end-to-end suite served whatever was last built rather than the working tree
+- The reference-render test compared against a Windows baseline and could never pass on Linux CI
+
+### Changed
+- Shading collapsed into one dropdown; visibility grouped under an eye menu that counts what is hidden
 - Smoothing starts at 0, so a character appears exactly as its file describes it
 - Every smoothing level visited is cached, so returning to one is instant rather than a fresh refinement
 - Smoothing is budgeted across the whole character rather than per mesh, and says so when a level was reduced
 - Unshaded characters get a neutral clay material instead of rendering as a black silhouette
-- Fixed: choosing a template wrote the document but not the interface, so a horse under the Quadruped template was still measured as a person
-- Fixed: centre placement measured nothing at all. Back faces are culled when raycasting a front-facing material, so the far side was never found
-- Fixed: centre placement on a clothed character measured the gap between the clothes and the skin
-- Fixed: centre placement on a character authored in centimetres was applied a hundred times too small
-- Fixed: curves placed inside the body were pulled back onto the surface by the display projection
-- Fixed: automatic placement refused stylised characters by treating leg length as diagnostic of a biped
-- Fixed: mirrored placement measured the other limb independently, so a symmetric pair landed centimetres apart in depth
-- Fixed: the end-to-end suite served whatever was last built rather than the working tree
-- Fixed: the reference-render test compared against a Windows baseline and could never pass on Linux CI
+- Dev server changes to viewport or tool code now force a full reload, instead of leaving the app running old code
 - package.json is now the single source of truth for the version; version.json is generated from it at build
 
 ## [0.5.0] - 2026-08-30
+
+### Added
 - First release of Riser as a character setup application, replacing the OBJ viewer prototype
 - USD-first document model: markers and curves stored as a layer that references the character rather than modifying it
 - Every marker is bound to a triangle, so it survives a retopo or a mesh swap
@@ -96,4 +134,6 @@
 - Import from USD, glTF, FBX and OBJ; export as a USD layer
 
 ## [0.4.1] - 2026-08-29
+
+### Notes
 - The OBJ viewer prototype, kept in history on main. Unrelated to the current application beyond the name.

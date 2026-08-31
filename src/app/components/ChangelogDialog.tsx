@@ -18,11 +18,55 @@ import { useEffect, useState } from 'react';
 import { Icon } from './ui/Icon';
 import { APP_VERSION } from '../version';
 
+/**
+ * What a group of entries is: Added, Fixed, Changed and friends.
+ *
+ * Kept as a plain string rather than a union so an unrecognised heading still
+ * renders, with the neutral pill, instead of being dropped. A changelog that
+ * loses entries because someone invented a section is worse than one that
+ * shows a label it has no colour for.
+ */
+export type ChangeKind = string;
+
+export interface ChangeGroup {
+  kind: ChangeKind;
+  items: string[];
+}
+
 interface Release {
   version: string;
   date: string;
-  items: string[];
+  groups: ChangeGroup[];
 }
+
+/**
+ * Pill colours, matching the product changelogs on the store site so the two
+ * read as the same thing: green for what is new, amber for what was broken,
+ * blue for what moved.
+ */
+const KIND_STYLES: Record<string, string> = {
+  Added: 'bg-emerald-500/15 text-emerald-400',
+  Fixed: 'bg-amber-500/15 text-amber-400',
+  Changed: 'bg-sky-500/15 text-sky-400',
+  Removed: 'bg-rose-500/15 text-rose-400',
+  Deprecated: 'bg-violet-500/15 text-violet-400',
+  Security: 'bg-pink-500/15 text-pink-400'
+};
+
+const NEUTRAL_PILL = 'bg-panel-active text-ink-faint';
+
+export function pillClassFor(kind: ChangeKind): string {
+  return KIND_STYLES[kind] ?? NEUTRAL_PILL;
+}
+
+/**
+ * The group an entry belongs to when the release has no `###` headings at all.
+ *
+ * Every release up to 0.8.4 was written as one flat list, and those entries are
+ * still worth showing. They land here rather than being forced into a category
+ * nobody chose for them.
+ */
+const UNLABELLED = 'Changes';
 
 /**
  * Read the releases out of a Keep-a-Changelog style document.
@@ -35,6 +79,7 @@ interface Release {
 export function parseChangelog(markdown: string): Release[] {
   const releases: Release[] = [];
   let current: Release | null = null;
+  let kind: ChangeKind = UNLABELLED;
 
   for (const raw of markdown.split('\n')) {
     const line = raw.trim();
@@ -42,13 +87,28 @@ export function parseChangelog(markdown: string): Release[] {
     const heading = line.match(/^##\s+\[?v?([\d]+\.[\d]+\.[\d]+(?:-[\w.]+)?)\]?(?:\s*[-–]\s*(.+))?$/);
     if (heading) {
       if (current) releases.push(current);
-      current = { version: heading[1]!, date: heading[2]?.trim() ?? '', items: [] };
+      current = { version: heading[1]!, date: heading[2]?.trim() ?? '', groups: [] };
+      // A new release starts unlabelled, so an old flat list still reads.
+      kind = UNLABELLED;
+      continue;
+    }
+
+    const section = line.match(/^###\s+(.+?)\s*$/);
+    if (section) {
+      kind = section[1]!;
       continue;
     }
 
     const bullet = line.match(/^[-*]\s+(.+)$/);
     if (bullet && current) {
-      current.items.push(bullet[1]!.replace(/\*\*(.+?)\*\*/g, '$1'));
+      const text = bullet[1]!.replace(/\*\*(.+?)\*\*/g, '$1');
+      // Grouped as they arrive, so the order in the file is the order on
+      // screen and a section repeated later merges rather than splitting.
+      const group =
+        current.groups.find((g) => g.kind === kind) ??
+        (current.groups.push({ kind, items: [] }),
+        current.groups[current.groups.length - 1]!);
+      group.items.push(text);
     }
   }
   if (current) releases.push(current);
@@ -139,17 +199,31 @@ export function ChangelogDialog({ onClose }: { onClose: () => void }): JSX.Eleme
                   <span className="text-[11px] text-ink-faint">{release.date}</span>
                 )}
               </div>
-              <ul className="space-y-1">
-                {release.items.map((item, index) => (
-                  <li
-                    key={index}
-                    className="flex gap-2 leading-snug text-ink-dim"
+              {release.groups.map((group) => (
+                <div key={group.kind} className="mb-2.5 last:mb-0">
+                  {/* The pill carries the category, so the entries below it do
+                      not have to start with "Fixed:" to say what they are. */}
+                  <span
+                    data-testid={`change-kind-${group.kind}`}
+                    className={`mb-1 inline-block rounded-full px-2 py-px text-[10px] font-semibold uppercase tracking-wide ${pillClassFor(
+                      group.kind
+                    )}`}
                   >
-                    <span aria-hidden="true" className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-ink-faint" />
-                    <span className="rs-selectable">{item}</span>
-                  </li>
-                ))}
-              </ul>
+                    {group.kind}
+                  </span>
+                  <ul className="space-y-1">
+                    {group.items.map((item, index) => (
+                      <li
+                        key={index}
+                        className="flex gap-2 leading-snug text-ink-dim"
+                      >
+                        <span aria-hidden="true" className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-ink-faint" />
+                        <span className="rs-selectable">{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </section>
           ))}
         </div>

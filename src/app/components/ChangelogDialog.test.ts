@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { parseChangelog } from './ChangelogDialog';
+import { parseChangelog, pillClassFor } from './ChangelogDialog';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+
+/** Every entry of a release, whatever section it came from. */
+function allItems(release: { groups: { items: string[] }[] }): string[] {
+  return release.groups.flatMap((group) => group.items);
+}
 
 describe('reading the changelog', () => {
   it('parses the real CHANGELOG.md', () => {
@@ -14,7 +19,7 @@ describe('reading the changelog', () => {
     expect(releases.length).toBeGreaterThanOrEqual(2);
     for (const release of releases) {
       expect(release.version).toMatch(/^\d+\.\d+\.\d+/);
-      expect(release.items.length).toBeGreaterThan(0);
+      expect(allItems(release).length).toBeGreaterThan(0);
     }
   });
 
@@ -55,7 +60,7 @@ describe('reading the changelog', () => {
     expect(releases[0]).toEqual({
       version: '1.2.3',
       date: '2026-01-02',
-      items: ['Something']
+      groups: [{ kind: 'Changes', items: ['Something'] }]
     });
   });
 
@@ -69,16 +74,42 @@ describe('reading the changelog', () => {
     }
   });
 
-  it('flattens section headings rather than dropping their bullets', () => {
+  it('groups bullets under the section heading above them', () => {
     const releases = parseChangelog(
       '## [1.0.0] - 2026-01-01\n### Added\n- One\n### Fixed\n- Two\n'
     );
-    expect(releases[0]!.items).toEqual(['One', 'Two']);
+    expect(releases[0]!.groups).toEqual([
+      { kind: 'Added', items: ['One'] },
+      { kind: 'Fixed', items: ['Two'] }
+    ]);
+  });
+
+  it('merges a section that appears twice in one release', () => {
+    const releases = parseChangelog(
+      '## [1.0.0]\n### Added\n- One\n### Fixed\n- Two\n### Added\n- Three\n'
+    );
+    expect(releases[0]!.groups.map((g) => g.kind)).toEqual(['Added', 'Fixed']);
+    expect(releases[0]!.groups[0]!.items).toEqual(['One', 'Three']);
+  });
+
+  it('keeps entries from a release with no sections at all', () => {
+    // Every release up to 0.8.4 was one flat list. Those entries still have to
+    // render, rather than being dropped for lacking a heading.
+    const releases = parseChangelog('## [1.0.0]\n- One\n- Two\n');
+    expect(releases[0]!.groups).toHaveLength(1);
+    expect(releases[0]!.groups[0]!.items).toEqual(['One', 'Two']);
+  });
+
+  it('does not let one release inherit the last section of the one before', () => {
+    const releases = parseChangelog(
+      '## [2.0.0]\n### Fixed\n- Old bug\n\n## [1.0.0]\n- Something\n'
+    );
+    expect(releases[1]!.groups[0]!.kind).not.toBe('Fixed');
   });
 
   it('strips bold markers so the text reads plainly', () => {
     const releases = parseChangelog('## [1.0.0]\n- **Bold** and plain\n');
-    expect(releases[0]!.items[0]).toBe('Bold and plain');
+    expect(allItems(releases[0]!)[0]).toBe('Bold and plain');
   });
 
   it('ignores prose outside a release', () => {
@@ -89,5 +120,35 @@ describe('reading the changelog', () => {
   it('returns nothing for an empty document', () => {
     expect(parseChangelog('')).toEqual([]);
     expect(parseChangelog('# Changelog\n')).toEqual([]);
+  });
+});
+
+describe('the change kind pills', () => {
+  it('gives Added, Fixed and Changed each their own colour', () => {
+    const added = pillClassFor('Added');
+    const fixed = pillClassFor('Fixed');
+    const changed = pillClassFor('Changed');
+    expect(new Set([added, fixed, changed]).size).toBe(3);
+  });
+
+  it('falls back to a neutral pill rather than nothing', () => {
+    // An unrecognised heading still has to render. Losing entries because
+    // someone invented a section would be worse than showing a grey label.
+    const unknown = pillClassFor('Reticulated');
+    expect(unknown.length).toBeGreaterThan(0);
+    expect(unknown).toBe(pillClassFor('Changes'));
+  });
+
+  it('labels the real CHANGELOG.md with kinds it has colours for', () => {
+    const markdown = readFileSync(join(process.cwd(), 'CHANGELOG.md'), 'utf8');
+    const kinds = new Set(
+      parseChangelog(markdown).flatMap((r) => r.groups.map((g) => g.kind))
+    );
+
+    // The point of the exercise: the recent releases are categorised, so the
+    // reader can tell a new feature from a repair at a glance.
+    expect(kinds.has('Added')).toBe(true);
+    expect(kinds.has('Fixed')).toBe(true);
+    expect(kinds.has('Changed')).toBe(true);
   });
 });

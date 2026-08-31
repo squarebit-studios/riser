@@ -31,6 +31,12 @@ cannot find a control, it is in a menu.
 | **Template** | Which rig layout to place: Biped, Quadruped or Face only. |
 | **Help** | Documentation, and the keyboard shortcuts. |
 
+The version beside the Riser wordmark is a button. Clicking it shows what
+changed in each release, with every entry labelled **Added**, **Fixed** or
+**Changed** so a new feature is easy to tell from a repair. An entry under a
+heading Riser has no colour for still shows, with a neutral label, because
+losing an entry is worse than showing one in grey.
+
 Items you cannot use right now are shown greyed out rather than hidden, so it
 stays possible to learn that they exist.
 
