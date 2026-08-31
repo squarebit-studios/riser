@@ -49,6 +49,60 @@ import {
   type SubdivMesh
 } from '@squarebit/subdivs-three';
 import { LAYER_CAGE, LAYER_SCENE } from './Viewport';
+import type { AuthoredCage } from '../io/authoredTopology';
+
+/** Where an authored cage is left for the surface to find. */
+export const AUTHORED_CAGE = 'riserAuthoredCage';
+
+/**
+ * Turn a file's own topology into a cage, if it reconciles with the geometry
+ * three built from the same file.
+ *
+ * The check is the whole point. The authored data and the loaded geometry
+ * describe the same surface, but nothing enforces that, and the failure is not
+ * subtle: face material slots that do not line up with their faces made Gary's
+ * body and clothing vanish outright once already. Triangles are the common
+ * currency between an n-gon cage and a triangulated mesh, so they are what
+ * gets compared, overall and per material slot.
+ */
+export function authoredCageFor(mesh: THREE.Mesh): SubdivMesh | null {
+  const authored = mesh.userData[AUTHORED_CAGE] as AuthoredCage | undefined;
+  if (!authored) return null;
+
+  const index = mesh.geometry.getIndex();
+  const position = mesh.geometry.getAttribute('position');
+  const triangles = index
+    ? Math.floor(index.count / 3)
+    : position
+      ? Math.floor(position.count / 3)
+      : 0;
+  if (triangles === 0 || authored.triangles !== triangles) return null;
+
+  const groups = mesh.geometry.groups ?? [];
+  const slots = authored.trianglesPerSlot;
+  if (groups.length > 1 || slots.length > 1) {
+    if (groups.length !== slots.length) return null;
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i]!;
+      // Groups are emitted in subset order, so slot i here must be the same
+      // faces as group i there. Comparing the counts is what turns that from
+      // an assumption into something checked.
+      if (group.materialIndex !== i) return null;
+      if (Math.floor(group.count / 3) !== slots[i]) return null;
+    }
+  }
+
+  const cage: SubdivMesh = {
+    positions: authored.positions,
+    faceVertexCounts: authored.faceVertexCounts,
+    faceVertexIndices: authored.faceVertexIndices
+  };
+  if (authored.uvs) cage.uvs = authored.uvs;
+  if (authored.faceMaterialIndices) {
+    cage.faceMaterialIndices = authored.faceMaterialIndices;
+  }
+  return cage;
+}
 
 /** Level 0 means "no subdivision" - the cage is shown and bound to directly. */
 export const MIN_SUBDIV_LEVEL = 0;
@@ -118,6 +172,8 @@ export class SubdivSurface {
    * than rebuilt on each refinement.
    */
   private cageSubdiv: SubdivMesh | null = null;
+  /** True when the cage came from the file rather than from recovered quads. */
+  private authored = false;
   private level = 0;
   private clamped = false;
   private failed = false;
@@ -219,12 +275,61 @@ export class SubdivSurface {
    * for it.
    */
   private cageQuads(): SubdivMesh {
-    if (!this.cageSubdiv) {
-      const extracted = fromBufferGeometry(this.cage.geometry);
-      assignMaterialSlots(extracted.mesh, this.cage.geometry);
-      this.cageSubdiv = recoverQuads(extracted.mesh);
+    if (this.cageSubdiv) return this.cageSubdiv;
+
+    // The file's own polygons first.
+    //
+    // `recoverQuads` pairs triangles back into quads by looking at them, which
+    // is a good heuristic and is still a heuristic: on Gary's body it returned
+    // 28,246 faces where the file says 25,488, so about 11% of him stayed
+    // triangles and took an extraordinary vertex through the middle at every
+    // subdivision. That is what the slivers across his cheek were.
+    //
+    // `authoredCageFor` returns null unless the file's topology reconciles
+    // with the geometry three built from it, so a file that does not line up,
+    // or a glTF that never carried n-gons at all, still gets the heuristic.
+    const fromFile = authoredCageFor(this.cage);
+    if (fromFile) {
+      this.authored = true;
+      this.cageSubdiv = fromFile;
+      return this.cageSubdiv;
     }
+
+    // Renderer geometry splits vertices at UV and normal seams, which the
+    // subdivision rules would read as infinitely sharp creases.
+    // fromBufferGeometry welds them back together first.
+    const extracted = fromBufferGeometry(this.cage.geometry);
+
+    // Carry the cage's material groups onto its faces BEFORE recovering
+    // quads.
+    //
+    // Without this a multi-material mesh subdivides into a geometry with no
+    // groups, and three renders NOTHING when a material array has no groups to
+    // index it - so Gary's body and spacesuit vanished the moment smoothing
+    // was turned on while every single-material accessory stayed put. The
+    // kernel already carries these slots through refinement and turns them
+    // back into groups; they simply were never populated.
+    assignMaterialSlots(extracted.mesh, this.cage.geometry);
+    this.cageSubdiv = recoverQuads(extracted.mesh);
     return this.cageSubdiv;
+  }
+
+  /**
+   * Drop the cage and everything refined from it.
+   *
+   * The built levels are stencils over the cage's vertices, so keeping them
+   * across a cage change would draw the old surface with the new topology.
+   */
+  resetCage(): void {
+    // teardownLimit already detaches, disposes each built level and clears the
+    // cage, which is exactly what replacing the cage requires.
+    this.teardownLimit();
+    this.authored = false;
+  }
+
+  /** True when the cage came from the file rather than from recovered quads. */
+  get isAuthoredCage(): boolean {
+    return this.authored;
   }
 
   /** True when this level is built already, so switching to it is free. */
@@ -264,32 +369,11 @@ export class SubdivSurface {
 
   private build(level: number): void {
     try {
-      if (!this.cageSubdiv) {
-        // Renderer geometry splits vertices at UV and normal seams, which the
-        // subdivision rules would read as infinitely sharp creases.
-        // fromBufferGeometry welds them back together first.
-        const extracted = fromBufferGeometry(this.cage.geometry);
+      // The same cage the wireframe draws, so the two can never disagree
+      // about what this mesh's polygons are.
+      const cage = this.cageQuads();
 
-        // USD and glTF both arrive triangulated, and subdividing raw triangles
-        // puts an extraordinary vertex in the middle of every one - visible as
-        // shading artifacts on what was authored as a quad grid. Recovering
-        // the quads first is what makes the result match the DCC's own
-        // preview.
-        // Carry the cage's material groups onto its faces BEFORE recovering
-        // quads.
-        //
-        // Without this a multi-material mesh subdivides into a geometry with
-        // no groups, and three renders NOTHING when a material array has no
-        // groups to index it - so Gary's body and spacesuit vanished the
-        // moment smoothing was turned on while every single-material
-        // accessory stayed put. The kernel already carries these slots
-        // through refinement and turns them back into groups; they simply
-        // were never populated.
-        assignMaterialSlots(extracted.mesh, this.cage.geometry);
-        this.cageSubdiv = recoverQuads(extracted.mesh);
-      }
-
-      const refined = buildRefinedSurface(this.cageSubdiv, level);
+      const refined = buildRefinedSurface(cage, level);
       const normals = computeVertexNormals(refined.mesh);
       const render = buildRenderMesh(refined.mesh);
       updateRenderMesh(render, refined.mesh, normals);
@@ -453,6 +537,23 @@ export class SubdivSet {
     let level = 0;
     for (const surface of this.surfaces) level = Math.max(level, surface.stats.level);
     return level;
+  }
+
+  /**
+   * Throw away every built cage, so the next level change rebuilds them.
+   *
+   * Used when the file's own topology arrives after the character has already
+   * been shown. Reading it means fetching the asset back and parsing the
+   * crate, which is not something to make a character load wait for, so the
+   * first cage may be the recovered-quad one and this is how it gets replaced.
+   */
+  resetCages(): void {
+    for (const surface of this.surfaces) surface.resetCage();
+  }
+
+  /** How many surfaces are using the file's own polygons. */
+  get authoredCount(): number {
+    return this.surfaces.filter((s) => s.isAuthoredCage).length;
   }
 
   /** True when every surface already has this level built. */

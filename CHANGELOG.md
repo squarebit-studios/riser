@@ -2,6 +2,12 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.9.0] - 2026-08-31
+
+### Changed
+- Smoothing now subdivides the polygons the file actually contains, instead of guessing them back from the triangles three's USD loader hands over. Gary's body is 25,488 quads in the file; recovering them by inspection produced 28,246 faces, so about 11% stayed triangles and took an extraordinary vertex through the middle at every level. Those were the slivers across his cheek
+- Every mesh in a USD character uses its own authored topology, materials and UVs included. A file that does not reconcile with the geometry built from it, and every glTF, FBX and OBJ, still uses the recovered quads
+
 ## [0.8.6] - 2026-08-31
 
 ### Fixed

@@ -23,6 +23,8 @@ import { nearestPointOnMeshes } from '../viewport/nearest';
 import { withDoubleSided } from '../viewport/Picker';
 import { accelerate, releaseAcceleration, setPosed } from '../viewport/acceleration';
 import { EyeMaterials } from '../viewport/EyeMaterials';
+import { readAuthoredTopology } from '../io/authoredTopology';
+import { AUTHORED_CAGE } from '../viewport/SubdivSurface';
 import { SceneSelection } from '../viewport/SceneSelection';
 import { readEyeLooks } from '../io/eyeLook';
 import { AnimationPlayer, type AddClipsResult } from '../viewport/animation';
@@ -358,6 +360,58 @@ export class RiserApp {
     }
   }
 
+  /**
+   * Give each mesh the polygons its file authored.
+   *
+   * Three's USD loader triangulates on import, so by the time Riser holds a
+   * BufferGeometry the quads are gone. Subdivision is defined on the cage, and
+   * a triangulated cage is a different surface: Catmull-Clark puts an
+   * extraordinary vertex through the middle of every triangle. Recovering the
+   * quads by inspection got most of them and not all - 28,246 faces against
+   * the 25,488 the file states for Gary's body - and the remainder are the
+   * slivers that showed across his cheek.
+   *
+   * Attached rather than awaited during load. Parsing a 6.8MB crate is not
+   * something to make a character wait behind, and smoothing is off when a
+   * character arrives, so in practice the topology is here well before anyone
+   * asks for a subdivided surface. If it is not, the recovered-quad cage is
+   * built first and replaced the moment this lands.
+   */
+  private attachAuthoredTopology(
+    model: CharacterModel,
+    source: ArrayBuffer | string
+  ): void {
+    let authored;
+    try {
+      authored = readAuthoredTopology(source);
+    } catch {
+      // A file this cannot read is one the heuristic still handles.
+      return;
+    }
+    if (authored.size === 0) return;
+
+    let matched = 0;
+    for (const mesh of model.meshes) {
+      const leaf = ((mesh.userData.primPath as string) ?? '').split('/').pop();
+      const cage = leaf ? authored.get(leaf) : undefined;
+      if (!cage) continue;
+      mesh.userData[AUTHORED_CAGE] = cage;
+      matched++;
+    }
+    if (matched === 0) return;
+
+    // Anything already built came from the heuristic, so it is replaced.
+    if (this.subdivs) {
+      this.subdivs.resetCages();
+      const ui = useUiStore.getState();
+      this.subdivs.setLevel(ui.smoothing ? ui.subdivLevel : 0);
+      ui.setSubdivClamped(this.subdivs.clamped);
+      this.viewModes?.refresh();
+      this.adoptEyeMaterials();
+      if (this.character) accelerate(this.character.root);
+    }
+  }
+
   private async shadeEyes(model: CharacterModel): Promise<void> {
     // Re-fetched rather than plumbed through the loader. The browser has the
     // file in cache from the load that just happened, so this is cheap, and it
@@ -375,6 +429,10 @@ export class RiserApp {
       const source = url.endsWith('.usda')
         ? await response.text()
         : await response.arrayBuffer();
+
+      // The same bytes carry the polygons the artist modelled, and reading
+      // them here means one fetch and one parse rather than two.
+      this.attachAuthoredTopology(model, source);
 
       const looks = readEyeLooks(source);
       if (looks.length === 0) return;

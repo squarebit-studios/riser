@@ -47,7 +47,7 @@ export interface EyeLook {
   params: Record<string, number | string | number[]>;
 }
 
-interface CrateSpec {
+export interface CrateSpec {
   specType?: unknown;
   fields?: Record<string, unknown>;
 }
@@ -205,7 +205,7 @@ function entryInsideUsdz(
   return null;
 }
 
-function parseSpecs(source: ArrayBuffer | string): Record<string, CrateSpec> | null {
+export function parseSpecs(source: ArrayBuffer | string): Record<string, CrateSpec> | null {
   try {
     if (typeof source === 'string') {
       const parser = new USDAParser() as unknown as {
