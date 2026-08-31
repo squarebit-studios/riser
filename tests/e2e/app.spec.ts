@@ -49,6 +49,19 @@ declare global {
       currentDocumentId: string | null;
       /** The three.js viewport, for asserting on the camera. */
       viewport: { camera: { position: { x: number; y: number; z: number } } };
+      cameraRig: { controls: { target: { x: number; y: number; z: number } } };
+      /** The clip player, for asserting on the playhead without pixels. */
+      animation: {
+        time: number;
+        duration: number;
+        playing: boolean;
+        loop: boolean;
+        selectedName: string | null;
+        /** True while a clip holds the rig off its bind pose. */
+        posed: boolean;
+        clips: { name: string; duration: number }[];
+        select(name: string | null): boolean;
+      };
     };
   }
 }
@@ -1207,6 +1220,42 @@ test.describe('camera navigation and the viewport menu', () => {
     await expect(page.getByRole('menu')).toHaveCount(0);
   });
 
+  test('alt+right zooms sideways as well as up and down', async ({ page }) => {
+    // OrbitControls' own dolly reads only the vertical component of a drag, so
+    // dragging sideways did nothing. Maya zooms on both axes, and on a wide
+    // viewport the horizontal throw is the one people reach for.
+    await openApp(page);
+    await loadBiped(page);
+    const { x, y } = await centre(page);
+
+    const distance = (): Promise<number> =>
+      page.evaluate(() => {
+        const c = window.__riser!.viewport.camera.position;
+        const t = window.__riser!.cameraRig.controls.target;
+        return Math.hypot(c.x - t.x, c.y - t.y, c.z - t.z);
+      });
+
+    const drag = async (dx: number, dy: number): Promise<void> => {
+      await page.mouse.move(x, y);
+      await page.mouse.down({ button: 'right' });
+      await page.mouse.move(x + dx, y + dy, { steps: 10 });
+      await page.mouse.up({ button: 'right' });
+      await page.waitForTimeout(250);
+    };
+
+    await page.keyboard.down('Alt');
+    const start = await distance();
+    await drag(120, 0);
+    const afterRight = await distance();
+    await drag(-120, 0);
+    const afterLeft = await distance();
+    await page.keyboard.up('Alt');
+
+    // Right moves in, left moves back out. Horizontal alone has to do both.
+    expect(afterRight).toBeLessThan(start * 0.9);
+    expect(afterLeft).toBeGreaterThan(afterRight * 1.1);
+  });
+
   test('the plain bindings still work without alt', async ({ page }) => {
     // A consumer product cannot require a modifier key to look at something.
     await openApp(page);
@@ -1563,5 +1612,215 @@ test.describe('the document library', () => {
     // The Documents button became the File menu's recent-documents list.
     await page.getByTestId('menu-file').click();
     await expect(page.getByRole('menuitem', { name: /Hero/ })).toBeVisible();
+  });
+});
+test.describe('animation playback', () => {
+  /**
+   * The one bundled asset that moves, and the only one these tests use for
+   * playback. It carries two clips whose tracks name the same joints as the
+   * rigged USD biped - see tools/make-stock-assets.mjs, which generates both
+   * from one joint list precisely so a clip can be tested across files.
+   */
+  const ANIMATED = '/assets/biped-walk.gltf';
+  const CLIP_FILE = 'public/assets/biped-walk.gltf';
+
+  /** Switch the right panel to the Animation tab. */
+  /**
+   * Open the tab and choose a clip, which is what a user does.
+   *
+   * Selecting is deliberately an act rather than something loading does, so a
+   * test that wants a driven rig has to ask for one. See the clip-discovery
+   * test above for why.
+   */
+  async function selectClip(page: Page, name = 'Walk'): Promise<void> {
+    await openAnimationTab(page);
+    await page.getByTestId(`clip-${name}`).click();
+  }
+
+  async function openAnimationTab(page: Page): Promise<void> {
+    await page.getByRole('radio', { name: 'Animation', exact: true }).click();
+  }
+
+  async function loadUrl(page: Page, url: string): Promise<void> {
+    await page.evaluate((u) => window.__riser!.loadFromUrl(u), url);
+    await page.waitForFunction(
+      () => (window.__riser!.characterModel?.meshes.length ?? 0) > 0
+    );
+  }
+
+  /** A bone's world rotation, so "did the character move" is a real question. */
+  function boneQuaternion(page: Page, name: string): Promise<number[]> {
+    return page.evaluate((n) => {
+      const app = window.__riser as unknown as {
+        characterModel: { root: { getObjectByName(name: string): unknown } } | null;
+      };
+      const bone = app.characterModel?.root.getObjectByName(n) as
+        | { quaternion: { toArray(): number[] } }
+        | undefined;
+      if (!bone) throw new Error(`no bone called ${n}`);
+      return bone.quaternion.toArray();
+    }, name);
+  }
+
+  function angleBetween(a: number[], b: number[]): number {
+    const dot = Math.abs(a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]! + a[3]! * b[3]!);
+    return 2 * Math.acos(Math.min(1, dot));
+  }
+
+  test('an animated character arrives with its clips already found', async ({
+    page
+  }) => {
+    // The loaders used to read glTF for geometry and throw the animations
+    // away. Nothing else in the suite would notice if that came back.
+    await openApp(page);
+    await loadUrl(page, ANIMATED);
+    await openAnimationTab(page);
+
+    expect(
+      await page.evaluate(() => window.__riser!.animation.clips.map((c) => c.name))
+    ).toEqual(['Walk', 'Wave']);
+
+    // Both clips are listed and NEITHER is selected. A marker belongs on the
+    // neutral character: its binding names a triangle of the resting mesh, and
+    // automatic placement measures the resting silhouette. Selecting on load
+    // meant an animated character arrived posed at frame 0 of a walk and the
+    // user placed markers against it without ever choosing to.
+    await expect(page.getByTestId('clip-Walk')).toBeVisible();
+    await expect(page.getByTestId('clip-Wave')).toBeVisible();
+    expect(
+      await page.evaluate(() => window.__riser!.animation.selectedName)
+    ).toBeNull();
+    expect(await page.evaluate(() => window.__riser!.animation.posed)).toBe(false);
+  });
+
+  test('pressing play moves the playhead and the character', async ({ page }) => {
+    await openApp(page);
+    await loadUrl(page, ANIMATED);
+    await selectClip(page);
+
+    const before = await boneQuaternion(page, 'ThighL');
+    expect(await page.evaluate(() => window.__riser!.animation.time)).toBe(0);
+
+    await page.getByTestId('play-pause').click();
+    // Driven by the viewport's own frame loop, not by a React timer, so the
+    // only honest way to wait for it is to watch the playhead itself.
+    await page.waitForFunction(() => window.__riser!.animation.time > 0.2);
+
+    // The clock in the transport is written straight into the DOM every frame.
+    // If it still reads 0:00.00 the panel is not on the frame loop at all,
+    // however well the player underneath it is running.
+    await expect(page.getByTestId('clip-time')).not.toHaveText('0:00.00');
+
+    // And the character actually moved, rather than the number alone.
+    expect(angleBetween(before, await boneQuaternion(page, 'ThighL'))).toBeGreaterThan(
+      0.05
+    );
+
+    await page.getByTestId('play-pause').click();
+    const paused = await page.evaluate(() => window.__riser!.animation.time);
+    await page.waitForTimeout(400);
+    expect(await page.evaluate(() => window.__riser!.animation.time)).toBe(paused);
+  });
+
+  test('the scrubber puts the playhead where it is dragged', async ({ page }) => {
+    await openApp(page);
+    await loadUrl(page, ANIMATED);
+    await selectClip(page);
+
+    // Half way along a slider that runs 0..1000 across the whole clip.
+    await page.getByTestId('scrub').fill('500');
+
+    const { time, duration } = await page.evaluate(() => ({
+      time: window.__riser!.animation.time,
+      duration: window.__riser!.animation.duration
+    }));
+    expect(duration).toBeGreaterThan(0);
+    expect(time / duration).toBeCloseTo(0.5, 2);
+    // Scrubbing does not start playback - it is a way of looking, not a
+    // transport control.
+    expect(await page.evaluate(() => window.__riser!.animation.playing)).toBe(false);
+  });
+
+  test('a clip from another file applies when the joint names match', async ({
+    page
+  }) => {
+    // The real workflow: a character in one file, a cycle in another. It works
+    // here only because both name their joints the same way, which is exactly
+    // the rule this feature is allowed to rely on.
+    await openApp(page);
+    await loadUrl(page, '/assets/biped-rigged.usda');
+    await openAnimationTab(page);
+
+    expect(await page.evaluate(() => window.__riser!.animation.clips.length)).toBe(0);
+
+    await page.getByTestId('animation-file').setInputFiles(CLIP_FILE);
+    await page.waitForFunction(() => window.__riser!.animation.clips.length === 2);
+
+    // Uploading finds clips; playing one is still an act.
+    await page.getByTestId('clip-Walk').click();
+    await page.getByTestId('play-pause').click();
+    await page.waitForFunction(() => window.__riser!.animation.time > 0.2);
+    // The USD character's own bones, driven by a glTF clip.
+    expect(
+      angleBetween([0, 0, 0, 1], await boneQuaternion(page, 'ThighL'))
+    ).toBeGreaterThan(0.05);
+  });
+
+  test('picking stops using the rest-pose BVH while a clip poses the rig', async ({
+    page
+  }) => {
+    // viewport/acceleration.ts indexes REST geometry, so its fast raycast is
+    // only correct while the skeleton is at bind pose. If it survived into
+    // playback, a marker placed on the moving character would bind to whatever
+    // triangle used to be under the cursor - written silently, and wrong. This
+    // asserts the swap in both directions.
+    //
+    // The test reads which raycast each skinned mesh is using, rather than
+    // where a click landed, because that is the actual invariant: the
+    // difference in hit position is a few millimetres at some poses and the
+    // whole limb at others, and only one of those makes a stable test.
+    const usesSkinningRaycast = (): Promise<boolean> =>
+      page.evaluate(() => {
+        const meshes = (
+          window.__riser as unknown as {
+            characterModel: { meshes: object[] } | null;
+          }
+        ).characterModel!.meshes as { isSkinnedMesh?: boolean; raycast: unknown }[];
+        const skinned = meshes.filter((m) => m.isSkinnedMesh);
+        if (skinned.length === 0) throw new Error('nothing skinned to check');
+        return skinned.every(
+          (m) =>
+            m.raycast ===
+            (Object.getPrototypeOf(m) as { raycast: unknown }).raycast
+        );
+      });
+
+    await openApp(page);
+    await loadUrl(page, ANIMATED);
+    await selectClip(page);
+
+    // Choosing a clip poses the character at once - the first frame of a walk
+    // is not a bind pose - so this is true from the moment it loads. The swap
+    // is made on the frame loop, hence the wait rather than a bare read.
+    await expect.poll(usesSkinningRaycast).toBe(true);
+
+    // Back to rest, and the fast path comes back with it.
+    await page.evaluate(() => window.__riser!.animation.select(null));
+    await page.waitForFunction(() => window.__riser!.animation.selectedName === null);
+    await expect.poll(usesSkinningRaycast).toBe(false);
+  });
+
+  test('a clip that fits nothing is refused, with a reason', async ({ page }) => {
+    // The blockout has no skeleton at all, so every track in the file names a
+    // bone it does not have. three would bind none of them and play the clip
+    // perfectly, moving nothing - the failure this check exists to prevent.
+    await openApp(page);
+    await loadUrl(page, '/assets/biped-blockout.usda');
+    await openAnimationTab(page);
+
+    await page.getByTestId('animation-file').setInputFiles(CLIP_FILE);
+
+    await expect(page.getByText(/does not fit/)).toBeVisible();
+    expect(await page.evaluate(() => window.__riser!.animation.clips.length)).toBe(0);
   });
 });

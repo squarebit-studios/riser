@@ -18,6 +18,7 @@
 // ==========================================================================
 
 import * as THREE from 'three';
+import { nearestPointAccelerated } from './acceleration';
 import { barycentricAt, readTriangle, triangleCount } from './Picker';
 import type { Vec3 } from '../doc/types';
 
@@ -116,16 +117,54 @@ export function nearestPointOnMesh(
 }
 
 /** Nearest point across several meshes - the character's body and head, say. */
+/**
+ * The nearest point across several meshes.
+ *
+ * Uses each mesh's BVH when it has one - built on character load - and falls
+ * back to the brute-force scan below when it does not. The fallback is not
+ * dead code: synthetic meshes in tests are never accelerated, and neither is a
+ * geometry the index builder refused.
+ */
 export function nearestPointOnMeshes(
   meshes: readonly THREE.Mesh[],
   worldPoint: THREE.Vector3
 ): NearestSurfacePoint | null {
   let best: NearestSurfacePoint | null = null;
   for (const mesh of meshes) {
-    const hit = nearestPointOnMesh(mesh, worldPoint);
+    const fast = nearestPointAccelerated(mesh, worldPoint);
+    const hit = fast
+      ? toSurfacePoint(mesh, fast.faceIndex, fast.point, fast.distance)
+      : nearestPointOnMesh(mesh, worldPoint);
     if (hit && (!best || hit.distance < best.distance)) best = hit;
   }
   return best;
+}
+
+/** Express a BVH hit in the shape the binding machinery expects. */
+function toSurfacePoint(
+  mesh: THREE.Mesh,
+  faceIndex: number,
+  worldPoint: THREE.Vector3,
+  distance: number
+): NearestSurfacePoint | null {
+  const localPoint = worldPoint
+    .clone()
+    .applyMatrix4(new THREE.Matrix4().copy(mesh.matrixWorld).invert());
+  const barycentric = barycentricAt(mesh.geometry, faceIndex, localPoint);
+  // A degenerate triangle has no barycentric coordinate, and a binding that
+  // named it could never be resolved again. Refusing lets the caller fall
+  // through to another mesh rather than writing something unusable.
+  if (!barycentric) return null;
+
+  return {
+    mesh,
+    primPath: (mesh.userData.primPath as string) ?? '',
+    faceIndex,
+    barycentric,
+    localPoint,
+    worldPoint,
+    distance
+  };
 }
 
 /**

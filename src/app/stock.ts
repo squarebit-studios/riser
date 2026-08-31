@@ -37,6 +37,17 @@ export const STOCK_CHARACTERS: readonly StockCharacter[] = [
     templateId: 'biped'
   },
   {
+    // The only bundled asset that MOVES.
+    //
+    // Same body and same joint names as the rigged USD above, which is the
+    // point: it gives the Animation tab something real to play, and it gives
+    // the clip matcher a file whose tracks are known to fit one stock
+    // character and known not to fit the unrigged blockout.
+    label: 'Biped (animated)',
+    url: '/assets/biped-walk.gltf',
+    templateId: 'biped'
+  },
+  {
     // A production character, converted from Maya with tools/mb-to-usd.py.
     //
     // Worth bundling because it is the first asset here that was not built to

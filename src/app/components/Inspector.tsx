@@ -7,18 +7,60 @@
 // weights - and not just a position. When a marker ends up somewhere
 // unexpected, the binding is the thing that explains why, and hiding it would
 // make the one genuinely diagnostic piece of state invisible.
+//
+// TWO TABS, not two panels. Details answers "what is this marker"; Animation
+// answers "does it still hold up when the character moves". They are two
+// questions about the same character rather than two places to work, and
+// giving the second one a panel of its own would cost the viewport width
+// permanently to show something most sessions never open.
+//
+// Which tab is showing is LOCAL state, deliberately. It is not worth
+// remembering across a reload - someone reopening a document has come back to
+// place markers - and it is not worth putting in the UI store, where it would
+// be one more thing every other component re-renders on.
 // ==========================================================================
 
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { useApp } from '../AppContext';
+import type { RiserApp } from '../RiserApp';
 import { useUiStore } from '../state';
-import { Button } from './ui/Button';
+import { Button, SegmentedControl } from './ui/Button';
+import { AnimationPanel } from './AnimationPanel';
 import { BlendShapePanel } from './BlendShapePanel';
 import { curveDef, getTemplate, guideDef } from '../../templates';
 import * as M from '../../doc/mutations';
 import { documentToWorld } from '../../viewport/space';
 
+type InspectorTab = 'details' | 'animation';
+
+const TABS = [
+  { value: 'details' as const, label: 'Details', icon: 'sliders' as const },
+  { value: 'animation' as const, label: 'Animation', icon: 'play' as const }
+];
+
 export function Inspector(): JSX.Element {
+  const [tab, setTab] = useState<InspectorTab>('details');
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0 border-b border-edge px-2 py-2">
+        <SegmentedControl<InspectorTab>
+          size="sm"
+          value={tab}
+          onChange={setTab}
+          options={TABS}
+        />
+      </div>
+      {/* Only the chosen tab is mounted. The player it drives lives on
+          RiserApp, so playback carries on regardless of which tab is up. */}
+      <div className="min-h-0 flex-1">
+        {tab === 'details' ? <Details /> : <AnimationPanel />}
+      </div>
+    </div>
+  );
+}
+
+function Details(): JSX.Element {
   const app = useApp();
   const templateId = useUiStore((s) => s.templateId);
   const activeTool = useUiStore((s) => s.activeTool);
@@ -89,6 +131,12 @@ export function Inspector(): JSX.Element {
       ) : (
         <CurveDetails activeCurveId={activeCurveId} template={template} app={app} />
       )}
+
+      {/* Under the character, not under the selection: the shapes belong to
+          the asset rather than to whichever marker happens to be picked. It
+          was previously rendered inside `Field`, which put a copy of the whole
+          panel in every labelled row of the inspector. */}
+      <BlendShapePanel />
 
       <Section title="Document">
         <Field label="Template" value={template.label} />
@@ -163,11 +211,7 @@ function GuideDetails({
               the mesh by x-ray, so from the angle it was placed it looks
               exactly like a surface one, and the only way to tell was to
               orbit the camera. */}
-          <Field
-            label="Depth"
-            value={describeDepth(app.placementDepth(guide.id))}
-            muted={Math.abs(app.placementDepth(guide.id)) < 1e-4}
-          />
+          <DepthField app={app} guideId={guide.id} />
           {guide.binding ? (
             <>
               <Field label="Bound to" value={guide.binding.primPath} mono />
@@ -360,7 +404,6 @@ function Field({
       >
         {value}
       </span>
-      <BlendShapePanel />
     </div>
   );
 }
@@ -381,4 +424,27 @@ function describeDepth(depth: number): string {
   if (Math.abs(cm) < 0.01) return 'on the surface';
   if (cm < 0) return `${Math.abs(cm).toFixed(1)} cm above the surface`;
   return `${cm.toFixed(1)} cm inside`;
+}
+
+/**
+ * The depth readout, measured once per selection rather than per render.
+ *
+ * It used to call `placementDepth` twice in one expression - once for the
+ * value and once to decide whether to dim it - and React re-renders this panel
+ * freely. On a production character each call was a nearest-point search over
+ * 137k triangles plus five raycasts, so the readout cost more than a second
+ * every time anything changed, and the user felt it as the marker itself being
+ * slow to appear.
+ */
+function DepthField({ app, guideId }: { app: RiserApp; guideId: string }): JSX.Element {
+  const revision = useUiStore((s) => s.docRevision);
+  const depth = useMemo(
+    () => app.placementDepth(guideId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [app, guideId, revision]
+  );
+
+  return (
+    <Field label="Depth" value={describeDepth(depth)} muted={Math.abs(depth) < 1e-4} />
+  );
 }

@@ -520,3 +520,453 @@ writeCharacter('biped-blockout.usda', 'biped blockout', bipedParts());
 writeCharacter('quadruped-blockout.usda', 'quadruped blockout', quadrupedParts());
 writeRiggedCharacter('biped-rigged.usda', 'rigged biped', bipedParts(), BIPED_JOINTS);
 
+
+// -------------------------------------------------------------------------
+// An animated glTF, for checking markers against motion
+// -------------------------------------------------------------------------
+//
+// Nothing else in public/assets moves, so without this there is no way to
+// exercise clip playback - or to test it - against a real file.
+//
+// It is the SAME body and the SAME joint names as biped-rigged.usda, which is
+// the point rather than laziness. A clip only applies when its tracks name
+// bones the loaded character actually has, and the only way to test that rule
+// properly is to have two files that agree on their joint names and one
+// (biped-blockout) that has no joints at all. Loading this glTF onto the
+// blockout is the failure case; loading it onto the rigged USD is the case
+// where a clip authored elsewhere lands on a character it was not shipped in.
+//
+// glTF rather than FBX because it is text, so the committed asset is a
+// generated file rather than an opaque binary, and because the buffer is
+// embedded as a data URI - one file, no sidecar .bin to serve or to lose.
+
+/** Radians per degree, since the poses below are authored in degrees. */
+const DEG = Math.PI / 180;
+
+/**
+ * A quaternion (x, y, z, w) for a rotation about one axis.
+ *
+ * glTF stores rotations as quaternions, never as Euler angles, so the poses
+ * have to be converted on the way out rather than at load time.
+ */
+function quat(axis, degrees) {
+  const half = degrees * DEG * 0.5;
+  const s = Math.sin(half);
+  return [
+    axis === 'x' ? s : 0,
+    axis === 'y' ? s : 0,
+    axis === 'z' ? s : 0,
+    Math.cos(half)
+  ];
+}
+
+/**
+ * Area-weighted vertex normals.
+ *
+ * The USD path gets away with omitting normals because three computes them on
+ * load, but a glTF primitive with no NORMAL is defined to render FLAT SHADED -
+ * the loader sets `material.flatShading`, and the character arrives faceted
+ * for a reason that looks like a bug in Riser.
+ */
+function vertexNormals(points, indices) {
+  const normals = points.map(() => [0, 0, 0]);
+
+  for (let t = 0; t < indices.length; t += 3) {
+    const a = points[indices[t]];
+    const b = points[indices[t + 1]];
+    const c = points[indices[t + 2]];
+    const abx = b[0] - a[0], aby = b[1] - a[1], abz = b[2] - a[2];
+    const acx = c[0] - a[0], acy = c[1] - a[1], acz = c[2] - a[2];
+    // Not normalized: the cross product's length is twice the triangle's area,
+    // which is exactly the weighting a vertex normal wants.
+    const nx = aby * acz - abz * acy;
+    const ny = abz * acx - abx * acz;
+    const nz = abx * acy - aby * acx;
+
+    for (let k = 0; k < 3; k++) {
+      const n = normals[indices[t + k]];
+      n[0] += nx;
+      n[1] += ny;
+      n[2] += nz;
+    }
+  }
+
+  return normals.map((n) => {
+    const length = Math.hypot(n[0], n[1], n[2]);
+    return length > 1e-12 ? [n[0] / length, n[1] / length, n[2] / length] : [0, 1, 0];
+  });
+}
+
+/**
+ * Accumulates typed arrays into one glTF buffer, handing back bufferView ids.
+ *
+ * Every view starts on a four-byte boundary. glTF requires it for anything an
+ * accessor reads, and a loader that trusts the spec will read garbage rather
+ * than complain if it is wrong.
+ */
+class BufferBuilder {
+  constructor() {
+    this.chunks = [];
+    this.views = [];
+    this.length = 0;
+  }
+
+  view(typedArray, target) {
+    while (this.length % 4 !== 0) {
+      this.chunks.push(new Uint8Array(1));
+      this.length++;
+    }
+    const bytes = new Uint8Array(
+      typedArray.buffer,
+      typedArray.byteOffset,
+      typedArray.byteLength
+    );
+    const id = this.views.length;
+    this.views.push({
+      buffer: 0,
+      byteOffset: this.length,
+      byteLength: bytes.byteLength,
+      ...(target ? { target } : {})
+    });
+    this.chunks.push(bytes);
+    this.length += bytes.byteLength;
+    return id;
+  }
+
+  toBase64() {
+    const out = new Uint8Array(this.length);
+    let at = 0;
+    for (const chunk of this.chunks) {
+      out.set(chunk, at);
+      at += chunk.byteLength;
+    }
+    return Buffer.from(out).toString('base64');
+  }
+}
+
+/**
+ * A walk and a wave, as glTF animation channels.
+ *
+ * Two clips rather than one, because a clip SELECTOR that only ever has one
+ * entry in it is a control nobody has tested. Both start and end on the same
+ * pose, so looping does not snap.
+ *
+ * Poses are authored in degrees about a single axis. The character faces +Z,
+ * so a positive rotation about x swings a limb backwards: a thigh going
+ * forwards is negative, a knee bending is positive.
+ */
+function bipedClips(jointIndexByName, hipsRest) {
+  const times = [0, 0.25, 0.5, 0.75, 1];
+
+  const rot = (name, axis, degrees) => ({
+    joint: jointIndexByName[name],
+    path: 'rotation',
+    times,
+    values: degrees.flatMap((d) => quat(axis, d))
+  });
+
+  const walk = {
+    name: 'Walk',
+    channels: [
+      rot('ThighL', 'x', [-25, 0, 25, 0, -25]),
+      rot('ThighR', 'x', [25, 0, -25, 0, 25]),
+      rot('CalfL', 'x', [5, 30, 5, 15, 5]),
+      rot('CalfR', 'x', [5, 15, 5, 30, 5]),
+      rot('UpperArmL', 'x', [25, 0, -25, 0, 25]),
+      rot('UpperArmR', 'x', [-25, 0, 25, 0, -25]),
+      rot('LowerArmL', 'x', [8, 18, 8, 18, 8]),
+      rot('LowerArmR', 'x', [8, 18, 8, 18, 8]),
+      rot('Spine', 'y', [5, 0, -5, 0, 5]),
+      {
+        // The bob. Without it the character slides along on stiff hips and
+        // the walk reads as a mannequin turntable rather than as motion -
+        // which matters here, because the whole question this asset exists to
+        // answer is whether a marker keeps up with a moving surface.
+        joint: jointIndexByName['Hips'],
+        path: 'translation',
+        times,
+        values: [0, 0.03, 0, 0.015, 0].flatMap((bob) => [
+          hipsRest[0],
+          hipsRest[1] + bob,
+          hipsRest[2]
+        ])
+      }
+    ]
+  };
+
+  const wave = {
+    name: 'Wave',
+    channels: [
+      rot('UpperArmL', 'z', [0, 95, 100, 95, 0]),
+      rot('LowerArmL', 'z', [0, 25, -20, 25, 0])
+    ]
+  };
+
+  return [walk, wave];
+}
+
+/**
+ * Write a skinned, animated glTF with an embedded buffer.
+ *
+ * `joints` is the same list the USD rigged biped uses, so the bone NAMES
+ * match. Rest transforms are local (head minus the parent's head) and inverse
+ * bind matrices are the inverse of the world bind pose - which, for a rig
+ * built out of pure translations, is just a translation by minus the head.
+ */
+function writeAnimatedCharacter(filename, label, parts, joints) {
+  const byPath = new Map(joints.map((j) => [j.path, j]));
+  const nameOf = (joint) => joint.path.split('/').pop();
+  const jointIndexByName = {};
+  joints.forEach((joint, i) => {
+    jointIndexByName[nameOf(joint)] = i;
+  });
+
+  const buffer = new BufferBuilder();
+  const accessors = [];
+  const nodes = [];
+  const meshes = [];
+
+  // Node 0 is the character; the mesh nodes and the joint tree hang off it.
+  nodes.push({ name: 'Character', children: [] });
+
+  // ---- Meshes -----------------------------------------------------------
+  // 'Skull' rather than 'Head', which is already a JOINT name. glTF node
+  // names share one namespace across the whole file, so a mesh called Head
+  // would be renamed to Head_1 by the loader - and a marker would then be
+  // bound to a prim path nobody authored.
+  for (const [meshName, mesh] of [['Body', parts.body], ['Skull', parts.head]]) {
+    const points = mesh.points;
+    const normals = vertexNormals(points, mesh.indices);
+    const skin = skinMesh(points, joints);
+
+    const position = new Float32Array(points.flat());
+    const min = [Infinity, Infinity, Infinity];
+    const max = [-Infinity, -Infinity, -Infinity];
+    for (const p of points) {
+      for (let k = 0; k < 3; k++) {
+        if (p[k] < min[k]) min[k] = p[k];
+        if (p[k] > max[k]) max[k] = p[k];
+      }
+    }
+
+    const positionId = accessors.length;
+    accessors.push({
+      bufferView: buffer.view(position, 34962),
+      componentType: 5126,
+      count: points.length,
+      type: 'VEC3',
+      // Required on POSITION, and not decoration: a loader is entitled to use
+      // it for the bounding box instead of walking the vertices.
+      min: min.map((v) => Number(fmt(v))),
+      max: max.map((v) => Number(fmt(v)))
+    });
+
+    const normalId = accessors.length;
+    accessors.push({
+      bufferView: buffer.view(new Float32Array(normals.flat()), 34962),
+      componentType: 5126,
+      count: points.length,
+      type: 'VEC3'
+    });
+
+    const jointsId = accessors.length;
+    accessors.push({
+      bufferView: buffer.view(new Uint16Array(skin.indices), 34962),
+      componentType: 5123,
+      count: points.length,
+      type: 'VEC4'
+    });
+
+    const weightsId = accessors.length;
+    accessors.push({
+      bufferView: buffer.view(new Float32Array(skin.weights), 34962),
+      componentType: 5126,
+      count: points.length,
+      type: 'VEC4'
+    });
+
+    const indexId = accessors.length;
+    accessors.push({
+      bufferView: buffer.view(new Uint16Array(mesh.indices), 34963),
+      componentType: 5123,
+      count: mesh.indices.length,
+      type: 'SCALAR'
+    });
+
+    meshes.push({
+      name: meshName,
+      primitives: [
+        {
+          attributes: {
+            POSITION: positionId,
+            NORMAL: normalId,
+            JOINTS_0: jointsId,
+            WEIGHTS_0: weightsId
+          },
+          indices: indexId,
+          material: 0
+        }
+      ]
+    });
+
+    const nodeId = nodes.length;
+    // A skinned node's own transform is ignored by the spec - the skin is
+    // evaluated in the skeleton's space - so it is deliberately identity.
+    nodes.push({ name: meshName, mesh: meshes.length - 1, skin: 0 });
+    nodes[0].children.push(nodeId);
+  }
+
+  // ---- Joints -----------------------------------------------------------
+  const jointNodeBase = nodes.length;
+  const inverseBind = new Float32Array(joints.length * 16);
+
+  joints.forEach((joint, i) => {
+    const parent = parentPathOf(joint.path);
+    const parentJoint = parent ? byPath.get(parent) : null;
+    const origin = parentJoint ? parentJoint.head : [0, 0, 0];
+    nodes.push({
+      name: nameOf(joint),
+      translation: [
+        Number(fmt(joint.head[0] - origin[0])),
+        Number(fmt(joint.head[1] - origin[1])),
+        Number(fmt(joint.head[2] - origin[2]))
+      ]
+    });
+
+    // Column-major, translation in elements 12..14. glTF's convention is the
+    // opposite of USD's, and getting it backwards loads without complaint and
+    // explodes the mesh.
+    const m = inverseBind.subarray(i * 16, i * 16 + 16);
+    m[0] = 1;
+    m[5] = 1;
+    m[10] = 1;
+    m[15] = 1;
+    m[12] = -joint.head[0];
+    m[13] = -joint.head[1];
+    m[14] = -joint.head[2];
+  });
+
+  joints.forEach((joint, i) => {
+    const parent = parentPathOf(joint.path);
+    const parentIndex = parent ? joints.findIndex((j) => j.path === parent) : -1;
+    if (parentIndex >= 0) {
+      const parentNode = nodes[jointNodeBase + parentIndex];
+      (parentNode.children ??= []).push(jointNodeBase + i);
+    } else {
+      nodes[0].children.push(jointNodeBase + i);
+    }
+  });
+
+  const inverseBindId = accessors.length;
+  accessors.push({
+    bufferView: buffer.view(inverseBind),
+    componentType: 5126,
+    count: joints.length,
+    type: 'MAT4'
+  });
+
+  const skins = [
+    {
+      name: 'Skel',
+      inverseBindMatrices: inverseBindId,
+      skeleton: jointNodeBase,
+      joints: joints.map((_, i) => jointNodeBase + i)
+    }
+  ];
+
+  // ---- Animations -------------------------------------------------------
+  const hips = byPath.get('Root/Hips');
+  const hipsParent = byPath.get('Root');
+  const hipsRest = [
+    hips.head[0] - hipsParent.head[0],
+    hips.head[1] - hipsParent.head[1],
+    hips.head[2] - hipsParent.head[2]
+  ];
+
+  const animations = bipedClips(jointIndexByName, hipsRest).map((clip) => {
+    const samplers = [];
+    const channels = [];
+
+    for (const channel of clip.channels) {
+      const inputId = accessors.length;
+      accessors.push({
+        bufferView: buffer.view(new Float32Array(channel.times)),
+        componentType: 5126,
+        count: channel.times.length,
+        type: 'SCALAR',
+        // Required on an animation sampler's input, and used by every loader
+        // to work out the clip's duration.
+        min: [channel.times[0]],
+        max: [channel.times[channel.times.length - 1]]
+      });
+
+      const outputId = accessors.length;
+      accessors.push({
+        bufferView: buffer.view(new Float32Array(channel.values)),
+        componentType: 5126,
+        count: channel.times.length,
+        type: channel.path === 'rotation' ? 'VEC4' : 'VEC3'
+      });
+
+      samplers.push({ input: inputId, output: outputId, interpolation: 'LINEAR' });
+      channels.push({
+        sampler: samplers.length - 1,
+        target: { node: jointNodeBase + channel.joint, path: channel.path }
+      });
+    }
+
+    return { name: clip.name, samplers, channels };
+  });
+
+  const gltf = {
+    asset: {
+      version: '2.0',
+      generator: `Riser stock asset: ${label}. tools/make-stock-assets.mjs - do not edit by hand.`
+    },
+    scene: 0,
+    scenes: [{ nodes: [0] }],
+    nodes,
+    meshes,
+    skins,
+    animations,
+    // Riser substitutes its own clay for a material that says nothing, and a
+    // black one is exactly what "says nothing" means - so state a real colour
+    // and let the asset look like itself.
+    materials: [
+      {
+        name: 'Blockout',
+        pbrMetallicRoughness: {
+          baseColorFactor: [0.72, 0.74, 0.76, 1],
+          metallicFactor: 0,
+          roughnessFactor: 0.72
+        }
+      }
+    ],
+    accessors,
+    bufferViews: buffer.views,
+    buffers: [
+      {
+        byteLength: buffer.length,
+        uri: `data:application/octet-stream;base64,${buffer.toBase64()}`
+      }
+    ]
+  };
+
+  const text = JSON.stringify(gltf) + '\n';
+  writeFileSync(join(OUT_DIR, filename), text, 'utf8');
+
+  const tris = (parts.body.indices.length + parts.head.indices.length) / 3;
+  console.log(
+    filename.padEnd(28) + ' ' + String(tris).padStart(6) + ' tris  ' +
+    String(joints.length).padStart(3) + ' joints  ' +
+    String(animations.length) + ' clips  ' +
+    (text.length / 1024).toFixed(0) + ' KB'
+  );
+}
+
+writeAnimatedCharacter(
+  'biped-walk.gltf',
+  'animated biped',
+  bipedParts(),
+  BIPED_JOINTS
+);

@@ -6,7 +6,7 @@ directly on the mesh. What you author is a **USD layer** that our server-side
 systems consume.
 
 > Riser is not a 3D application with a character feature. It is a character
-> setup tool that happens to be 3D — the viewport exists to serve one job, and
+> setup tool that happens to be 3D. The viewport exists to serve one job, and
 > everything in the UI is in service of finishing the checklist.
 
 ---
@@ -39,7 +39,7 @@ parser, and a 4,600-line composer that handles `references`, `payload` and
 UsdSkel. A rigged USD character loads with its bones intact.
 
 There is no USD *writer* (three's `USDZExporter` emits ARKit meshes, not
-arbitrary prims), so Riser authors **USDA text** — the format's own
+arbitrary prims), so Riser authors **USDA text**, the format's own
 human-readable serialization. On the server, OpenUSD is the authority.
 
 ### Why React is kept out of the frame loop
@@ -48,7 +48,7 @@ React renders the panels. The viewport is a plain-TypeScript three.js
 application that owns its own `requestAnimationFrame` and mutates three objects
 and typed arrays directly. Markers are one instanced draw call; curves are
 `Line2`. Nothing about dragging a marker touches React. React Three Fiber was
-rejected for exactly this reason — it puts reconciliation in the frame path.
+rejected for exactly this reason: it puts reconciliation in the frame path.
 
 ---
 
@@ -82,10 +82,10 @@ def Xform "Riser" ( kind = "assembly" )
 }
 ```
 
-### Squarebit Subdivs — placing on a smooth surface
+### Squarebit Subdivs: placing on a smooth surface
 
-`@squarebit/subdivs-three` — the same Catmull-Clark core the Unreal plugin runs
-and the store's Eye and Subdivs pages use — drives the viewport display. It is
+`@squarebit/subdivs-three`, the same Catmull-Clark core the Unreal plugin runs
+and the store's Eye and Subdivs pages use, drives the viewport display. It is
 here for a reason specific to this app, not for looks: **users place markers on
 a smooth surface, but a binding must name a cage triangle.**
 
@@ -102,18 +102,18 @@ Catmull-Clark exactly. Instead:
 
 Because `position = evaluate(binding) + offset` already holds on both sides,
 the server recovers the exact clicked point with **no subdivision code at all**
-— `worker/tests/test_document.py::TestSubdivisionIsInvisibleHere` is the proof.
+`worker/tests/test_document.py::TestSubdivisionIsInvisibleHere` is the proof.
 
 The cage and the limit surface are separated by three.js **layers**, not by
 `visible`: the raycaster is gated by layers alone, so a cage on a layer the
 camera never renders is invisible and still perfectly pickable. At level 0 the
 cage sits on both layers, so the offset falls out as zero with no special case.
 
-The toolbar's Subdiv slider is display-only — changing it never moves a marker
+The toolbar's Subdiv slider is display-only. Changing it never moves a marker
 that has already been placed, because the binding, not the picture, is what
 was recorded.
 
-### Surface bindings — the load-bearing idea
+### Surface bindings: the load-bearing idea
 
 Every guide and every curve control vertex stores **where it is on the
 character**, not just where it is in space: a prim path, a triangle index, and
@@ -130,7 +130,7 @@ on.
 Two consequences worth knowing:
 
 - **Triangle indices must mean the same thing in both languages.** three
-  triangulates a USD mesh on load — triangles unchanged, quads as a fan
+  triangulates a USD mesh on load: triangles unchanged, quads as a fan
   `(0,1,2),(0,2,3)`, n-gons by ear clipping. `worker/riser_worker/mesh.py`
   reproduces the first two exactly and *refuses* n-gons rather than guessing at
   a clipper it cannot match.
@@ -155,12 +155,12 @@ Two consequences worth knowing:
 ```
 src/
   viewport/     Viewport, CameraRig, Picker, Overlays, space,
-                SubdivSurface                               — three.js core
-  io/           loadCharacter, normalize, CharacterModel      — asset pipeline
+                SubdivSurface                                  three.js core
+  io/           loadCharacter, normalize, CharacterModel         asset pipeline
   doc/          types, mutations, history, storage,
-                usda-writer, usda-reader                      — the document
-  tools/        ToolManager, marker/, curve/, mirror          — authoring
-  templates/    biped/quadruped/face JSON + registry          — what to place
+                usda-writer, usda-reader                         the document
+  tools/        ToolManager, marker/, curve/, mirror             authoring
+  templates/    biped/quadruped/face JSON + registry             what to place
   app/          RiserApp controller, state, React components
 public/assets/  generated blockout characters
 tools/          make-stock-assets.mjs
@@ -220,16 +220,16 @@ cd worker && python -m pytest tests -q    # 48 tests against real OpenUSD
 
 Three layers, each proving something the others cannot:
 
-1. **Unit** — barycentric round trips, USDA read/write identity, undo/redo,
+1. **Unit**: barycentric round trips, USDA read/write identity, undo/redo,
    curve math, template invariants. Fast (about a second), run constantly.
-2. **Cross-language contract** — `src/doc/fixture.test.ts` writes
+2. **Cross-language contract**: `src/doc/fixture.test.ts` writes
    `worker/tests/fixtures/sample-layer.usda` from real picks on the real stock
    asset; `worker/tests/test_document.py` opens that exact file with Pixar's
    OpenUSD and asserts every guide recomputes to within 1e-5 of what the
    browser stored. This is the only test that can prove the browser and the
-   server agree — a TypeScript round trip only proves our writer and our reader
+   server agree    a TypeScript round trip only proves our writer and our reader
    agree with each other, which they could do while both being wrong about USD.
-3. **End-to-end** — a real WebGL context, real raycasts, real pointer events
+3. **End-to-end**: a real WebGL context, real raycasts, real pointer events
    through the click-versus-drag discriminator. Assertions read the actual
    document, not pixels.
 
@@ -242,7 +242,7 @@ fails if the committed assets differ from what the generator produces.
 
 Riser is a separate front end but not a separate account system. The store's
 login cookie is issued httpOnly on `.squarebitstudios.com`, so a store session
-is already valid here — the API only needed Riser's origin on its CORS
+is already valid here: the API only needed Riser's origin on its CORS
 allowlist. `src/doc/storage.ts` has two implementations of one interface:
 `LocalStorageDocuments` for anonymous use, `ServerDocuments` for a signed-in
 user, talking to `packages/backend/src/modules/riser` in `squarebit-store`.
@@ -251,7 +251,7 @@ Documents are stored server-side as the USD layer text and nothing else, so
 what the browser saved is exactly what the worker opens.
 
 Point the client at an API with `VITE_API_BASE_URL` (include the `api/v1`
-prefix — see `src/app/config.ts`), or set `VITE_SERVER_STORAGE=off` to run
+prefix: see `src/app/config.ts`), or set `VITE_SERVER_STORAGE=off` to run
 purely local.
 
 ---

@@ -21,10 +21,15 @@ import { SkeletonView } from '../viewport/SkeletonView';
 import { documentToWorld, documentToWorldDirection } from '../viewport/space';
 import { nearestPointOnMeshes } from '../viewport/nearest';
 import { withDoubleSided } from '../viewport/Picker';
+import { accelerate, releaseAcceleration, setPosed } from '../viewport/acceleration';
+import { EyeMaterials } from '../viewport/EyeMaterials';
+import { readEyeLooks } from '../io/eyeLook';
+import { AnimationPlayer, type AddClipsResult } from '../viewport/animation';
 import { CharacterModel } from '../io/CharacterModel';
 import {
   loadCharacterFromFile,
   loadCharacterFromUrl,
+  loadClipsFromFile,
   disposeLoaders
 } from '../io/loadCharacter';
 import { DocumentStore } from '../doc/history';
@@ -94,6 +99,26 @@ export class RiserApp {
   private subdivs: SubdivSet | null = null;
   private viewModes: ViewModeController | null = null;
   private skeletonView = new SkeletonView();
+
+  /**
+   * Clip playback. Public because the Animation panel drives it directly.
+   *
+   * It lives on the controller rather than in the panel for the same reason
+   * everything else here does: it holds three.js state, it has to be ticked by
+   * the frame loop, and it must survive the panel being unmounted when the
+   * user switches back to the Details tab.
+   */
+  readonly animation = new AnimationPlayer();
+
+  /**
+   * Whether the raycast acceleration has been told the character is posed.
+   *
+   * Mirrored here rather than asked of `setPosed` because the answer has to be
+   * pushed on a TRANSITION, not every frame: switching every mesh's raycast
+   * sixty times a second to the same value it already had would undo the point
+   * of accelerating them.
+   */
+  private posedForPicking = false;
   private unsubscribeDoc: () => void;
   private unsubscribeUi: (() => void) | null = null;
   private unsubscribeFrame: (() => void) | null = null;
@@ -116,6 +141,19 @@ export class RiserApp {
    * is a relative path meant to resolve beside the exported file.
    */
   private characterUrl = '';
+
+  /**
+   * The Squarebit Eye looks on the current character, and the materials built
+   * from them.
+   *
+   * A Squarebit Eye is a refracted iris projection, which no USD surface
+   * schema can express - so without this a character with real eyes renders as
+   * a pair of white spheres. Riser's face template asks for eye guides, and an
+   * eye guide is placed by aiming at an iris, a limbus and a pupil. The
+   * landmarks the marker exists to record were exactly what the missing shader
+   * was hiding.
+   */
+  private readonly eyes = new EyeMaterials();
 
   /**
    * Named documents.
@@ -170,6 +208,26 @@ export class RiserApp {
     this.toolManager.setActive(useUiStore.getState().activeTool);
 
     this.unsubscribeFrame = this.viewport.onFrame((dt) => {
+      // First in the frame, so everything below - the skeleton overlay in
+      // particular - reads bones that have already been posed for this frame
+      // rather than last frame's. Cheap when nothing is playing.
+      this.animation.update(dt);
+
+      // A BVH indexes REST geometry, so the fast raycast is only correct while
+      // the skeleton sits at its bind pose. The moment a clip drives the rig,
+      // picking has to go back to three's skinning-aware raycast or a marker
+      // placed against the moving character binds to the triangle that used to
+      // be under the cursor - a wrong binding, written silently, which is the
+      // one failure this application cannot tolerate.
+      //
+      // Checked here rather than pushed from the player because the player
+      // must not know about picking, and because every path that poses the
+      // character - play, scrub, choose a clip, load a new one - passes
+      // through this loop anyway.
+      if (this.animation.posed !== this.posedForPicking) {
+        this.posedForPicking = this.animation.posed;
+        setPosed(this.posedForPicking);
+      }
       this.cameraRig?.update(dt);
       this.toolManager?.update(dt);
       // Both layers keep their points screen-constant, and the active tool
@@ -220,6 +278,7 @@ export class RiserApp {
     this.viewModes?.dispose();
     this.viewModes = null;
     this.skeletonView.dispose();
+    this.animation.dispose();
     this.subdivs?.dispose();
     this.subdivs = null;
     this.unsubscribeFrame?.();
@@ -238,6 +297,54 @@ export class RiserApp {
   // Character
   // -----------------------------------------------------------------------
 
+  /**
+   * Give the character's eyes their real look, if it shipped with one.
+   *
+   * Reads the `squarebitEye:*` attributes straight out of the file rather than
+   * from the loaded objects: three's USD composer builds meshes and materials
+   * and has no reason to carry custom attributes onto them, so the look is in
+   * the crate and nowhere else. See io/eyeLook.ts.
+   *
+   * Silent when there is nothing to do, which is most characters. A failure
+   * here leaves the white stand-in that was already there and never costs the
+   * character.
+   */
+  private async shadeEyes(model: CharacterModel): Promise<void> {
+    // Re-fetched rather than plumbed through the loader. The browser has the
+    // file in cache from the load that just happened, so this is cheap, and it
+    // keeps the loader from having to hold bytes for a consumer it knows
+    // nothing about.
+    //
+    // An uploaded character has no URL to re-read, so its eyes keep the white
+    // stand-in. Worth fixing when uploads matter more than stock assets do.
+    const url = this.characterUrl;
+    if (!url) return;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) return;
+      const source = url.endsWith('.usda')
+        ? await response.text()
+        : await response.arrayBuffer();
+
+      const looks = readEyeLooks(source);
+      if (looks.length === 0) return;
+
+      const shaded = this.eyes.apply(model.meshes, looks, this.characterUrl);
+      if (shaded > 0) {
+        useUiStore
+          .getState()
+          .setNotice(
+            shaded === 1
+              ? 'Applied a Squarebit Eye look to one eye.'
+              : `Applied Squarebit Eye looks to ${shaded} eyes.`
+          );
+      }
+    } catch (error) {
+      console.warn('Could not read Squarebit Eye looks from this character.', error);
+    }
+  }
+
   async loadFromUrl(url: string): Promise<void> {
     this.characterUrl = url;
     await this.withLoading(`Loading ${basename(url)}`, () => loadCharacterFromUrl(url));
@@ -248,6 +355,60 @@ export class RiserApp {
     // bytes came from the user's file picker and were never ours to keep.
     this.characterUrl = '';
     await this.withLoading(`Loading ${file.name}`, () => loadCharacterFromFile(file));
+  }
+
+  /**
+   * Add animation clips from an uploaded file to the character on screen.
+   *
+   * Separate from `loadFromFile` on purpose. Dropping a .glb on the viewport
+   * REPLACES the character, and someone who wants to see their character walk
+   * has no reason to expect that dropping a walk cycle throws their character
+   * away - so the two arrive through two different controls, and this one
+   * never touches the geometry.
+   *
+   * Clips that name nothing on the loaded character are refused with a reason
+   * rather than added and left inert. See viewport/animation.ts.
+   */
+  async addAnimationFromFile(file: File): Promise<AddClipsResult> {
+    const ui = useUiStore.getState();
+    const empty: AddClipsResult = { added: [], rejected: [], warnings: [] };
+
+    if (!this.character) {
+      ui.setError('Load a character before adding animation to it.');
+      return empty;
+    }
+
+    ui.setLoading(`Reading ${file.name}`);
+    ui.setError(null);
+    try {
+      const { clips } = await loadClipsFromFile(file);
+      if (clips.length === 0) {
+        ui.setError(`${file.name} contains no animation.`);
+        return empty;
+      }
+
+      const result = this.animation.addClips(clips);
+
+      // One message, chosen by what actually happened. Reporting every clip
+      // separately turns a two-clip file into two notifications, and the user
+      // only ever wanted to know whether it worked.
+      if (result.added.length === 0) {
+        ui.setError(result.rejected[0]?.message ?? `Nothing in ${file.name} applies here.`);
+      } else if (result.warnings.length > 0) {
+        ui.setNotice(result.warnings[0]!);
+      } else {
+        const names = result.added.map((c) => c.name).join(', ');
+        ui.setNotice(
+          `Added ${names}. Nothing in the document changed - clips drive the mesh only.`
+        );
+      }
+      return result;
+    } catch (err) {
+      ui.setError(err instanceof Error ? err.message : String(err));
+      return empty;
+    } finally {
+      useUiStore.getState().setLoading(null);
+    }
   }
 
   private async withLoading(
@@ -271,9 +432,18 @@ export class RiserApp {
     this.viewModes?.dispose();
     this.subdivs?.dispose();
     this.subdivs = null;
+    if (this.character) releaseAcceleration(this.character.root);
+    // The previous character's eye materials and their textures go with it.
+    this.eyes.dispose();
     this.viewport.clearCharacter();
     this.character = model;
     this.viewport.characterRoot.add(model.root);
+
+    // Index the geometry before anything picks against it. Paid once, against
+    // every raycast for the life of this character - see acceleration.ts.
+    accelerate(model.root);
+
+    void this.shadeEyes(model);
 
     // Build the subdivision surfaces before framing, so the camera frames what
     // will actually be on screen.
@@ -291,6 +461,16 @@ export class RiserApp {
     // the toggle is instant rather than costing a traversal on first use.
     this.skeletonView.setCharacter(model.root);
     this.skeletonView.setVisible(ui0.showSkeleton);
+
+    // Clips the asset brought with it, if any. Any clip the user had uploaded
+    // is dropped here rather than carried over: it was bound by name to the
+    // OLD character's bones, and re-binding it to a new one without saying so
+    // is retargeting by accident.
+    this.animation.setCharacter(
+      model.root,
+      model.animations,
+      basename(model.source.ref)
+    );
 
     const bounds = model.bounds;
     this.overlays?.fitTo(bounds);
@@ -699,6 +879,10 @@ export class RiserApp {
     const doc = this.store.document;
     const ui = useUiStore.getState();
 
+    // Positions may have moved, so every measured depth is now suspect.
+    this.depthRevision++;
+    this.depthCache.clear();
+
     // The document is the source of truth for which template is in use, and
     // the UI store only mirrors it. Reconciling here rather than at each call
     // site covers switching, undo, redo and opening a saved document at once.
@@ -897,13 +1081,44 @@ export class RiserApp {
     const guide = this.store.document.guides.find((g) => g.id === guideId);
     if (!guide || !this.character) return 0;
 
-    const world = documentToWorld(this.documentRoot, guide.position);
-    const nearest = nearestPointOnMeshes(this.character.meshes, world);
-    if (!nearest) return 0;
+    const cached = this.depthCache.get(guideId);
+    if (cached && cached.revision === this.depthRevision) return cached.depth;
 
-    const distance = nearest.worldPoint.distanceTo(world);
-    return this.isInsideCharacter(world) ? distance : -distance;
+    const world = documentToWorld(this.documentRoot, guide.position);
+
+    // Measured against the mesh the marker is BOUND to, not every mesh on the
+    // character.
+    //
+    // This is both faster and more honest. Faster because the search is brute
+    // force over triangles: on a 137k-triangle character it took 576ms, which
+    // the inspector then paid twice on every render and the user felt as a
+    // marker taking a second and a half to appear. More honest because the
+    // question is "how far below its own surface does this sit" - and on a
+    // clothed character the nearest surface to a marker in the hip can be a
+    // sleeve, which answers a different question.
+    const bound = guide.binding
+      ? this.character.meshForPrimPath(guide.binding.primPath)
+      : undefined;
+    const searched = bound ? [bound] : this.character.meshes;
+
+    const nearest = nearestPointOnMeshes(searched, world);
+    const depth = nearest
+      ? (this.isInsideCharacter(world) ? 1 : -1) * nearest.worldPoint.distanceTo(world)
+      : 0;
+
+    this.depthCache.set(guideId, { revision: this.depthRevision, depth });
+    return depth;
   }
+
+  /**
+   * Memoised depths, and the revision they were measured at.
+   *
+   * The inspector asks for this while rendering, which React does freely and
+   * often. Recomputing a raycast-and-nearest-point search each time turned a
+   * readout into the most expensive thing in the application.
+   */
+  private readonly depthCache = new Map<string, { revision: number; depth: number }>();
+  private depthRevision = 0;
 
   /**
    * Whether a world point lies inside the character.
@@ -1073,6 +1288,8 @@ export class RiserApp {
     }
     if (state.subdivLevel !== previous.subdivLevel && this.subdivs) {
       this.subdivs.setLevel(state.subdivLevel);
+      // A rebuilt limit surface is new geometry with no BVH of its own.
+      if (this.character) accelerate(this.character.root);
       const ui = useUiStore.getState();
       ui.setSubdivClamped(this.subdivs.clamped);
       this.reportSubdivision(state.subdivLevel);

@@ -65,7 +65,7 @@ function Shell(): JSX.Element {
 
         <SidePanel
           side="right"
-          title="Details"
+          title="Inspector"
           icon="sliders"
           width={rightWidth}
           collapsed={rightCollapsed}

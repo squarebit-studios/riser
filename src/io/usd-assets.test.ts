@@ -63,13 +63,20 @@ const GENERATED = STOCK_CHARACTERS.filter((c) => c.url.endsWith('.usda'));
 /**
  * Assets these Node tests can load.
  *
+ * Text USD only, for two separate reasons.
+ *
  * USDZ is excluded, and not because it is untested. three reads textures out
  * of a USDZ by constructing an `Image`, which is a DOM API that does not exist
  * here - the load throws before it can report anything about the geometry. The
  * end-to-end suite covers those assets in a real browser, which is the only
  * place the texture path can be exercised honestly anyway.
+ *
+ * The animated glTF is excluded because `loadAsset` is a USD reader: handing
+ * it to USDLoader produces an empty group rather than an error, so including
+ * it here would fail with "no meshes" and say nothing about the file. It has
+ * its own coverage in viewport/animation.test.ts.
  */
-const NODE_READABLE = STOCK_CHARACTERS.filter((c) => !c.url.endsWith('.usdz'));
+const NODE_READABLE = STOCK_CHARACTERS.filter((c) => /\.(usd|usda|usdc)$/.test(c.url));
 
 describe.each(GENERATED.map((c) => [c.label, c.url] as const))(
   'generated stock asset %s',

@@ -29,11 +29,27 @@ export class CharacterModel {
   readonly meshes: THREE.Mesh[] = [];
   readonly skeleton: THREE.Skeleton | null;
 
+  /**
+   * Clips the asset arrived with.
+   *
+   * Kept rather than dropped, which is what used to happen: USD and FBX hang
+   * their clips off the root group and glTF returns them beside the scene, and
+   * all three were being read for geometry and thrown away. A character that
+   * shipped with its own walk cycle should not need the walk cycle uploading
+   * again separately.
+   */
+  readonly animations: THREE.AnimationClip[];
+
   private readonly byPrimPath = new Map<string, THREE.Mesh>();
 
-  constructor(root: THREE.Group, source: CharacterSource) {
+  constructor(
+    root: THREE.Group,
+    source: CharacterSource,
+    animations: readonly THREE.AnimationClip[] = []
+  ) {
     this.root = root;
     this.source = source;
+    this.animations = [...animations];
 
     // Paths are stamped as they will appear in the Riser layer, so a binding
     // written here resolves unchanged when OpenUSD opens the layer.

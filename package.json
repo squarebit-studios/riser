@@ -1,6 +1,6 @@
 {
   "name": "riser",
-  "version": "0.7.0",
+  "version": "0.7.2",
   "private": true,
   "type": "module",
   "description": "Riser - USD character setup. Place guide markers and curves on a character in the browser.",
@@ -16,11 +16,12 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\""
   },
   "dependencies": {
-    "@squarebit/subdivs-three": "file:vendor/squarebit-subdivs-three-0.9.0.tgz",
+    "@squarebit/subdivs-three": "file:vendor/squarebit-subdivs-three-0.9.1.tgz",
     "marked": "^18.0.11",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "three": "0.184.0",
+    "three-mesh-bvh": "^0.9.14",
     "zustand": "^5.0.2"
   },
   "devDependencies": {

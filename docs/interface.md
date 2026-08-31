@@ -113,6 +113,49 @@ Four ways to draw the character. Each answers a question the others cannot.
 Shading is display only. It never moves a guide, and you can place and drag
 markers in any mode, including through an invisible surface in **Wire**.
 
+## Details panel
+
+The right panel has two tabs.
+
+**Details** describes whatever is selected: where a marker sits, what it is
+bound to, how far below the surface it is, and where it came from. It also
+carries the character's own facts (units, up axis, whether it has a rig) and,
+when the character has them, its blend shapes.
+
+**Animation** plays a clip on the loaded character so you can check your
+markers against motion.
+
+### Blend shapes
+
+Shown only when the character has any. Click a shape's name to fire it, or drag
+its slider for a partial weight; **Reset all** clears them. Shapes with the same
+name on several meshes move together, so a smile that spans the face, the teeth
+and the tongue stays in one piece.
+
+Nothing here changes the document. A marker is bound to a triangle of the
+neutral mesh, and posing that mesh for a look does not change which triangle
+that is.
+
+### Animation
+
+Clips a character shipped with are listed on load. **Add clips from a file**
+takes glTF, FBX or USD, and a clip whose tracks name bones this character does
+not have is refused, with the names it wanted, rather than played silently.
+Riser does not retarget.
+
+**A clip is opt-in.** A character that ships with animation still loads at its
+rest pose, because that is the pose markers belong on: a binding names a
+triangle of the resting mesh, and automatic placement measures the resting
+silhouette.
+
+Two things to know while a clip is playing:
+
+- **Markers do not follow the deforming surface.** They stay where the resting
+  mesh put them. That is the binding being honest rather than a glitch, but it
+  means a marker will appear to detach from a moving limb.
+- **Above Smooth 0 the smoothed surface does not move**, so the character
+  appears frozen while the clock runs. Set smoothing to 0 to watch a clip.
+
 ## Markers panel
 
 ![The markers panel](images/checklist.png)

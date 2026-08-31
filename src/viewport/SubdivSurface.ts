@@ -230,6 +230,17 @@ export class SubdivSurface {
         // shading artifacts on what was authored as a quad grid. Recovering
         // the quads first is what makes the result match the DCC's own
         // preview.
+        // Carry the cage's material groups onto its faces BEFORE recovering
+        // quads.
+        //
+        // Without this a multi-material mesh subdivides into a geometry with
+        // no groups, and three renders NOTHING when a material array has no
+        // groups to index it - so Gary's body and spacesuit vanished the
+        // moment smoothing was turned on while every single-material
+        // accessory stayed put. The kernel already carries these slots
+        // through refinement and turns them back into groups; they simply
+        // were never populated.
+        assignMaterialSlots(extracted.mesh, this.cage.geometry);
         this.cageSubdiv = recoverQuads(extracted.mesh);
       }
 
@@ -440,4 +451,35 @@ export class SubdivSet {
     for (const surface of this.surfaces) surface.dispose();
     this.surfaces.length = 0;
   }
+}
+
+/**
+ * Copy a geometry's material groups onto the extracted cage, per face.
+ *
+ * `fromBufferGeometry` produces one face per source triangle, in order, so
+ * face `i` is triangle `i`. A group's `start` and `count` are in INDEX space,
+ * which is three times the triangle range.
+ *
+ * Faces outside every group keep slot 0 rather than being dropped: a geometry
+ * whose groups do not cover it is malformed, and rendering it with the first
+ * material beats rendering nothing.
+ */
+function assignMaterialSlots(
+  mesh: SubdivMesh,
+  geometry: THREE.BufferGeometry
+): void {
+  const groups = geometry.groups;
+  if (!groups || groups.length < 2) return;
+
+  const faceCount = mesh.faceVertexCounts.length;
+  const slots = new Uint32Array(faceCount);
+
+  for (const group of groups) {
+    const first = Math.floor(group.start / 3);
+    const last = Math.min(faceCount, Math.floor((group.start + group.count) / 3));
+    const slot = group.materialIndex ?? 0;
+    for (let face = first; face < last; face++) slots[face] = slot;
+  }
+
+  mesh.faceMaterialIndices = slots;
 }

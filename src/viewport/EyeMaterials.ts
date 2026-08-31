@@ -1,0 +1,180 @@
+// ==========================================================================
+// Riser - Copyright (c) 2026 Squarebit LLC. All rights reserved.
+//
+// Giving a character's eyes their real look.
+//
+// A Squarebit Eye is a refracted iris projection - the iris is seen THROUGH a
+// cornea with an index of refraction, not painted on the surface. No USD
+// surface schema can express that, so an exported character arrives in any USD
+// viewer, Riser included, as a pair of white spheres.
+//
+// Everything needed to fix that is already present. `io/eyeLook.ts` reads the
+// 56 `squarebitEye:*` attributes the exporter writes onto each eye prim, and
+// `vendor/squarebit-eye/` is the same shader the store's Eye widget runs. This
+// is the join between them: look -> uniforms -> a patched material on the
+// right meshes.
+//
+// WHY IT MATTERS HERE rather than being decoration. Riser's face template asks
+// for eye guides, and an eye guide is placed by looking at the eye. On a white
+// sphere there is no iris, no limbus and no pupil to aim at - the landmarks
+// the marker exists to record are the exact things the missing shader was
+// hiding.
+//
+// FAILURE IS ALWAYS SOFT. Every step here can fail on a character that has no
+// eyes, a partial look, or a texture that will not load, and none of those are
+// worth breaking a character load over. The eye falls back to the white
+// stand-in it already had, which is what Riser showed before any of this
+// existed.
+// ==========================================================================
+
+import * as THREE from 'three';
+import { eyeLookFor, isUsableLook, type EyeLook } from '../io/eyeLook';
+import { EYE_CORE_GLSL } from '../vendor/squarebit-eye/eye-core';
+// The vendored module is untyped JavaScript, copied verbatim from the Eye
+// repo the way the store's widget copies it. Its shape is declared in
+// src/vite-env.d.ts rather than edited here, so taking a newer version stays a
+// file overwrite.
+import {
+  makeEyeUniforms,
+  applyEyeShader,
+  updateProjector
+} from '../vendor/squarebit-eye/eye-material.js';
+
+interface EyeUniforms {
+  [key: string]: unknown;
+}
+
+/**
+ * Applies Squarebit Eye looks to whichever meshes carry them.
+ *
+ * Holds the built materials so they can be disposed when the character
+ * changes, and so a second call does not rebuild what is already right.
+ */
+export class EyeMaterials {
+  private readonly applied = new Map<string, THREE.Material>();
+  private readonly textures: THREE.Texture[] = [];
+
+  /** How many eyes are currently shaded. Reported to the user, and tested. */
+  get count(): number {
+    return this.applied.size;
+  }
+
+  /**
+   * Shade every mesh that has a look.
+   *
+   * `baseUrl` is where the character's textures resolve from - the look stores
+   * `irisTexture` as a path relative to the USD, exactly as the surface
+   * textures are stored.
+   */
+  apply(
+    meshes: readonly THREE.Mesh[],
+    looks: readonly EyeLook[],
+    baseUrl: string
+  ): number {
+    if (looks.length === 0) return 0;
+
+    const loader = new THREE.TextureLoader();
+    let shaded = 0;
+
+    for (const mesh of meshes) {
+      const primPath = (mesh.userData.primPath as string) ?? '';
+      const look = eyeLookFor(looks, primPath);
+      if (!look || !isUsableLook(look)) continue;
+      if (this.applied.has(primPath)) continue;
+
+      try {
+        const material = this.buildMaterial(mesh, look, loader, baseUrl);
+        if (!material) continue;
+
+        mesh.material = material;
+        this.applied.set(primPath, material);
+        shaded++;
+      } catch (error) {
+        // One eye that will not shade must not cost the other one, nor the
+        // character. The white stand-in stays on this mesh.
+        console.warn(`Could not shade ${primPath} as a Squarebit Eye.`, error);
+      }
+    }
+    return shaded;
+  }
+
+  private buildMaterial(
+    mesh: THREE.Mesh,
+    look: EyeLook,
+    loader: THREE.TextureLoader,
+    baseUrl: string
+  ): THREE.Material | null {
+    const params = look.params;
+
+    // Start from the mesh's own material so anything the exporter did get
+    // right - side, transparency, the sclera fallback colour - survives.
+    const source = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+    const material = (source?.clone() ?? new THREE.MeshStandardMaterial()) as
+      THREE.MeshStandardMaterial;
+    material.name = `SquarebitEye:${look.primPath.split('/').pop() ?? 'eye'}`;
+
+    const eye = makeEyeUniforms(numericParams(params)) as EyeUniforms;
+
+    // The iris and sclera maps, resolved beside the character.
+    for (const [key, uniform] of [
+      ['irisTexture', 'irisMap'],
+      ['scleraTexture', 'scleraMap']
+    ] as const) {
+      const path = params[key];
+      if (typeof path !== 'string' || path.length === 0) continue;
+      const texture = loader.load(resolve(baseUrl, path));
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.flipY = false;
+      this.textures.push(texture);
+      const slot = (eye as Record<string, { value?: unknown }>)[uniform];
+      if (slot && typeof slot === 'object') slot.value = texture;
+    }
+
+    applyEyeShader(material, EYE_CORE_GLSL, eye);
+
+    // The projector is what places the iris inside the eye. Its matrix is
+    // authored in the character's own units, which the exporter has already
+    // converted - passing the mesh lets the module resolve the rest against
+    // the object's world transform.
+    try {
+      updateProjector(eye, mesh, { matrix: params.projectorMatrix });
+    } catch {
+      // Without a projector the iris sits at the shader's default placement,
+      // which is still an eye rather than a white sphere.
+    }
+
+    return material;
+  }
+
+  /** Drop the materials and textures this built. */
+  dispose(): void {
+    for (const material of this.applied.values()) material.dispose();
+    this.applied.clear();
+    for (const texture of this.textures) texture.dispose();
+    this.textures.length = 0;
+  }
+}
+
+/**
+ * Only the numeric look values.
+ *
+ * `makeEyeUniforms` expects scalars and colours; the paths and the mode string
+ * are handled separately, and passing them through would have it build
+ * uniforms out of filenames.
+ */
+function numericParams(
+  params: Record<string, number | string | number[]>
+): Record<string, number | number[]> {
+  const out: Record<string, number | number[]> = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value === 'number' || Array.isArray(value)) out[key] = value;
+  }
+  return out;
+}
+
+/** Resolve a look's relative texture path against the character's own URL. */
+function resolve(baseUrl: string, path: string): string {
+  const clean = path.replace(/^\.\//, '');
+  const slash = baseUrl.lastIndexOf('/');
+  return slash === -1 ? clean : `${baseUrl.slice(0, slash + 1)}${clean}`;
+}

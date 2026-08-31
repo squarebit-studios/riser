@@ -58,6 +58,9 @@ export type IconName =
   | 'warning'
   | 'info'
   | 'sliders'
+  | 'play'
+  | 'pause'
+  | 'loop'
   | 'panelLeft'
   | 'panelRight'
   | 'more';
@@ -279,6 +282,18 @@ const PATHS: Record<IconName, JSX.Element> = {
     <>
       <rect x="3" y="4" width="18" height="16" rx="2" />
       <path d="M14.5 4v16" />
+    </>
+  ),
+  // Filled, unlike everything else here, because a hollow triangle at 16px
+  // reads as an outline of a shape rather than as a button you press.
+  play: <path d="M7.5 5.2 18.5 12 7.5 18.8Z" fill="currentColor" />,
+  pause: <path d="M9 5.5v13M15 5.5v13" strokeWidth={2.25} />,
+  loop: (
+    <>
+      <path d="M4.5 10.5A5.5 5.5 0 0 1 10 5h9" />
+      <path d="m16 2.5 3 2.5-3 2.5" />
+      <path d="M19.5 13.5A5.5 5.5 0 0 1 14 19H5" />
+      <path d="m8 16.5-3 2.5 3 2.5" />
     </>
   ),
   more: (

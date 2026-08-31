@@ -107,13 +107,31 @@ export async function loadCharacterFromFile(
   return buildModel(buffer, file.name, format, options);
 }
 
+/** Load only the animation clips out of a file, ignoring its geometry. */
+export async function loadClipsFromFile(
+  file: File
+): Promise<{ clips: THREE.AnimationClip[]; format: CharacterFormat }> {
+  const format = formatForExtension(extensionOf(file.name));
+  if (!format) throw new Error(`Unsupported animation format: ${file.name}`);
+  const buffer = await file.arrayBuffer();
+
+  // The whole file is parsed, geometry and all, and then all but the clips is
+  // discarded. Wasteful, and deliberately so: none of three's loaders offers a
+  // clips-only path, and half-parsing a glTF by hand to save a few
+  // milliseconds is exactly the kind of shortcut that reads a buffer view
+  // wrong on somebody else's exporter.
+  const { root, animations } = await parseByFormat(buffer, file.name, format);
+  root.clear();
+  return { clips: animations, format };
+}
+
 async function buildModel(
   buffer: ArrayBuffer,
   ref: string,
   format: CharacterFormat,
   options: LoadOptions
 ): Promise<CharacterModel> {
-  const { root, source } = await parseByFormat(buffer, ref, format);
+  const { root, source, animations } = await parseByFormat(buffer, ref, format);
 
   // USD and glTF have already told us where they stand; only the unitless
   // formats get rescaled, and even then only the root transform moves.
@@ -138,14 +156,24 @@ async function buildModel(
   // useless to place markers on. Assets that brought real materials keep them.
   applyStudioMaterial(root);
 
-  return new CharacterModel(root, source);
+  return new CharacterModel(root, source, animations);
 }
 
+/**
+ * `animations` is the part that used to be dropped on the floor. Each loader
+ * puts them somewhere different - three hangs them off the root group for USD
+ * and FBX, and returns them beside the scene for glTF - so this is the one
+ * place that difference has to be known about.
+ */
 async function parseByFormat(
   buffer: ArrayBuffer,
   ref: string,
   format: CharacterFormat
-): Promise<{ root: THREE.Group; source: CharacterSource }> {
+): Promise<{
+  root: THREE.Group;
+  source: CharacterSource;
+  animations: THREE.AnimationClip[];
+}> {
   switch (format) {
     case 'usd': {
       const group = new USDLoader().parse(buffer);
@@ -158,7 +186,9 @@ async function parseByFormat(
         Math.abs(group.rotation.x + Math.PI / 2) < 1e-6 ? 'Z' : 'Y';
       return {
         root: group,
-        source: { ref, format, metersPerUnit, upAxis }
+        source: { ref, format, metersPerUnit, upAxis },
+        // UsdSkel SkelAnimation prims, built by USDComposer._buildAnimations.
+        animations: group.animations ?? []
       };
     }
 
@@ -169,7 +199,8 @@ async function parseByFormat(
       // glTF is metres and Y-up by specification.
       return {
         root: gltf.scene,
-        source: { ref, format, metersPerUnit: 1, upAxis: 'Y' }
+        source: { ref, format, metersPerUnit: 1, upAxis: 'Y' },
+        animations: gltf.animations ?? []
       };
     }
 
@@ -179,16 +210,19 @@ async function parseByFormat(
       // but it is unreliable in practice, so we treat FBX as unitless.
       return {
         root: group as THREE.Group,
-        source: { ref, format, metersPerUnit: null, upAxis: null }
+        source: { ref, format, metersPerUnit: null, upAxis: null },
+        animations: group.animations ?? []
       };
     }
 
     case 'obj': {
       const text = new TextDecoder().decode(buffer);
       const group = new OBJLoader().parse(text);
+      // OBJ has no notion of time. Nothing to look for.
       return {
         root: group,
-        source: { ref, format, metersPerUnit: null, upAxis: null }
+        source: { ref, format, metersPerUnit: null, upAxis: null },
+        animations: []
       };
     }
   }
