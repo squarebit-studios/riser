@@ -193,6 +193,23 @@ from the left checklist, and click the character to place it.
 
 ---
 
+## Documentation
+
+End-user documentation lives in [`docs/`](docs/README.md): getting started, the
+concepts behind guides and bindings, an interface tour, the full shortcut
+reference, what each template asks for, and troubleshooting.
+
+| | |
+|---|---|
+| [Getting started](docs/getting-started.md) | Install to exported layer in five minutes |
+| [Concepts](docs/concepts.md) | Templates, bindings, symmetry, subdivision, provenance |
+| [The interface](docs/interface.md) | Toolbar, checklist, viewport, inspector, status bar |
+| [Keyboard and mouse](docs/keyboard.md) | Every shortcut |
+| [Templates](docs/templates.md) | Biped, quadruped and face, guide by guide |
+| [FAQ](docs/faq.md) | Troubleshooting |
+
+---
+
 ## Testing
 
 ```bash
