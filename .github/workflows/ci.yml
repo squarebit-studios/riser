@@ -45,16 +45,24 @@ jobs:
           node tools/make-stock-assets.mjs
           git diff --exit-code public/assets
 
-  # The browser suite, kept off the everyday path.
+  # The browser suite. CURRENTLY OFF, by request, while the app is being
+  # iterated on quickly.
   #
-  # It is the only thing here that opens a real renderer, so it is also the
-  # only thing that catches a regression the unit tests cannot see. That makes
-  # it worth waiting for BEFORE A DEPLOY, and not worth waiting for after every
-  # push to a working branch: it ran for nineteen minutes on each one, which is
-  # long enough to stop people pushing.
+  # "Off" here means it runs only when someone asks for it: Actions -> CI ->
+  # Run workflow. The job is intact, so turning it back on is a one line change
+  # to this condition, not a rewrite. The line to restore:
   #
-  # So it gates main, gates a pull request, and can be asked for by hand. On a
-  # branch push it does not run at all.
+  #   if: >-
+  #     github.ref == 'refs/heads/main' ||
+  #     github.event_name == 'pull_request' ||
+  #     github.event_name == 'workflow_dispatch'
+  #
+  # Why it was worth switching off: it is nineteen minutes against three for
+  # everything else put together, and it ran on every push. Why it is worth
+  # turning back on before anyone relies on this: it is the only thing here
+  # that opens a real renderer, so it is the only thing that catches a
+  # regression the unit tests cannot see. Nothing else in this file would have
+  # noticed the eyes going black.
   #
   # Not sharded, and deliberately so. Playwright splits a shard by FILE unless
   # `fullyParallel` is on, and the whole suite is one spec file, so a four way
@@ -63,11 +71,8 @@ jobs:
   # inside a file run out of order, which is a change worth making with the
   # suite actually run against it rather than on the way past.
   e2e:
-    name: End-to-end (browser)
-    if: >-
-      github.ref == 'refs/heads/main' ||
-      github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch'
+    name: End-to-end (browser, on demand)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -126,9 +131,16 @@ jobs:
       - name: Fixture is committed in sync
         run: git diff --exit-code worker/tests/fixtures
 
+  # Publishes riser.squarebitstudios.com, from main and only from main, so
+  # what is live is never in question.
+  #
+  # No longer waits on the browser suite - which is off anyway, and a skipped
+  # job in `needs` would block this one. What still has to pass before anything
+  # ships: typecheck, the unit tests, the build, the stock assets being in sync
+  # and the OpenUSD worker contract. About three minutes.
   deploy:
     name: Deploy to GitHub Pages
-    needs: [web, worker, e2e]
+    needs: [web, worker]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
