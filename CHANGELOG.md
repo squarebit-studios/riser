@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1] - 2026-08-31
+- Scene tab listing every piece a character is made of, with its triangle count and whether it is skinned
+- Select a piece to see which one it is in the viewport, and hide it to reach whatever is underneath. On a clothed character that is how a hip marker gets onto the hip rather than the spacesuit
+- Smoothing is now a button with the level behind a menu, the way Unreal does it, instead of a slider. Turning it on returns to the level you last chose
+- Wireframe follows the quads on a smoothed surface instead of the triangles it is drawn with, so the edge flow is readable rather than buried under diagonals
+- Gary's eyes render as real Squarebit Eyes rather than white spheres. The look was always in the file: 56 attributes per eye, which nothing was reading
+
 ## [0.7.2] - 2026-08-31
 - Markers place instantly again on heavy characters: 1.7s down to under 0.2s on a 137k-triangle production character
 - Raycasting is now accelerated with a bounding volume hierarchy, so picking cost barely grows with triangle count

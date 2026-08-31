@@ -69,7 +69,18 @@ export class ViewModeController {
   /** Meshes this has touched, so they can all be put back on dispose. */
   private touched = new Set<THREE.Mesh>();
 
-  constructor(private readonly displayedMeshes: () => THREE.Mesh[]) {}
+  constructor(
+    private readonly displayedMeshes: () => THREE.Mesh[],
+    /**
+     * Quad edges for a displayed mesh, when subdivision can supply them.
+     *
+     * Optional because the view modes work perfectly well without it: the
+     * triangle wireframe is what a renderer really draws. It is only wrong
+     * once a surface is subdivided, where every quad carries the diagonal it
+     * was triangulated along and the edge flow disappears into noise.
+     */
+    private readonly quadEdgesFor?: (mesh: THREE.Mesh) => THREE.BufferGeometry | null
+  ) {}
 
   get current(): ViewMode {
     return this.mode;
@@ -222,7 +233,8 @@ export class ViewModeController {
       return;
     }
 
-    const geometry = new THREE.WireframeGeometry(mesh.geometry);
+    const geometry =
+      this.quadEdgesFor?.(mesh) ?? new THREE.WireframeGeometry(mesh.geometry);
     const lines = new THREE.LineSegments(geometry, this.wire());
     lines.name = WIRE_NAME;
     // Never pickable: the guide tools raycast the character, and an edge

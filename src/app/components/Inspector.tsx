@@ -27,14 +27,16 @@ import { useUiStore } from '../state';
 import { Button, SegmentedControl } from './ui/Button';
 import { AnimationPanel } from './AnimationPanel';
 import { BlendShapePanel } from './BlendShapePanel';
+import { OutlinerPanel } from './OutlinerPanel';
 import { curveDef, getTemplate, guideDef } from '../../templates';
 import * as M from '../../doc/mutations';
 import { documentToWorld } from '../../viewport/space';
 
-type InspectorTab = 'details' | 'animation';
+type InspectorTab = 'details' | 'scene' | 'animation';
 
 const TABS = [
   { value: 'details' as const, label: 'Details', icon: 'sliders' as const },
+  { value: 'scene' as const, label: 'Scene', icon: 'list' as const },
   { value: 'animation' as const, label: 'Animation', icon: 'play' as const }
 ];
 
@@ -54,7 +56,9 @@ export function Inspector(): JSX.Element {
       {/* Only the chosen tab is mounted. The player it drives lives on
           RiserApp, so playback carries on regardless of which tab is up. */}
       <div className="min-h-0 flex-1">
-        {tab === 'details' ? <Details /> : <AnimationPanel />}
+        {tab === 'details' && <Details />}
+        {tab === 'scene' && <OutlinerPanel />}
+        {tab === 'animation' && <AnimationPanel />}
       </div>
     </div>
   );

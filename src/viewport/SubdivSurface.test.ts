@@ -349,3 +349,38 @@ describe('budgeting subdivision across the whole character', () => {
     expect(set.effectiveLevel).toBe(2);
   });
 });
+
+describe('wireframe that follows the quads', () => {
+  it('has no edges at level 0, where the triangles are the truth', () => {
+    // Unsubdivided, the renderer really is drawing triangles, and a triangle
+    // wireframe is the honest picture of that. Returning null lets the caller
+    // use three's own.
+    const set = new SubdivSet([gridMesh(8)]);
+    set.setLevel(0);
+    expect(set.quadWireframe(set.displayedMeshes()[0]!)).toBeNull();
+  });
+
+  it('draws fewer edges than the triangulation would', () => {
+    // The whole point. Every quad of a Catmull-Clark surface is drawn as two
+    // triangles, so a triangle wireframe adds the diagonal that split it -
+    // doubling the lines and burying the edge flow the wireframe is being
+    // looked at for.
+    const set = new SubdivSet([gridMesh(8)]);
+    set.setLevel(1);
+
+    const displayed = set.displayedMeshes()[0]!;
+    const quads = set.quadWireframe(displayed);
+    expect(quads).not.toBeNull();
+
+    const triangles = new THREE.WireframeGeometry(displayed.geometry);
+    const quadCount = quads!.getAttribute('position').count;
+    const triangleCount = triangles.getAttribute('position').count;
+    expect(quadCount).toBeLessThan(triangleCount);
+  });
+
+  it('returns nothing for a mesh it does not own', () => {
+    const set = new SubdivSet([gridMesh(4)]);
+    set.setLevel(1);
+    expect(set.quadWireframe(gridMesh(4))).toBeNull();
+  });
+});

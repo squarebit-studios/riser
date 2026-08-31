@@ -26,14 +26,20 @@
 // inventory.
 // ==========================================================================
 
+import { useRef } from 'react';
 import { useApp } from '../AppContext';
 import { useUiStore } from '../state';
 import { MAX_SUBDIV_LEVEL, MIN_SUBDIV_LEVEL } from '../../viewport/SubdivSurface';
+
+/** Every level the menu offers, 0 meaning off. */
+const SUBDIV_LEVELS = Array.from(
+  { length: MAX_SUBDIV_LEVEL - MIN_SUBDIV_LEVEL + 1 },
+  (_, i) => MIN_SUBDIV_LEVEL + i
+);
 import { VIEW_MODES } from '../../viewport/ViewModes';
 import { PLACEMENT_MODES } from '../../tools/placement';
 import { ENVIRONMENTS } from '../../viewport/environments';
 import { Button, IconButton, SegmentedControl } from './ui/Button';
-import { Slider } from './ui/Controls';
 import { DropdownMenu, MenuItem, MenuLabel, MenuSeparator } from './ui/Menu';
 import { Icon } from './ui/Icon';
 
@@ -50,6 +56,13 @@ export function Toolbar(): JSX.Element {
   const useHdri = useUiStore((s) => s.useHdri);
   const subdivLevel = useUiStore((s) => s.subdivLevel);
   const subdivClamped = useUiStore((s) => s.subdivClamped);
+  // Turning smoothing back on should return to the level the user last chose,
+  // not to a hardcoded one. Held here rather than in the store because it is a
+  // convenience, not state worth persisting or restoring.
+  const lastSubdivLevel = useRef(1);
+  if (subdivLevel > 0 && lastSubdivLevel.current !== subdivLevel) {
+    lastSubdivLevel.current = subdivLevel;
+  }
   const showGeometry = useUiStore((s) => s.showGeometry);
   const showMarkers = useUiStore((s) => s.showMarkers);
   const showCurves = useUiStore((s) => s.showCurves);
@@ -276,21 +289,66 @@ export function Toolbar(): JSX.Element {
 
       <div className="rs-divider" />
 
-      {/* Subdivision. Display only - bindings always name a cage triangle,
-          so moving this never moves a marker the user placed. */}
-      <Slider
-        label="Smooth"
-        value={subdivLevel}
-        min={MIN_SUBDIV_LEVEL}
-        max={MAX_SUBDIV_LEVEL}
-        onChange={(level) => useUiStore.getState().setSubdivLevel(level)}
-        warn={subdivClamped}
-        hint={
-          subdivClamped
-            ? 'Reduced automatically - this mesh is already dense.'
-            : 'Smooth the surface for placement. Markers still bind to the original mesh.'
-        }
-      />
+      {/* Subdivision, as a toggle with the level tucked behind a menu.
+          Unreal's arrangement, and it fits how the control is actually used:
+          smoothing is on or off a hundred times for every time the level
+          matters, and a slider made the rare decision as loud as the common
+          one. Display only either way - bindings always name a cage triangle,
+          so nothing here moves a marker anyone placed. */}
+      <div className="flex items-center gap-px">
+        <Button
+          icon="shading"
+          active={subdivLevel > 0}
+          disabled={!characterName}
+          data-testid="subdiv-toggle"
+          onClick={() =>
+            useUiStore
+              .getState()
+              .setSubdivLevel(subdivLevel > 0 ? 0 : lastSubdivLevel.current)
+          }
+          title={
+            subdivLevel > 0
+              ? `Smoothing on, level ${subdivLevel}. Markers still bind to the original mesh.`
+              : 'Smooth the surface for placement. Markers still bind to the original mesh.'
+          }
+          className="rounded-r-none"
+        >
+          Smooth
+        </Button>
+
+        <DropdownMenu
+          label="Smoothing level"
+          align="end"
+          trigger={(props) => (
+            <Button
+              {...props}
+              ref={props.ref}
+              icon="more"
+              aria-label="Smoothing level"
+              title="Smoothing level"
+              data-testid="subdiv-level-menu"
+              disabled={!characterName}
+              className="!px-1 rounded-l-none"
+            />
+          )}
+        >
+          <MenuLabel>Smoothing level</MenuLabel>
+          {SUBDIV_LEVELS.map((level) => (
+            <MenuItem
+              key={level}
+              label={level === 0 ? 'Off' : `Level ${level}`}
+              checked={subdivLevel === level}
+              description={
+                level === 0
+                  ? 'The mesh exactly as the file describes it'
+                  : undefined
+              }
+              data-testid={`subdiv-level-${level}`}
+              onSelect={() => useUiStore.getState().setSubdivLevel(level)}
+            />
+          ))}
+        </DropdownMenu>
+      </div>
 
       <div className="flex-1" />
 

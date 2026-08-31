@@ -23,6 +23,7 @@ import { nearestPointOnMeshes } from '../viewport/nearest';
 import { withDoubleSided } from '../viewport/Picker';
 import { accelerate, releaseAcceleration, setPosed } from '../viewport/acceleration';
 import { EyeMaterials } from '../viewport/EyeMaterials';
+import { SceneSelection } from '../viewport/SceneSelection';
 import { readEyeLooks } from '../io/eyeLook';
 import { AnimationPlayer, type AddClipsResult } from '../viewport/animation';
 import { CharacterModel } from '../io/CharacterModel';
@@ -156,6 +157,13 @@ export class RiserApp {
   private readonly eyes = new EyeMaterials();
 
   /**
+   * What the character is made of, which piece is selected, and what is
+   * hidden. Public because the outliner drives it directly; the viewport does
+   * not, since a click there already means "place a marker".
+   */
+  readonly scene = new SceneSelection();
+
+  /**
    * Named documents.
    *
    * Local for now. `ServerDocuments` implements the same interface, so signing
@@ -195,8 +203,11 @@ export class RiserApp {
     // always the cages.
     this.viewport.scene.add(this.skeletonView.object);
 
-    this.viewModes = new ViewModeController(() =>
-      this.subdivs?.displayedMeshes() ?? this.character?.meshes ?? []
+    this.viewModes = new ViewModeController(
+      () => this.subdivs?.displayedMeshes() ?? this.character?.meshes ?? [],
+      // Quad edges when the surface is subdivided, so a wireframe shows the
+      // edge flow rather than the triangulation underneath it.
+      (mesh) => this.subdivs?.quadWireframe(mesh) ?? null
     );
 
     this.cameraRig = new CameraRig(this.viewport.camera, canvas);
@@ -435,6 +446,7 @@ export class RiserApp {
     if (this.character) releaseAcceleration(this.character.root);
     // The previous character's eye materials and their textures go with it.
     this.eyes.dispose();
+    this.scene.dispose();
     this.viewport.clearCharacter();
     this.character = model;
     this.viewport.characterRoot.add(model.root);
@@ -444,6 +456,7 @@ export class RiserApp {
     accelerate(model.root);
 
     void this.shadeEyes(model);
+    this.scene.setCharacter(model.meshes);
 
     // Build the subdivision surfaces before framing, so the camera frames what
     // will actually be on screen.

@@ -42,6 +42,7 @@ import {
   fromBufferGeometry,
   meshCounts,
   recoverQuads,
+  toQuadWireframeGeometry,
   updateRenderMesh,
   type RefinedSurface,
   type RenderMesh,
@@ -180,6 +181,28 @@ export class SubdivSurface {
       else this.build(effective);
     }
     this.applyLayers();
+  }
+
+  /**
+   * Edge geometry for the displayed surface, following its QUADS.
+   *
+   * A `THREE.WireframeGeometry` draws the triangles a renderer actually has,
+   * which after subdivision means every quad crossed by the diagonal that
+   * triangulated it. On a Catmull-Clark surface that doubles the line count
+   * and hides the thing a wireframe is being looked at for: the edge flow.
+   *
+   * Null at level 0, where there is no refined mesh and the ordinary triangle
+   * wireframe is the honest picture of what is being rendered.
+   */
+  quadWireframe(): THREE.BufferGeometry | null {
+    const active = this.active;
+    if (!active) return null;
+    try {
+      return toQuadWireframeGeometry(active.refined.mesh);
+    } catch {
+      // Falling back to the caller's triangle wireframe beats no wireframe.
+      return null;
+    }
   }
 
   /** True when this level is built already, so switching to it is free. */
@@ -413,6 +436,17 @@ export class SubdivSet {
   /** True when every surface already has this level built. */
   hasCached(level: number): boolean {
     return this.surfaces.every((s) => s.hasCached(level));
+  }
+
+  /**
+   * Quad edges for a displayed mesh, or null when it is not subdivided.
+   *
+   * Looked up by the mesh the caller is holding, because view modes work from
+   * what is on screen and have no idea which surface produced it.
+   */
+  quadWireframe(displayed: THREE.Mesh): THREE.BufferGeometry | null {
+    const surface = this.surfaces.find((s) => s.displayed === displayed);
+    return surface?.quadWireframe() ?? null;
   }
 
   /** The control cages, which are what bindings are written against. */

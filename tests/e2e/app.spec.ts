@@ -50,6 +50,11 @@ declare global {
       /** The three.js viewport, for asserting on the camera. */
       viewport: { camera: { position: { x: number; y: number; z: number } } };
       cameraRig: { controls: { target: { x: number; y: number; z: number } } };
+      scene: {
+        selectedPath: string | null;
+        hiddenCount: number;
+      };
+      subdivStats: { level: number } | null;
       /** The clip player, for asserting on the playhead without pixels. */
       animation: {
         time: number;
@@ -123,6 +128,19 @@ async function currentTemplate(page: Page): Promise<string> {
  * Four separate toolbar buttons became one dropdown: they are mutually
  * exclusive states of a single setting, and four buttons said "four features".
  */
+/**
+ * Set the smoothing level through the toolbar, the way a user does.
+ *
+ * The slider this replaced could be `fill`ed with a number. A toggle plus a
+ * level menu cannot, so this exists rather than every test knowing the shape
+ * of the control.
+ */
+async function setSmoothing(page: Page, level: number): Promise<void> {
+  await page.getByTestId('subdiv-level-menu').click();
+  await page.getByTestId(`subdiv-level-${level}`).click();
+  await page.waitForTimeout(600);
+}
+
 async function setMode(page: Page, id: string): Promise<void> {
   await page.getByTestId('shading-menu').click();
   await page.getByTestId(`shading-${id}`).click();
@@ -1046,8 +1064,7 @@ test.describe('view modes', () => {
     // modes to be told apart. Flat shading a level-2 limit surface looks all
     // but identical to smooth shading, because its facets are sub-pixel - that
     // is the shading working correctly, not a difference worth asserting.
-    await page.locator('input[type="range"]').fill('0');
-    await page.waitForTimeout(600);
+    await setSmoothing(page, 0);
 
     const lit = await frame(page);
 
@@ -1124,8 +1141,7 @@ test.describe('view modes', () => {
     await setMode(page, 'wireframe');
     const atDefault = await frame(page);
 
-    await page.locator('input[type="range"]').fill('0');
-    await page.waitForTimeout(600);
+    await setSmoothing(page, 0);
     const atZero = await frame(page);
 
     // Still a wireframe: nothing like the lit render, which would be mostly
@@ -1367,6 +1383,105 @@ test.describe('a production character', () => {
     const placed = await guides(page);
     expect(placed.length).toBeGreaterThan(40);
     expect(placed.every((g) => g.source === 'skeleton')).toBe(true);
+  });
+});
+
+test.describe('the scene outliner', () => {
+  async function openScene(page: Page): Promise<void> {
+    await page.getByRole('radio', { name: 'Scene', exact: true }).click();
+  }
+
+  test('lists every piece a production character is made of', async ({ page }) => {
+    test.slow();
+    await openApp(page);
+    await page.evaluate(() => window.__riser!.loadFromUrl('/assets/gary.usdz'));
+    await page.waitForFunction(
+      () => (window.__riser!.characterModel?.meshes.length ?? 0) > 0,
+      undefined,
+      { timeout: 40000 }
+    );
+    await openScene(page);
+
+    // A blockout is one mesh and needs no outliner. This one is thirty-odd.
+    const rows = page.locator('[data-testid^="piece-"]');
+    await expect.poll(async () => rows.count()).toBeGreaterThan(20);
+    await expect(page.getByTestId('piece-body_geo')).toBeVisible();
+  });
+
+  test('selecting a piece highlights it without touching the others', async ({
+    page
+  }) => {
+    test.slow();
+    await openApp(page);
+    await page.evaluate(() => window.__riser!.loadFromUrl('/assets/gary.usdz'));
+    await page.waitForFunction(
+      () => (window.__riser!.characterModel?.meshes.length ?? 0) > 0,
+      undefined,
+      { timeout: 40000 }
+    );
+    await openScene(page);
+
+    await page.getByTestId('piece-body_geo').click();
+    expect(
+      await page.evaluate(() => window.__riser!.scene.selectedPath)
+    ).toContain('body_geo');
+
+    // Clicking it again clears, so the list is a toggle rather than a trap.
+    await page.getByTestId('piece-body_geo').click();
+    expect(await page.evaluate(() => window.__riser!.scene.selectedPath)).toBeNull();
+  });
+
+  test('hiding a piece gets it out of the way', async ({ page }) => {
+    // The reason the toggle exists: on a clothed character a hip marker has to
+    // land on the hip, and the spacesuit is in front of it.
+    test.slow();
+    await openApp(page);
+    await page.evaluate(() => window.__riser!.loadFromUrl('/assets/gary.usdz'));
+    await page.waitForFunction(
+      () => (window.__riser!.characterModel?.meshes.length ?? 0) > 0,
+      undefined,
+      { timeout: 40000 }
+    );
+    await openScene(page);
+
+    await page.getByTestId('toggle-spacesuit_geo').click({ force: true });
+    expect(await page.evaluate(() => window.__riser!.scene.hiddenCount)).toBe(1);
+
+    await page.getByTestId('show-all-pieces').click();
+    expect(await page.evaluate(() => window.__riser!.scene.hiddenCount)).toBe(0);
+  });
+});
+
+test.describe('the smoothing control', () => {
+  test('is a toggle, with the level behind the menu beside it', async ({ page }) => {
+    test.slow();
+    await openApp(page);
+    await loadBiped(page);
+
+    const toggle = page.getByTestId('subdiv-toggle');
+    // Off on load: the character appears exactly as its file describes it.
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+    await page.getByTestId('subdiv-level-menu').click();
+    await page.getByTestId('subdiv-level-2').click();
+    await expect
+      .poll(async () =>
+        page.evaluate(() => window.__riser!.subdivStats?.level ?? 0)
+      )
+      .toBe(2);
+
+    // Turning it off and on returns to the level last chosen, not to 1.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await toggle.click();
+    await expect
+      .poll(async () =>
+        page.evaluate(() => window.__riser!.subdivStats?.level ?? 0)
+      )
+      .toBe(2);
   });
 });
 

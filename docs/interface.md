@@ -48,7 +48,7 @@ Left to right.
 | **Auto-place** | Fills in markers automatically: from the character's own skeleton when it has one, otherwise by measuring its shape. Disabled until a character is loaded. Never overwrites anything you placed. |
 | **Shading** | How the character is drawn: Lit, Flat, Wire or Lit wire. See below. |
 | **Show** | What is drawn: the character, markers, curves, the skeleton, the ground grid, and whether markers show through the body. The button turns amber and counts what is hidden, so nothing can be invisible without the interface saying so. |
-| **Smooth** | Catmull-Clark preview level, 0 to 3. Display only: it never moves a marker you have placed. See below. |
+| **Smooth** | Turns smoothing on and off. The three-dot button beside it chooses the level, 0 to 3. Display only: it never moves a marker you have placed. See below. |
 | **Undo** / **Redo** | Steps the document history. The tooltip names the step, for example *Undo Place Chest*. |
 | **Frame** | Frames the whole character. Also `A`. |
 
@@ -86,10 +86,15 @@ what makes a marker survive a retopo.
 
 ### Smoothing
 
-Riser opens at level 0, showing the character exactly as the file describes it.
-Smoothing is something you turn on, not something applied to your asset before
-you have seen it. Level 0 is also the surface your markers are really written
-against.
+Riser opens with smoothing off, showing the character exactly as the file
+describes it. Smoothing is something you turn on, not something applied to your
+asset before you have seen it. Off is also the surface your markers are really
+written against.
+
+**Smooth** is a toggle and the three-dot button beside it holds the levels.
+That split follows how the control is used: smoothing goes on and off far more
+often than the level changes. Turning it back on returns to the level you last
+chose.
 
 Each level you visit is kept, so moving the slider back to one you have already
 used is instant.
@@ -107,7 +112,7 @@ Four ways to draw the character. Each answers a question the others cannot.
 |---|---|
 | **Lit** | The character as its own materials describe it. The default. |
 | **Flat** | Faceted shading, so every polygon's own plane is visible. Smooth shading hides topology. Most useful at Subdiv 0, since a subdivided surface has facets too small to see. |
-| **Wire** | Edges only, seen through. The clearest way to judge whether a guide meant for a joint centre is really inside the limb rather than stuck to the near side of it. |
+| **Wire** | Edges only, seen through. The clearest way to judge whether a guide meant for a joint centre is really inside the limb rather than stuck to the near side of it. With smoothing on, the edges follow the quads rather than the triangles underneath them. |
 | **Lit wire** | Lit surface with its edges drawn over, for placing on a dense mesh where the silhouette alone does not show where an edge loop runs. |
 
 Shading is display only. It never moves a guide, and you can place and drag
@@ -122,8 +127,32 @@ bound to, how far below the surface it is, and where it came from. It also
 carries the character's own facts (units, up axis, whether it has a rig) and,
 when the character has them, its blend shapes.
 
+**Scene** lists every piece the character is made of.
+
 **Animation** plays a clip on the loaded character so you can check your
 markers against motion.
+
+### Scene
+
+A production character is not one mesh. Gary is 33 separate pieces with
+clothing layered over skin, and the list answers the two questions that
+follow from that.
+
+**Which piece is this?** Select a row and that piece lights up in the
+viewport. The row shows its triangle count, whether it is skinned by the
+character's rig, and how many materials it carries. More than one material
+means the piece renders as several subsets, which is not visible from the
+viewport at all.
+
+**How do I reach the one underneath?** Each row has an eye. Hiding a piece
+takes it out of the viewport and out of the way of your clicks, so a marker
+meant for the hip lands on the hip rather than on the spacesuit over it.
+**Show all** brings everything back, and hiding is forgotten when you load a
+different character.
+
+Selection is driven from this list rather than by clicking the viewport,
+because a click there already means "place a marker" and that is the job the
+viewport is for.
 
 ### Blend shapes
 
