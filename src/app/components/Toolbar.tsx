@@ -192,7 +192,11 @@ export function Toolbar(): JSX.Element {
 
       <div className="flex-1" />
 
-      <button className="rs-button" onClick={() => app.frameCharacter()} title="Frame all (F)">
+      <button
+        className="rs-button"
+        onClick={() => app.frameCharacter()}
+        title="Frame the whole character (A). F focuses the selection instead."
+      >
         Frame
       </button>
 

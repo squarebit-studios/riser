@@ -357,3 +357,145 @@ test.describe('automatic placement from a rig', () => {
     expect(after.position[1]).toBeCloseTo(handPlaced.position[1], 6);
   });
 });
+
+test.describe('curves are actually drawn', () => {
+  /**
+   * Count pixels close to a colour by reading the canvas back.
+   *
+   * The scene graph is not evidence. A Line2 with a stale resolution has
+   * correct geometry, a correct material and a correct place in the tree, and
+   * draws nothing - which is exactly the regression this guards. Only the
+   * frame buffer can say whether the user can see the curve.
+   */
+  async function countPixelsNear(
+    page: Page,
+    rgb: [number, number, number],
+    tolerance = 40
+  ): Promise<number> {
+    return page.evaluate(
+      ({ rgb, tolerance }) => {
+        const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+        const readback = document.createElement('canvas');
+        readback.width = canvas.width;
+        readback.height = canvas.height;
+        const ctx = readback.getContext('2d')!;
+        ctx.drawImage(canvas, 0, 0);
+        const { data } = ctx.getImageData(0, 0, readback.width, readback.height);
+        let hits = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          if (
+            Math.abs(data[i]! - rgb[0]) < tolerance &&
+            Math.abs(data[i + 1]! - rgb[1]) < tolerance &&
+            Math.abs(data[i + 2]! - rgb[2]) < tolerance
+          ) {
+            hits++;
+          }
+        }
+        return hits;
+      },
+      { rgb, tolerance }
+    );
+  }
+
+  /** Show or hide only the curve LINES, leaving their control vertices alone. */
+  async function setLinesVisible(page: Page, visible: boolean): Promise<number> {
+    return page.evaluate((visible) => {
+      const app = window.__riser as unknown as {
+        viewport: { scene: { traverse(fn: (o: unknown) => void): void } };
+      };
+      let count = 0;
+      app.viewport.scene.traverse((object) => {
+        const o = object as { name?: string; material?: { visible: boolean } };
+        if (o.name?.startsWith('Curve:') && o.material) {
+          o.material.visible = visible;
+          count++;
+        }
+      });
+      return count;
+    }, visible);
+  }
+
+  test('the line between control vertices is really rendered', async ({ page }) => {
+    await openApp(page);
+    await loadBiped(page);
+
+    await page.getByRole('button', { name: 'Curves', exact: true }).click();
+    await page.getByTestId('curve-spineCurve').click();
+
+    // Place points until there are enough for a line. A click that lands on an
+    // existing control vertex selects it rather than adding another, so a
+    // fixed list of offsets is not reliable - keep going until the document
+    // says there are three.
+    const offsets = [-70, -40, -10, 20, 50, 80, -55, 5, 35, 65];
+    for (const dy of offsets) {
+      const points = await page.evaluate(
+        () => window.__riser!.store.document.curves[0]?.points.length ?? 0
+      );
+      if (points >= 3) break;
+      await clickViewport(page, 0, dy);
+      await page.waitForTimeout(110);
+    }
+
+    const placed = await page.evaluate(
+      () => window.__riser!.store.document.curves[0]?.points.length ?? 0
+    );
+    expect(placed, 'could not place three control vertices').toBeGreaterThanOrEqual(3);
+    await page.waitForTimeout(300);
+
+    // Control vertices and the active line share a colour, so counting that
+    // colour cannot tell them apart. Hiding ONLY the line materials and
+    // re-counting isolates the line exactly.
+    const withLine = await countPixelsNear(page, [0xff, 0xc4, 0x47]);
+
+    const hidden = await setLinesVisible(page, false);
+    expect(hidden, 'no curve line object was found in the scene').toBeGreaterThan(0);
+    await page.waitForTimeout(200);
+    const withoutLine = await countPixelsNear(page, [0xff, 0xc4, 0x47]);
+
+    await setLinesVisible(page, true);
+
+    // Whatever the curve's length, hiding the line must remove a meaningful
+    // number of pixels. If the line were never drawn, this difference is zero.
+    expect(
+      withLine - withoutLine,
+      `hiding the line changed only ${withLine - withoutLine} pixels, so it was not drawn`
+    ).toBeGreaterThan(25);
+  });
+
+  test('the line survives a window resize', async ({ page }) => {
+    // The regression this exists for. Line2 computes its width in screen space
+    // from a resolution its material has to be told about. That used to be set
+    // only when the document changed, so a resize AFTER the last edit left it
+    // stale and the line stopped being drawn - with the scene graph still
+    // looking perfectly correct.
+    await openApp(page);
+    await loadBiped(page);
+
+    await page.getByRole('button', { name: 'Curves', exact: true }).click();
+    await page.getByTestId('curve-spineCurve').click();
+    for (const dy of [-70, -40, -10, 20, 50, 80]) {
+      const points = await page.evaluate(
+        () => window.__riser!.store.document.curves[0]?.points.length ?? 0
+      );
+      if (points >= 3) break;
+      await clickViewport(page, 0, dy);
+      await page.waitForTimeout(110);
+    }
+    await page.waitForTimeout(200);
+
+    // Resize with no further document edits, then measure.
+    await page.setViewportSize({ width: 1100, height: 780 });
+    await page.waitForTimeout(500);
+
+    const withLine = await countPixelsNear(page, [0xff, 0xc4, 0x47]);
+    await setLinesVisible(page, false);
+    await page.waitForTimeout(200);
+    const withoutLine = await countPixelsNear(page, [0xff, 0xc4, 0x47]);
+    await setLinesVisible(page, true);
+
+    expect(
+      withLine - withoutLine,
+      `after resizing, hiding the line changed only ${withLine - withoutLine} pixels`
+    ).toBeGreaterThan(25);
+  });
+});

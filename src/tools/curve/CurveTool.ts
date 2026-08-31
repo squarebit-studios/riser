@@ -9,15 +9,16 @@
 //                              creating the curve on the first click
 //   click on a control vertex  select it
 //   drag a control vertex      slide it across the surface, re-binding
-//   shift-click on a curve     insert a control vertex at that point
 //   delete / backspace         remove the selected control vertex
 //   C                          toggle the active curve open or closed
 //   escape / enter             finish the curve
 //
 // Where a new control vertex goes is decided by `insertionIndex` rather than
-// always appending. Tracing a jawline, people commonly work outwards from the
+// always appending, and it happens on EVERY click - there is no separate
+// insert gesture. Tracing a jawline, people commonly work outwards from the
 // chin in both directions; always appending would zig-zag the curve back and
-// forth across the face.
+// forth across the face, so a click between two existing vertices lands
+// between them.
 // ==========================================================================
 
 import * as THREE from 'three';

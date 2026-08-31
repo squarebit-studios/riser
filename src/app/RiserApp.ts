@@ -100,6 +100,13 @@ export class RiserApp {
       // only updates its own, so update the other one here.
       this.markerLayer.update(this.viewport.camera);
       this.curveLayer.update(this.viewport.camera);
+
+      // Line2 computes its width in SCREEN space, so its material has to know
+      // the canvas size. Setting this only when the document changed left it
+      // at the 1x1 default for the first frames and stale after every resize,
+      // which does not degrade gracefully - the line is simply not drawn.
+      const { width, height } = this.viewport.size;
+      this.curveLayer.setResolution(width, height);
     });
 
     this.unsubscribeUi = useUiStore.subscribe((state, previous) =>
@@ -338,8 +345,6 @@ export class RiserApp {
       })
     );
 
-    const { width, height } = this.viewport.size;
-    this.curveLayer.setResolution(width, height);
   }
 
   /**
