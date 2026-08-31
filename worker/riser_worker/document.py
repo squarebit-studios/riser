@@ -14,9 +14,11 @@ something only the browser understands, that test fails.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
+from typing import Any
 
-from pxr import Gf, Usd, UsdGeom
+from pxr import Gf, Tf, Usd, UsdGeom
 
 from .mesh import TriangulatedMesh, Vec3, triangulate
 
@@ -30,41 +32,131 @@ class RiserLayerError(ValueError):
     """The layer is not a Riser document, or is malformed."""
 
 
+class GuideSource(str, Enum):
+    """Where a guide's position came from.
+
+    A pipeline needs this to know which positions a person stood behind. An
+    auto-rig fit should trust ``USER`` absolutely, take ``SKELETON`` as exact
+    wherever the asset shipped a rig, and treat the other two as a starting
+    point that still wants checking.
+
+    ``Guide.source`` is a plain ``str`` rather than this enum on purpose: a
+    reader that raises on a token it has not seen before is a reader that
+    breaks the first time the format grows a fifth source. Compare against
+    these members - they are ``str`` values, so ``guide.source is
+    GuideSource.USER`` is false but ``guide.source == GuideSource.USER`` is
+    true - and treat anything else as unknown rather than as an error.
+    """
+
+    USER = "user"
+    SKELETON = "skeleton"
+    PROPORTIONS = "proportions"
+    LANDMARKS = "landmarks"
+
+
 @dataclass(frozen=True)
 class SurfaceBinding:
+    """Where a point sits ON the character, rather than where it sits in space.
+
+    ``position = evaluate(bind_prim, face_index, barycentric) + offset``. That
+    identity holds in the browser and here, and it is what lets a marker
+    survive a retopo, a mesh swap or a scale change.
+    """
+
+    #: Prim path of the bound mesh AS THE LAYER COMPOSES IT, so
+    #: ``/Riser/Character/Geom/Body`` and not the asset's own ``/Geom/Body``.
     prim_path: str
+    #: Triangle index, after the browser's triangulation. See ``mesh.py``.
     face_index: int
+    #: Weights inside that triangle; the three components sum to 1.
     barycentric: Vec3
+    #: Displacement off the surface, for guides that belong inside the volume.
     offset: Vec3
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "prim_path": self.prim_path,
+            "face_index": self.face_index,
+            "barycentric": list(self.barycentric),
+            "offset": list(self.offset),
+        }
 
 
 @dataclass(frozen=True)
 class Guide:
+    """One named marker from the template's checklist, exactly as authored."""
+
     id: str
     group: str
+    #: What the browser computed and stored. A HINT: it was computed in float32
+    #: against whatever geometry the browser had loaded at the time. Resolve
+    #: the binding instead of trusting it - see ``RiserLayer.guides()``.
     position: Vec3
     normal: Vec3
     binding: SurfaceBinding | None
+    #: One of ``GuideSource``, read verbatim so an unknown token survives.
+    source: str = GuideSource.USER.value
+    #: How far the source trusts the position, 0..1. Always 1 for ``user``.
+    confidence: float = 1.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "group": self.group,
+            "position": list(self.position),
+            "normal": list(self.normal),
+            "source": self.source,
+            "confidence": self.confidence,
+            "binding": self.binding.to_dict() if self.binding else None,
+        }
 
 
 @dataclass(frozen=True)
 class CurvePoint:
+    """One control vertex of a curve, bound the same way a guide is."""
+
     position: Vec3
     normal: Vec3
     binding: SurfaceBinding | None
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "position": list(self.position),
+            "normal": list(self.normal),
+            "binding": self.binding.to_dict() if self.binding else None,
+        }
+
 
 @dataclass(frozen=True)
 class Curve:
+    """A named curve traced along the character's surface."""
+
     id: str
     group: str
     closed: bool
+    #: Curve width in stage units, from USD ``widths``.
     width: float
     points: list[CurvePoint]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "group": self.group,
+            "closed": self.closed,
+            "width": self.width,
+            "points": [p.to_dict() for p in self.points],
+        }
 
 
 @dataclass
 class RiserDocument:
+    """Everything the layer says, before any of it is checked against geometry.
+
+    This is a faithful transcript of the file. Nothing in it is resolved:
+    guide positions are the browser's stored values. Use ``RiserLayer`` when
+    you want answers rather than a transcript.
+    """
+
     doc_version: str
     template_id: str
     name: str
@@ -73,6 +165,24 @@ class RiserDocument:
     meters_per_unit: float
     guides: list[Guide] = field(default_factory=list)
     curves: list[Curve] = field(default_factory=list)
+
+    def guide(self, guide_id: str) -> Guide | None:
+        return next((g for g in self.guides if g.id == guide_id), None)
+
+    def curve(self, curve_id: str) -> Curve | None:
+        return next((c for c in self.curves if c.id == curve_id), None)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "doc_version": self.doc_version,
+            "template_id": self.template_id,
+            "name": self.name,
+            "character_ref": self.character_ref,
+            "up_axis": self.up_axis,
+            "meters_per_unit": self.meters_per_unit,
+            "guides": [g.to_dict() for g in self.guides],
+            "curves": [c.to_dict() for c in self.curves],
+        }
 
 
 def _vec3(value) -> Vec3:
@@ -116,7 +226,19 @@ def _read_binding(prim: Usd.Prim, namespace: str) -> SurfaceBinding | None:
 
 
 def open_stage(path: str | Path) -> Usd.Stage:
-    stage = Usd.Stage.Open(str(path))
+    """Compose a stage from a layer on disk.
+
+    Every way of failing to open a file arrives here as ``RiserLayerError``.
+    OpenUSD is inconsistent about it - a missing file raises
+    ``Tf.ErrorException`` while some other refusals just return None - and a
+    caller should not have to catch two unrelated exception types, one of which
+    is not even a ValueError, to handle "that file did not work".
+    """
+    try:
+        stage = Usd.Stage.Open(str(path))
+    except Tf.ErrorException as err:
+        detail = " ".join(str(err).split())
+        raise RiserLayerError(f"OpenUSD could not open {path}: {detail}") from err
     if stage is None:
         raise RiserLayerError(f"OpenUSD could not open {path}")
     return stage
@@ -153,6 +275,13 @@ def read_document(stage: Usd.Stage) -> RiserDocument:
                     position=_vec3(_attr(prim, "xformOp:translate")),
                     normal=_vec3(_attr(prim, "riser:guide:normal", (0, 1, 0))),
                     binding=_read_binding(prim, "riser:guide"),
+                    # Absent on layers written before provenance existed. Back
+                    # then the only way to place a guide was by hand, so "user"
+                    # is the honest default and not merely a convenient one.
+                    source=str(
+                        _attr(prim, "riser:guide:source", GuideSource.USER.value)
+                    ),
+                    confidence=float(_attr(prim, "riser:guide:confidence", 1.0)),
                 )
             )
 

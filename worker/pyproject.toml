@@ -1,12 +1,17 @@
 [project]
 name = "riser-worker"
-version = "0.1.0"
-description = "Server-side USD processing for Riser: resolve bindings, validate documents, convert uploads."
+version = "0.2.0"
+description = "Read, resolve and validate Riser USD layers: the developer API for pipeline integration."
 requires-python = ">=3.10"
 dependencies = [
     # Pixar OpenUSD. The authority on what a Riser layer says.
     "usd-core>=26.5",
 ]
+
+[project.scripts]
+# The CLI is standard library only, so it installs and runs anywhere the core
+# does. No extra needed.
+riser = "riser_worker.cli:main"
 
 [project.optional-dependencies]
 # The HTTP surface. The core package is importable and testable without it,

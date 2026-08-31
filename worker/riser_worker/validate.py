@@ -16,8 +16,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
-from .document import Guide, RiserDocument, SurfaceBinding
+from .document import Curve, Guide, RiserDocument, SurfaceBinding
 from .mesh import TriangulatedMesh, Vec3, bounds, evaluate_barycentric
 
 
@@ -29,14 +30,31 @@ class Severity(str, Enum):
 
 @dataclass(frozen=True)
 class Issue:
+    """One finding. ``code`` is the stable identifier; ``message`` is prose."""
+
     severity: Severity
     code: str
     message: str
+    #: Guide or curve id the issue is about, or "" for whole-document issues.
     subject: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "severity": self.severity.value,
+            "code": self.code,
+            "message": self.message,
+            "subject": self.subject,
+        }
 
 
 @dataclass
 class ResolvedGuide:
+    """A guide with its position recomputed from real geometry.
+
+    This is what a pipeline should consume. ``position`` is the answer;
+    everything else is there so a consumer can decide how much to trust it.
+    """
+
     id: str
     group: str
     #: Position recomputed from the binding - the authoritative value.
@@ -45,7 +63,85 @@ class ResolvedGuide:
     authored_position: Vec3
     #: Distance between the two, in stage units.
     drift: float
+    #: True when the guide carries a surface binding at all.
     bound: bool
+    #: False when a binding exists but names geometry that is not there, in
+    #: which case ``position`` falls back to the authored value. A consumer
+    #: that ignores this flag will silently use a stale position.
+    resolved: bool = True
+    #: Surface normal at the pick, for orienting whatever gets built here.
+    normal: Vec3 = (0.0, 1.0, 0.0)
+    #: Provenance. See ``document.GuideSource``.
+    source: str = "user"
+    confidence: float = 1.0
+    #: The binding itself, for a consumer that wants the prim and triangle.
+    binding: SurfaceBinding | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "group": self.group,
+            "position": list(self.position),
+            "authored_position": list(self.authored_position),
+            "normal": list(self.normal),
+            "drift": self.drift,
+            "bound": self.bound,
+            "resolved": self.resolved,
+            "source": self.source,
+            "confidence": self.confidence,
+            "binding": self.binding.to_dict() if self.binding else None,
+        }
+
+
+@dataclass
+class ResolvedCurvePoint:
+    """One control vertex with its position recomputed from its binding."""
+
+    index: int
+    position: Vec3
+    authored_position: Vec3
+    normal: Vec3
+    drift: float
+    bound: bool
+    resolved: bool = True
+    binding: SurfaceBinding | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "index": self.index,
+            "position": list(self.position),
+            "authored_position": list(self.authored_position),
+            "normal": list(self.normal),
+            "drift": self.drift,
+            "bound": self.bound,
+            "resolved": self.resolved,
+            "binding": self.binding.to_dict() if self.binding else None,
+        }
+
+
+@dataclass
+class ResolvedCurve:
+    """A curve whose control vertices have been recomputed from geometry.
+
+    The control vertices are the authored ones, not a tessellation. Riser
+    writes a cubic B-spline ``BasisCurves``; a consumer that needs points along
+    the curve rather than its hull evaluates that basis itself.
+    """
+
+    id: str
+    group: str
+    closed: bool
+    width: float
+    points: list[ResolvedCurvePoint] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "group": self.group,
+            "closed": self.closed,
+            "width": self.width,
+            "points": [p.to_dict() for p in self.points],
+        }
 
 
 @dataclass
@@ -67,6 +163,19 @@ class ValidationReport:
 
     def add(self, severity: Severity, code: str, message: str, subject: str = "") -> None:
         self.issues.append(Issue(severity, code, message, subject))
+
+    def to_dict(self) -> dict[str, Any]:
+        """The report as plain JSON-safe data. This shape is a contract."""
+        return {
+            "ok": self.ok,
+            "counts": {
+                "errors": len(self.errors),
+                "warnings": len(self.warnings),
+                "guides": len(self.guides),
+            },
+            "guides": [g.to_dict() for g in self.guides],
+            "issues": [i.to_dict() for i in self.issues],
+        }
 
 
 def resolve_binding(
@@ -90,6 +199,94 @@ def resolve_binding(
 
 def _distance(a: Vec3, b: Vec3) -> float:
     return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+
+
+def _resolve_guide(guide: Guide, meshes: dict[str, TriangulatedMesh]) -> ResolvedGuide:
+    """Turn one authored guide into a resolved one.
+
+    Kept separate from ``validate`` so that resolving and reporting share a
+    single piece of arithmetic. Two implementations of this would eventually
+    disagree, and the disagreement would show up as markers in the wrong place
+    rather than as a failing test.
+    """
+    common = {
+        "id": guide.id,
+        "group": guide.group,
+        "authored_position": guide.position,
+        "normal": guide.normal,
+        "source": guide.source,
+        "confidence": guide.confidence,
+        "binding": guide.binding,
+    }
+
+    if guide.binding is None:
+        return ResolvedGuide(
+            position=guide.position, drift=0.0, bound=False, resolved=True, **common
+        )
+
+    resolved = resolve_binding(guide.binding, meshes)
+    if resolved is None:
+        # Fall back to the authored position rather than dropping the guide.
+        # A consumer that checks `resolved` gets to decide; one that does not
+        # at least still gets the marker in roughly the right place.
+        return ResolvedGuide(
+            position=guide.position, drift=0.0, bound=True, resolved=False, **common
+        )
+
+    return ResolvedGuide(
+        position=resolved,
+        drift=_distance(resolved, guide.position),
+        bound=True,
+        resolved=True,
+        **common,
+    )
+
+
+def _resolve_curve(curve: Curve, meshes: dict[str, TriangulatedMesh]) -> ResolvedCurve:
+    points: list[ResolvedCurvePoint] = []
+    for index, point in enumerate(curve.points):
+        resolved = (
+            resolve_binding(point.binding, meshes) if point.binding is not None else None
+        )
+        points.append(
+            ResolvedCurvePoint(
+                index=index,
+                position=resolved if resolved is not None else point.position,
+                authored_position=point.position,
+                normal=point.normal,
+                drift=_distance(resolved, point.position) if resolved else 0.0,
+                bound=point.binding is not None,
+                resolved=point.binding is None or resolved is not None,
+                binding=point.binding,
+            )
+        )
+    return ResolvedCurve(
+        id=curve.id,
+        group=curve.group,
+        closed=curve.closed,
+        width=curve.width,
+        points=points,
+    )
+
+
+def resolve_guides(
+    doc: RiserDocument, meshes: dict[str, TriangulatedMesh]
+) -> list[ResolvedGuide]:
+    """Every guide in the document, with its position recomputed.
+
+    Unlike ``validate``, this returns a row for every guide including ones
+    whose binding no longer resolves. A pipeline that is exporting positions
+    needs to see the whole checklist, flagged, rather than a silently shorter
+    list.
+    """
+    return [_resolve_guide(g, meshes) for g in doc.guides]
+
+
+def resolve_curves(
+    doc: RiserDocument, meshes: dict[str, TriangulatedMesh]
+) -> list[ResolvedCurve]:
+    """Every curve, with each control vertex recomputed from its binding."""
+    return [_resolve_curve(c, meshes) for c in doc.curves]
 
 
 def validate(
@@ -174,7 +371,9 @@ def _validate_guide(
     report: ValidationReport,
     drift_warning: float,
 ) -> None:
-    if guide.binding is None:
+    entry = _resolve_guide(guide, meshes)
+
+    if not entry.bound:
         report.add(
             Severity.INFO,
             "guide-unbound",
@@ -182,20 +381,11 @@ def _validate_guide(
             "taken as authored rather than recomputed.",
             guide.id,
         )
-        report.guides.append(
-            ResolvedGuide(
-                id=guide.id,
-                group=guide.group,
-                position=guide.position,
-                authored_position=guide.position,
-                drift=0.0,
-                bound=False,
-            )
-        )
+        report.guides.append(entry)
         return
 
-    resolved = resolve_binding(guide.binding, meshes)
-    if resolved is None:
+    if not entry.resolved:
+        assert guide.binding is not None
         mesh = meshes.get(guide.binding.prim_path)
         detail = (
             f"prim {guide.binding.prim_path} is not in the referenced asset"
@@ -211,9 +401,13 @@ def _validate_guide(
             f"Guide '{guide.id}' cannot be resolved: {detail}.",
             guide.id,
         )
+        # Deliberately not appended: the report's guide list is the set of
+        # positions a caller may act on, and this one has no trustworthy
+        # position. resolve_guides() is where you go for the full roster.
         return
 
-    drift = _distance(resolved, guide.position)
+    resolved = entry.position
+    drift = entry.drift
     if drift > drift_warning:
         report.add(
             Severity.WARNING,
@@ -232,16 +426,7 @@ def _validate_guide(
             guide.id,
         )
 
-    report.guides.append(
-        ResolvedGuide(
-            id=guide.id,
-            group=guide.group,
-            position=resolved,
-            authored_position=guide.position,
-            drift=drift,
-            bound=True,
-        )
-    )
+    report.guides.append(entry)
 
 
 def _within(point: Vec3, box: tuple[Vec3, Vec3], margin: float) -> bool:

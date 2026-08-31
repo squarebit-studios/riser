@@ -24,8 +24,8 @@ offending prim so the validation report can tell the user which mesh to fix.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Iterable, Sequence
 
 Vec3 = tuple[float, float, float]
 
