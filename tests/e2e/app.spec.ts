@@ -36,7 +36,10 @@ declare global {
         primPaths: string[];
       } | null;
       loadFromUrl(url: string): Promise<void>;
+      autoPlace(options?: { announce?: boolean }): number;
       autoPlaceFromSkeleton(options?: { announce?: boolean }): number;
+      autoPlaceFromProportions(options?: { announce?: boolean }): number;
+      clearGuides(): void;
     };
   }
 }
@@ -58,6 +61,21 @@ async function loadBiped(page: Page): Promise<void> {
 
 function guides(page: Page): Promise<GuideSnapshot[]> {
   return page.evaluate(() => window.__riser!.store.document.guides);
+}
+
+/**
+ * Empty the checklist.
+ *
+ * Loading a character now fills it automatically - from its rig if it has one,
+ * from its measured shape if not - so a test about placing a marker by hand
+ * has to clear that first. Without it, clicks land on the auto-placed markers
+ * and select them rather than reaching the mesh.
+ */
+async function clearGuides(page: Page): Promise<void> {
+  await page.evaluate(() => window.__riser!.clearGuides());
+  await page.waitForFunction(
+    () => window.__riser!.store.document.guides.length === 0
+  );
 }
 
 /**
@@ -122,6 +140,8 @@ test.describe('placing guides', () => {
     await openApp(page);
     await loadBiped(page);
 
+    await clearGuides(page);
+
     // Pick a guide from the checklist, then click the character.
     await page.getByTestId('guide-chest').click();
     await clickViewport(page);
@@ -147,6 +167,8 @@ test.describe('placing guides', () => {
   test('symmetry places the mirrored guide too', async ({ page }) => {
     await openApp(page);
     await loadBiped(page);
+
+    await clearGuides(page);
 
     // Symmetry is on by default. Aim for the character's left arm - the exact
     // pixel that lands on it depends on framing, so try a few offsets rather
@@ -194,6 +216,8 @@ test.describe('placing guides', () => {
     await openApp(page);
     await loadBiped(page);
 
+    await clearGuides(page);
+
     await page.getByTestId('guide-pelvis').click();
     await expect(page.getByText('Click the character to place Pelvis.')).toBeVisible();
 
@@ -211,6 +235,8 @@ test.describe('placing guides', () => {
   test('undo removes a placed guide', async ({ page }) => {
     await openApp(page);
     await loadBiped(page);
+
+    await clearGuides(page);
 
     await page.getByTestId('guide-chest').click();
     await clickViewport(page);
@@ -233,6 +259,7 @@ test.describe('drawing curves', () => {
     await openApp(page);
     await loadBiped(page);
 
+    await clearGuides(page);
     await page.getByRole('button', { name: 'Curves', exact: true }).click();
     await page.getByTestId('curve-spineCurve').click();
 
@@ -253,6 +280,7 @@ test.describe('camera', () => {
     await openApp(page);
     await loadBiped(page);
 
+    await clearGuides(page);
     await page.getByTestId('guide-chest').click();
 
     const box = (await page.locator('canvas').boundingBox())!;
@@ -315,17 +343,56 @@ test.describe('automatic placement from a rig', () => {
     }
   });
 
-  test('an unrigged character places nothing on its own', async ({ page }) => {
+  test('an unrigged character is measured instead', async ({ page }) => {
+    // No rig to read, so the shape is measured. Approximate rather than exact,
+    // which is what the source and confidence record.
     await openApp(page);
     await loadBiped(page);
-    await page.waitForTimeout(600);
+
+    await page.waitForFunction(
+      () => window.__riser!.store.document.guides.length > 0
+    );
+    const placed = await guides(page);
+    expect(placed.length).toBeGreaterThanOrEqual(30);
+
+    for (const guide of placed) {
+      expect(guide.source).toBe('proportions');
+      expect(guide.binding, `${guide.id} is unbound`).not.toBeNull();
+    }
+  });
+
+  test('a rig is preferred over measuring when both are possible', async ({ page }) => {
+    await openApp(page);
+    await loadRigged(page);
+    await page.waitForFunction(
+      () => window.__riser!.store.document.guides.length > 0
+    );
+    // The rigged character could also be measured. It must not be: a skeleton
+    // is exact and measuring is a fallback.
+    const placed = await guides(page);
+    expect(placed.every((g) => g.source === 'skeleton')).toBe(true);
+  });
+
+  test('measuring refuses a character that is not a biped', async ({ page }) => {
+    // Placing human guides on a horse costs more than placing none - the user
+    // has to notice and undo thirty markers rather than simply start.
+    await openApp(page);
+    await page.evaluate(() =>
+      window.__riser!.loadFromUrl('/assets/quadruped-blockout.usda')
+    );
+    await page.waitForFunction(
+      () => (window.__riser!.characterModel?.meshes.length ?? 0) > 0
+    );
+    await page.waitForTimeout(800);
     expect(await guides(page)).toHaveLength(0);
   });
 
-  test('the auto-place button is offered only when there is a rig', async ({ page }) => {
+  test('the auto-place button needs a character, not a rig', async ({ page }) => {
     await openApp(page);
-    await loadBiped(page);
     await expect(page.getByRole('button', { name: 'Auto-place' })).toBeDisabled();
+
+    await loadBiped(page);
+    await expect(page.getByRole('button', { name: 'Auto-place' })).toBeEnabled();
 
     await loadRigged(page);
     await expect(page.getByRole('button', { name: 'Auto-place' })).toBeEnabled();
@@ -419,6 +486,7 @@ test.describe('curves are actually drawn', () => {
     await openApp(page);
     await loadBiped(page);
 
+    await clearGuides(page);
     await page.getByRole('button', { name: 'Curves', exact: true }).click();
     await page.getByTestId('curve-spineCurve').click();
 
@@ -471,6 +539,7 @@ test.describe('curves are actually drawn', () => {
     await openApp(page);
     await loadBiped(page);
 
+    await clearGuides(page);
     await page.getByRole('button', { name: 'Curves', exact: true }).click();
     await page.getByTestId('curve-spineCurve').click();
     for (const dy of [-70, -40, -10, 20, 50, 80]) {

@@ -23,6 +23,7 @@ export function Toolbar(): JSX.Element {
   const symmetry = useUiStore((s) => s.symmetry);
   const xray = useUiStore((s) => s.xray);
   const hasSkeleton = useUiStore((s) => s.characterHasSkeleton);
+  const characterName = useUiStore((s) => s.characterName);
   const subdivLevel = useUiStore((s) => s.subdivLevel);
   const subdivClamped = useUiStore((s) => s.subdivClamped);
   const dirty = useUiStore((s) => s.dirty);
@@ -160,12 +161,14 @@ export function Toolbar(): JSX.Element {
           overwrites anything placed by hand, so it is safe to press twice. */}
       <button
         className="rs-button"
-        onClick={() => app.autoPlaceFromSkeleton({ announce: true })}
-        disabled={!hasSkeleton}
+        onClick={() => app.autoPlace({ announce: true })}
+        disabled={!characterName}
         title={
-          hasSkeleton
-            ? "Place guides from the character's own skeleton. Your own placements are kept."
-            : 'This character has no skeleton to read guides from.'
+          !characterName
+            ? 'Load a character first.'
+            : hasSkeleton
+              ? "Place guides from the character's own skeleton, which is exact. Your own placements are kept."
+              : 'Estimate guides by measuring the character. Approximate, and your own placements are kept.'
         }
       >
         Auto-place

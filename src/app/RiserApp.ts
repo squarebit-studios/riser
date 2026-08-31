@@ -28,6 +28,7 @@ import * as M from '../doc/mutations';
 import { createDocument, type RiserDocument, type Vec3 } from '../doc/types';
 import { getTemplate } from '../templates';
 import { placeGuidesFromSkeleton } from '../tools/autoplace/fromSkeleton';
+import { placeGuidesFromProportions } from '../tools/autoplace/fromProportions';
 import { ToolManager } from '../tools/ToolManager';
 import { MarkerLayer } from '../tools/marker/MarkerLayer';
 import { MarkerTool } from '../tools/marker/MarkerTool';
@@ -214,10 +215,76 @@ export class RiserApp {
       .setCharacter(basename(model.source.ref), model.skeleton !== null);
     this.syncFromDocument();
 
-    // A rigged character already contains the answer, so use it rather than
-    // opening on an empty checklist and asking the user to place what the file
-    // already knows.
-    if (model.skeleton) this.autoPlaceFromSkeleton({ announce: true });
+    // Never open on an empty checklist when something can be worked out. A
+    // rigged character contains the answer outright; an unrigged one can still
+    // be measured.
+    this.autoPlace({ announce: true });
+  }
+
+  /**
+   * Fill in guides by the best means available.
+   *
+   * Tiers, best first. A skeleton is exact, so it always wins; measuring the
+   * shape is a fallback that produces something plausible rather than
+   * something correct, and says so through the confidence it records. Neither
+   * ever touches a guide the user placed.
+   */
+  autoPlace(options: { announce?: boolean } = {}): number {
+    const character = this.character;
+    if (!character) return 0;
+
+    if (character.skeleton) return this.autoPlaceFromSkeleton(options);
+    return this.autoPlaceFromProportions(options);
+  }
+
+  /** True when there is anything for Auto-place to do. */
+  get canAutoPlace(): boolean {
+    return this.character !== null;
+  }
+
+  /**
+   * Fill in guides by measuring the character's shape.
+   *
+   * For the common case: an upload with no rig. Deliberately refuses rather
+   * than guessing when the shape does not measure like a two-legged figure -
+   * scattering human guides over a horse costs the user more than an empty
+   * checklist does.
+   */
+  autoPlaceFromProportions(options: { announce?: boolean } = {}): number {
+    const ui = useUiStore.getState();
+    const character = this.character;
+    if (!character) return 0;
+
+    const template = getTemplate(ui.templateId);
+    const result = placeGuidesFromProportions(
+      character,
+      this.documentRoot,
+      template,
+      this.store.document
+    );
+
+    if (result.guides.length === 0) {
+      if (options.announce && result.reason) ui.setNotice(result.reason);
+      return 0;
+    }
+
+    this.store.apply(
+      (d) => M.placeGuides(d, result.guides),
+      `Estimate ${result.guides.length} guides from the character's shape`
+    );
+
+    if (options.announce) {
+      const confidence = Math.round((result.landmarks?.confidence ?? 0) * 100);
+      ui.setNotice(
+        `Estimated ${result.guides.length} guides from the character's shape ` +
+          `(${confidence}% confident). Check them before exporting.`
+      );
+    }
+
+    const next = result.unmatched[0];
+    if (next) ui.setActiveGuideId(next);
+
+    return result.guides.length;
   }
 
   /**

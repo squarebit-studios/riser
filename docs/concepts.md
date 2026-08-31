@@ -237,12 +237,19 @@ as **Source**:
 |---|---|
 | `user` | You placed or adjusted it. Never overwritten. |
 | `skeleton` | Read from the character's own rig. Exact, when there is a rig. |
-| `proportions` | Fitted from the mesh's shape and standard proportions. |
+| `proportions` | Measured from the mesh's shape. Approximate, and used when there is no rig. |
 | `landmarks` | Predicted from the character's appearance. |
 
 This is not bookkeeping. Automatic placement runs more than once, on load and
 whenever you press **Auto-place**, and it must never undo work you did by hand.
 Provenance is what lets it improve its own guesses and leave yours alone.
+
+The tiers are tried best first. A skeleton is exact, so it always wins. Failing
+that, Riser measures the character: where the legs stop, where the torso
+narrows, how far the arms reach. That is a fallback and says so through the
+confidence it records, which the inspector shows beside the source. If the
+shape does not measure like a two-legged figure, Riser places nothing and tells
+you so, rather than scattering human guides over an animal.
 
 In the checklist and the viewport, a guide the app placed shows **violet**;
 one you placed or adjusted shows **blue**. Touch an automatic guide in any way

@@ -26,7 +26,7 @@ Left to right.
 | **Symmetry** | Mirrors placements across the character's centre line, and shows the symmetry plane in the viewport. On by default. Also `S`. |
 | **X-ray** | Draws markers and curves through the mesh. On by default. Also `X`. |
 | **Subdiv** | Catmull-Clark preview level, 0 to 3. Display only: it never moves a marker you have placed. The number turns amber when the level had to be reduced for a dense mesh. |
-| **Auto-place** | Fills in guides from the character's own skeleton. Disabled when the character has no skeleton. Never overwrites anything you placed. |
+| **Auto-place** | Fills in guides automatically: from the character's own skeleton when it has one, otherwise by measuring its shape. Disabled until a character is loaded. Never overwrites anything you placed. |
 | **Undo** / **Redo** | Steps the document history. The tooltip names the step, for example *Undo Place Chest*. |
 | **Frame** | Frames the whole character. |
 | **Open** | Loads a Riser document back in. Accepts `.usda` and `.usd`. |
@@ -103,7 +103,7 @@ What Riser read from the file you loaded.
 | **Asset** | The file name of the loaded character. |
 | **Units** | Metres per unit, as the asset declares it. |
 | **Up axis** | `Y` or `Z`. |
-| **Skeleton** | `present` or `none`. Auto-place needs one. |
+| **Skeleton** | `present` or `none`. With a skeleton, Auto-place reads exact joint positions; without one it measures the shape instead, which is approximate. |
 | **Subdivision** | The preview level and the face counts, as *level 2 - 15,136 faces from ...* the cage count. Reads *off* with the cage count at level 0. |
 
 ### Selection, with the marker tool
