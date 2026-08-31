@@ -78,6 +78,18 @@ export const PLACEMENT_MODES: readonly {
 const FALLBACK_DEPTH_FRACTION = 0.012;
 
 /**
+ * Below this fraction of the character's height, a closed span is a shell
+ * rather than a body part.
+ *
+ * Gary's spacesuit is 0.9mm thick and closes a perfectly valid solid the
+ * instant the ray meets it, so "the first closed solid" put joints inside his
+ * clothing. Set to separate a garment from the thinnest thing anyone would
+ * actually place a joint in: on a 1.8m character this is 7mm, where a shirt is
+ * about one and a finger about fifteen.
+ */
+const MIN_SOLID_FRACTION = 0.004;
+
+/**
  * Whether this placement needs the volume measured.
  *
  * Worth asking before raycasting: the through-pick has to force materials
@@ -110,8 +122,21 @@ export function resolvePlacement(
     interior: boolean;
     /** Every crossing of the click ray, in distance order. */
     through?: readonly PickResult[];
-    /** Character height, for the fallback depth. */
+    /** Character height, in WORLD units, for the fallback depth. */
     characterHeight: number;
+    /**
+     * Cage-local units per world unit, from the bound mesh's world matrix.
+     *
+     * Not optional decoration. Depths here are measured by raycasting, which
+     * happens in WORLD space, while the offset they turn into is CAGE-LOCAL -
+     * and the two are only the same when the character is authored in metres.
+     * Gary is authored in centimetres, so his meshes sit at world scale 0.01
+     * and every measured depth was applied a hundred times too small: a 26 cm
+     * joint placement came out at 0.26 cm, which is the surface. The biped
+     * blockout is authored in metres, so the bug was invisible on it and on
+     * every test that used it.
+     */
+    localPerWorld?: number;
   }
 ): PlacementResult {
   const wantsInside = needsVolume(mode, options.interior);
@@ -123,14 +148,133 @@ export function resolvePlacement(
     return { offset: surface.offset, measured: true };
   }
 
-  const depth = volumeDepth(surface, options.through);
-  if (depth !== null) {
-    return { offset: pushIn(surface, depth), measured: true };
+  // The centre is a POINT, not a distance, so it is used as one: the offset
+  // is the vector to the midpoint of the two crossings, expressed in the cage
+  // space the binding lives in.
+  //
+  // The first version measured the span along the ray and then pushed that far
+  // along the surface NORMAL, which is only the same thing when the two are
+  // parallel. On a curved belly, or any click that is not head-on, the push
+  // overshot the far side and left the marker OUTSIDE the character - a joint
+  // placed in mid-air behind the body. Going straight to the midpoint has no
+  // such failure mode, and needs no unit conversion either, because the
+  // conversion falls out of the matrix that takes the world point into cage
+  // space.
+  const centre = volumeCentre(
+    options.through,
+    options.characterHeight * MIN_SOLID_FRACTION
+  );
+  if (centre) {
+    return { offset: offsetToWorldPoint(surface, centre), measured: true };
   }
+
+  // Only the fallback still works in distances, and only it needs the world
+  // to cage-local conversion made explicit.
+  const toLocal = options.localPerWorld ?? 1;
   return {
-    offset: pushIn(surface, options.characterHeight * FALLBACK_DEPTH_FRACTION),
+    offset: pushIn(
+      surface,
+      options.characterHeight * FALLBACK_DEPTH_FRACTION * toLocal
+    ),
     measured: false
   };
+}
+
+/**
+ * The midpoint of the solid the ray passed through, in world space.
+ *
+ * Null when the crossings do not describe a solid - see `farSideOf`.
+ */
+export function volumeCentre(
+  through: readonly PickResult[] | undefined,
+  minThickness = 0
+): THREE.Vector3 | null {
+  const span = solidSpan(through, minThickness);
+  if (!span) return null;
+  return span.entry.point.clone().add(span.exit.point).multiplyScalar(0.5);
+}
+
+/**
+ * The span of the solid worth measuring, skipping shells too thin to be one.
+ *
+ * Every closed span is considered in order, and the first one thicker than
+ * `minThickness` wins. If nothing clears the bar - a character genuinely made
+ * of thin pieces - the thickest span is used rather than refusing, because
+ * some answer from real geometry beats a fraction of body height.
+ */
+function solidSpan(
+  through: readonly PickResult[] | undefined,
+  minThickness: number
+): { entry: PickResult; exit: PickResult } | null {
+  if (!through || through.length < 2) return null;
+
+  const direction = rayDirection(through);
+  if (!direction) return null;
+
+  let best: { entry: PickResult; exit: PickResult; thickness: number } | null = null;
+  let depth = 0;
+  let entry: PickResult | null = null;
+
+  for (const hit of through) {
+    const entering = hit.normal.dot(direction) < 0;
+    if (entering) {
+      if (depth === 0) entry = hit;
+      depth++;
+      continue;
+    }
+
+    depth--;
+    // A solid closes when the count comes back to zero. A count that goes
+    // negative means the ray began inside geometry, where there is no entry
+    // point to measure from.
+    if (depth > 0 || !entry) continue;
+    if (depth < 0) return null;
+
+    const thickness = entry.point.distanceTo(hit.point);
+    if (thickness > minThickness) return { entry, exit: hit };
+    if (!best || thickness > best.thickness) {
+      best = { entry, exit: hit, thickness };
+    }
+    entry = null;
+  }
+
+  return best && best.thickness > 0 ? { entry: best.entry, exit: best.exit } : null;
+}
+
+/**
+ * A cage-local offset that lands on `target`.
+ *
+ * `position = evaluate(binding) + offset`, and `evaluate` returns the cage
+ * triangle's own point in cage-local space - which is exactly
+ * `surface.pick.localPoint`. So the offset is the target, brought into that
+ * same space, minus it. Any scaling between world and cage is carried by the
+ * inverse world matrix rather than being applied by hand.
+ */
+function offsetToWorldPoint(surface: SurfacePick, target: THREE.Vector3): Vec3 {
+  const object = surface.pick.object;
+  object.updateWorldMatrix(true, false);
+
+  const local = target
+    .clone()
+    .applyMatrix4(new THREE.Matrix4().copy(object.matrixWorld).invert());
+  local.sub(surface.pick.localPoint);
+  return [local.x, local.y, local.z];
+}
+
+/**
+ * How many of an object's local units fit in one world unit.
+ *
+ * Reads the scale straight off the world matrix rather than trusting
+ * `metersPerUnit`, because the fit applied on load - unit scaling, an up-axis
+ * flip, framing - all end up in that matrix and all of them matter here.
+ */
+export function localUnitsPerWorldUnit(object: THREE.Object3D): number {
+  object.updateWorldMatrix(true, false);
+  const scale = new THREE.Vector3().setFromMatrixScale(object.matrixWorld);
+  // The average of the three axes: a non-uniform scale has no single answer,
+  // and a character with one is already beyond what a scalar depth can serve.
+  const average = (scale.x + scale.y + scale.z) / 3;
+  return average > 1e-9 ? 1 / average : 1;
 }
 
 /**
@@ -158,42 +302,19 @@ export function resolvePlacement(
  */
 export function volumeDepth(
   surface: SurfacePick,
-  through: readonly PickResult[] | undefined
+  through: readonly PickResult[] | undefined,
+  minThickness = 0
 ): number | null {
-  if (!through || through.length < 2) return null;
+  const span = solidSpan(through, minThickness);
+  if (!span) return null;
 
-  const entry = through[0]!;
-  const exit = farSideOf(through);
-  if (!exit) return null;
-
-  const span = entry.point.distanceTo(exit.point);
-  if (!(span > 0)) return null;
+  const thickness = span.entry.point.distanceTo(span.exit.point);
+  if (!(thickness > 0)) return null;
 
   // Measured from the point the user actually clicked, which on a subdivided
   // character is the limit surface rather than the cage.
-  const fromClick = surface.worldPoint.distanceTo(entry.point);
-  return span / 2 + fromClick;
-}
-
-/**
- * Where the solid the user clicked ends.
- *
- * Returns null when the crossings never close - an open mesh like a hair card,
- * or an asset with inconsistent winding, where the count is not to be trusted.
- * Guessing a far side from unreliable normals would put a joint somewhere
- * arbitrary; saying so and falling back to an estimate is honest.
- */
-function farSideOf(through: readonly PickResult[]): PickResult | null {
-  const direction = rayDirection(through);
-  if (!direction) return null;
-
-  let depth = 0;
-  for (const hit of through) {
-    depth += hit.normal.dot(direction) < 0 ? 1 : -1;
-    // Back out of every layer we went into: this is the far side.
-    if (depth <= 0) return hit;
-  }
-  return null;
+  const fromClick = surface.worldPoint.distanceTo(span.entry.point);
+  return thickness / 2 + fromClick;
 }
 
 /**

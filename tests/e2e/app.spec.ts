@@ -338,7 +338,11 @@ test.describe('choosing where a click lands', () => {
     await setPlacement(page, 'center');
 
     await page.getByTestId('guide-chest').click();
-    await clickViewport(page);
+    // Chest height, not the canvas centre. The centre of the framed view is
+    // the WAIST, which is deep front-to-back but narrow side-to-side, so the
+    // distance to the nearest surface there is small even when the placement
+    // is perfect - a thin margin to be asserting on.
+    await clickViewport(page, 0, -120);
     await page.waitForFunction(
       () => window.__riser!.store.document.guides.length > 0
     );
@@ -366,7 +370,7 @@ test.describe('choosing where a click lands', () => {
       await clearGuides(page);
       await setPlacement(page, mode);
       await page.getByTestId('guide-chest').click();
-      await clickViewport(page);
+      await clickViewport(page, 0, -120);
       await page.waitForFunction(
         () => window.__riser!.store.document.guides.length > 0
       );
@@ -388,7 +392,7 @@ test.describe('choosing where a click lands', () => {
     await setPlacement(page, 'auto');
 
     await page.getByTestId('guide-chest').click();
-    await clickViewport(page);
+    await clickViewport(page, 0, -120);
     await page.waitForFunction(
       () => window.__riser!.store.document.guides.length > 0
     );
@@ -417,10 +421,14 @@ test.describe('choosing where a click lands', () => {
       () => window.__riser!.store.document.guides.length > 0
     );
 
-    // Gary's torso is about half a metre through, so a real centre placement
-    // is far deeper than the 0.022 estimate the fallback would give.
+    // In WORLD units, which are metres however the asset was authored. Gary
+    // is modelled in centimetres, and an earlier version of this assertion
+    // compared his depth in centimetres against a threshold meant for metres -
+    // so it passed on 0.27 cm while the placement was a hundred times too
+    // shallow. Twenty centimetres is deep inside his torso and far beyond
+    // anything the fallback or a garment shell could produce.
     const depth = await page.evaluate(() => window.__riser!.placementDepth('chest'));
-    expect(depth).toBeGreaterThan(0.1);
+    expect(depth).toBeGreaterThan(0.2);
   });
 
   test('the chosen mode survives a reload', async ({ page }) => {

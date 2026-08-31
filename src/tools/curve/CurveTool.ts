@@ -37,7 +37,12 @@ import { LAYER_OVERLAY, type Viewport } from '../../viewport/Viewport';
 import { worldToDocument } from '../../viewport/space';
 import { curveDef } from '../../templates';
 import { mirrorPick } from '../mirror';
-import { needsVolume, resolvePlacement, type PlacementMode } from '../placement';
+import {
+  localUnitsPerWorldUnit,
+  needsVolume,
+  resolvePlacement,
+  type PlacementMode
+} from '../placement';
 import type { Tool, ToolPointerEvent } from '../types';
 import { insertionIndex } from './geometry';
 import type { ControlVertexRef, CurveLayer } from './CurveLayer';
@@ -309,7 +314,8 @@ export class CurveTool implements Tool {
     const placement = resolvePlacement(this.placementMode(), surface, {
       interior: false,
       through,
-      characterHeight: this.characterHeight()
+      characterHeight: this.characterHeight(),
+      localPerWorld: localUnitsPerWorldUnit(surface.pick.object)
     });
     const offset = placement.offset;
 

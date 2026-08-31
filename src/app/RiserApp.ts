@@ -19,6 +19,8 @@ import { SubdivSet } from '../viewport/SubdivSurface';
 import { ViewModeController } from '../viewport/ViewModes';
 import { SkeletonView } from '../viewport/SkeletonView';
 import { documentToWorld, documentToWorldDirection } from '../viewport/space';
+import { nearestPointOnMeshes } from '../viewport/nearest';
+import { withDoubleSided } from '../viewport/Picker';
 import { CharacterModel } from '../io/CharacterModel';
 import {
   loadCharacterFromFile,
@@ -875,29 +877,133 @@ export class RiserApp {
   }
 
   /**
-   * How far below its own surface a guide was placed, in document units.
+   * How far inside the character a guide sits, in document units.
    *
-   * Exposed for the end-to-end tests, which assert on the difference between
-   * placement modes. This is the inward component of the binding offset along
-   * the guide normal - precisely the quantity a placement mode sets - and is
-   * zero on the surface, half a limb thick at the centre, and the fallback
-   * fraction when the volume could not be measured.
+   * Positive is inside, negative is outside, zero is on the skin.
    *
-   * NOT the distance to the nearest surface, which was the first thing tried
-   * and is a different number: from inside a chest the nearest surface is
-   * sideways, not back along the click, so a correct 0.11 deep placement
-   * reported 0.047 and the test could not say what it meant to say.
+   * MEASURED GEOMETRICALLY, not read off the binding. The first version
+   * computed the inward component of the offset along the guide's normal,
+   * which is exactly what a placement mode sets - and which is wrong for any
+   * guide a placement mode did not set. Automatic placement stores its normal
+   * pointing the other way, so an auto-placed chest reported "26 cm ABOVE the
+   * surface" when it was sitting correctly inside the body. A readout that
+   * only makes sense for guides placed one particular way is worse than none,
+   * because it is the thing the user checks when they suspect a problem.
+   *
+   * So: distance to the nearest surface, signed by whether the point is
+   * actually inside the mesh. True for every guide, however it got there.
    */
   placementDepth(guideId: string): number {
     const guide = this.store.document.guides.find((g) => g.id === guideId);
-    const offset = guide?.binding?.offset;
-    if (!guide || !offset) return 0;
+    if (!guide || !this.character) return 0;
 
-    return -(
-      offset[0] * guide.normal[0] +
-      offset[1] * guide.normal[1] +
-      offset[2] * guide.normal[2]
-    );
+    const world = documentToWorld(this.documentRoot, guide.position);
+    const nearest = nearestPointOnMeshes(this.character.meshes, world);
+    if (!nearest) return 0;
+
+    const distance = nearest.worldPoint.distanceTo(world);
+    return this.isInsideCharacter(world) ? distance : -distance;
+  }
+
+  /**
+   * Whether a world point lies inside the character.
+   *
+   * Cast a ray out from the point: if the first surface it crosses is facing
+   * AWAY (an exit face), we started inside it. Parity on the raw crossing
+   * count would be simpler and wrong, because a clothed character nests - a
+   * point inside Gary's hip exits his body and then his spacesuit, two
+   * crossings, which even-odd counting calls "outside".
+   *
+   * The direction is deliberately not axis-aligned, so a point sitting exactly
+   * on a symmetry plane or an axis-aligned face does not graze every polygon
+   * it meets.
+   */
+  private isInsideCharacter(world: THREE.Vector3): boolean {
+    const character = this.character;
+    if (!character) return false;
+
+    // Several directions, and a majority vote.
+    //
+    // One ray is not enough, and the failure is not rare: a single direction
+    // can graze a face, leave through a seam between two pieces, or exit at a
+    // spot where the winding is inconsistent, and the answer flips. A marker
+    // correctly at the centre of the biped torso was reported as "3.4 cm
+    // ABOVE the surface" for exactly that reason - a readout that is wrong
+    // when the user is checking a suspicion is worse than no readout.
+    const directions = [
+      new THREE.Vector3(0.371, 0.826, 0.424),
+      new THREE.Vector3(-0.802, 0.331, 0.497),
+      new THREE.Vector3(0.263, -0.905, 0.334),
+      new THREE.Vector3(0.577, 0.211, -0.789),
+      new THREE.Vector3(-0.451, -0.532, -0.717)
+    ].map((d) => d.normalize());
+
+    let votesInside = 0;
+    let votesCast = 0;
+
+    // Double-sided for the same reason the through-pick is: a front-facing
+    // material hides exactly the exit faces this needs to see.
+    withDoubleSided(character.meshes, () => {
+      const raycaster = new THREE.Raycaster();
+      const normalMatrix = new THREE.Matrix3();
+
+      for (const direction of directions) {
+        raycaster.set(world.clone(), direction);
+        for (const hit of raycaster.intersectObjects(character.meshes, true)) {
+          const faceNormal = hit.face?.normal;
+          if (!faceNormal) continue;
+          hit.object.updateWorldMatrix(true, false);
+          const worldNormal = faceNormal
+            .clone()
+            .applyMatrix3(normalMatrix.getNormalMatrix(hit.object.matrixWorld))
+            .normalize();
+          // A grazing hit says nothing about which side we are on.
+          const facing = worldNormal.dot(direction);
+          if (Math.abs(facing) < 0.05) continue;
+          votesCast++;
+          if (facing > 0) votesInside++;
+          break;
+        }
+      }
+    });
+
+    return votesCast > 0 && votesInside * 2 > votesCast;
+  }
+
+  /**
+   * What a click at this screen position actually crosses.
+   *
+   * A diagnostic for the tests and for working out why a placement went where
+   * it did. Volume measurement depends on geometry nobody can see, so without
+   * a way to read the crossings back the only tool left is guessing.
+   */
+  debugThrough(x: number, y: number): {
+    primPath: string;
+    z: number;
+    facing: 'in' | 'out';
+    distance: number;
+  }[] {
+    const character = this.character;
+    if (!character) return [];
+    const { width, height } = this.viewport.size;
+    const hits = this.picker.pickThrough(x, y, width, height, character.meshes);
+
+    const direction = new THREE.Vector3();
+    this.viewport.camera.getWorldDirection(direction);
+    return hits.map((hit) => ({
+      primPath: hit.primPath.split('/').pop() ?? '',
+      z: Number(hit.point.z.toFixed(4)),
+      facing: hit.normal.dot(direction) < 0 ? 'in' : 'out',
+      distance: Number(hit.distance.toFixed(4))
+    }));
+  }
+
+  /** A guide's position in world space. A diagnostic, like debugThrough. */
+  guideWorld(guideId: string): [number, number, number] | null {
+    const guide = this.store.document.guides.find((g) => g.id === guideId);
+    if (!guide) return null;
+    const w = documentToWorld(this.documentRoot, guide.position);
+    return [w.x, w.y, w.z];
   }
 
   clearGuides(): void {

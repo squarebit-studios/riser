@@ -40,6 +40,7 @@ import { LAYER_OVERLAY, type Viewport } from '../../viewport/Viewport';
 import { documentToWorld, worldToDocument } from '../../viewport/space';
 import { mirrorPick } from '../mirror';
 import {
+  localUnitsPerWorldUnit,
   needsVolume,
   pointOnCameraPlane,
   resolvePlacement,
@@ -231,7 +232,8 @@ export class MarkerTool implements Tool {
     const placement = resolvePlacement(this.placementMode(), surface, {
       interior,
       through,
-      characterHeight: this.characterHeight()
+      characterHeight: this.characterHeight(),
+      localPerWorld: localUnitsPerWorldUnit(surface.pick.object)
     });
     const offset = placement.offset;
 

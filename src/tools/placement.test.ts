@@ -4,6 +4,7 @@ import {
   PLACEMENT_MODES,
   pointOnCameraPlane,
   resolvePlacement,
+  volumeCentre,
   volumeDepth,
   type PlacementMode
 } from './placement';
@@ -16,8 +17,18 @@ import type { Vec3 } from '../doc/types';
  * arithmetic can be read off by eye.
  */
 function surfacePick(offset: Vec3 = [0, 0, 0]): SurfacePick {
+  // A real mesh at identity, so cage-local space and world space coincide and
+  // the arithmetic below can still be read off by eye. The placement code
+  // transforms through this object's world matrix, which is the mechanism that
+  // makes a centimetre-authored character work without any scaling by hand.
+  const object = new THREE.Mesh(new THREE.BufferGeometry());
+  object.updateMatrixWorld(true);
+
   return {
-    pick: {} as PickResult,
+    pick: {
+      object,
+      localPoint: new THREE.Vector3(0, 0, 1)
+    } as PickResult,
     offset,
     worldPoint: new THREE.Vector3(0, 0, 1),
     normal: new THREE.Vector3(0, 0, 1),
@@ -344,5 +355,71 @@ describe('a character wearing clothes', () => {
     const pick = surfacePick();
     pick.worldPoint.set(0, 0, 1);
     expect(volumeDepth(pick, [crossing(1, 'out'), crossing(0, 'in')])).toBeNull();
+  });
+});
+
+describe('a garment in front of the body', () => {
+  /**
+   * Gary at chest height: a spacesuit shell less than a millimetre thick
+   * closes a perfectly valid solid before the ray ever reaches him.
+   */
+  const SHELL_THEN_BODY = [
+    crossing(0.2327, 'in'),
+    crossing(0.2318, 'out'), // the shell closes here, 0.9mm thick
+    crossing(0.2146, 'in'),
+    crossing(0.2146, 'in'),
+    crossing(-0.2659, 'out'),
+    crossing(-0.2662, 'out')
+  ];
+
+  it('skips a shell too thin to be a body part', () => {
+    // Taking the first CLOSED solid is not enough either: it put joints inside
+    // a spacesuit. Anything thinner than a few millimetres on a person-sized
+    // character is clothing.
+    const centre = volumeCentre(SHELL_THEN_BODY, 0.007);
+    expect(centre).not.toBeNull();
+    // Midpoint of the body, not of the 0.9mm shell at z = 0.232.
+    expect(centre!.z).toBeCloseTo((0.2146 + -0.2659) / 2, 3);
+  });
+
+  it('takes the shell when that is genuinely all there is', () => {
+    // A character made of thin pieces should still get an answer from real
+    // geometry rather than a fraction of its own height.
+    const centre = volumeCentre([crossing(1, 'in'), crossing(0.999, 'out')], 0.007);
+    expect(centre).not.toBeNull();
+    expect(centre!.z).toBeCloseTo(0.9995, 4);
+  });
+
+  it('measures nothing thin when no threshold is given', () => {
+    const centre = volumeCentre(SHELL_THEN_BODY);
+    expect(centre!.z).toBeCloseTo(0.23225, 4);
+  });
+});
+
+describe('a character authored in centimetres', () => {
+  it('places at the same point whatever the units', () => {
+    // Gary is authored in centimetres, so his meshes sit at world scale 0.01.
+    // Depths measured by raycasting are in WORLD units while the offset they
+    // become is cage-local, and applying one as the other put a 26cm joint
+    // placement 0.26cm inside - the surface. Going to the midpoint through the
+    // object's own inverse world matrix makes the conversion automatic.
+    const scaled = surfacePick();
+    scaled.pick.object.scale.setScalar(0.01);
+    scaled.pick.object.updateMatrixWorld(true);
+    // The cage point in LOCAL space is 100x the world point.
+    scaled.pick.localPoint.set(0, 0, 100);
+    scaled.worldPoint.set(0, 0, 1);
+
+    const result = resolvePlacement(
+      'center',
+      scaled,
+      options({ through: THROUGH_A_LIMB })
+    );
+
+    // World centre is z = 0.5, which is z = 50 in local units, so the offset
+    // from the cage point at 100 is -50 - not the -0.5 an unconverted world
+    // distance would have given.
+    expect(result.offset[2]).toBeCloseTo(-50, 4);
+    expect(result.measured).toBe(true);
   });
 });
