@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.8.4] - 2026-08-31
+- Fixed: the eyes projected their iris from the eyeball's own transform instead of from the projector the exporter recorded. The matrix was in the file the whole time and nothing was reading it
+- The projector now lands exactly on the eye centre on both eyes, where before it sat 1.7 metres away beside the origin
+
 ## [0.8.3] - 2026-08-31
 - Fixed: the eyes rendered black. The iris and sclera maps were being assigned to uniform names that do not exist, so they never reached the shader and it sampled nothing
 - Smoothing is on or off independently of the level, so level 0 is a real choice: the mesh as the file describes it, drawn as quads rather than as its triangulation

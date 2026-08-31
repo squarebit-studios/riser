@@ -348,7 +348,11 @@ export class RiserApp {
         // A USDZ carries its textures inside itself. This is the same
         // buffer the looks were just read out of, so unpacking them costs
         // no second fetch.
-        typeof source === 'string' ? undefined : source
+        typeof source === 'string' ? undefined : source,
+        // The space the authored projector matrix is written in, and the
+        // units it is written in.
+        model.root,
+        model.source.metersPerUnit
       );
       if (shaded > 0) {
         useUiStore
