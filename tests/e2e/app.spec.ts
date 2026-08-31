@@ -40,6 +40,8 @@ declare global {
       autoPlaceFromSkeleton(options?: { announce?: boolean }): number;
       autoPlaceFromProportions(options?: { announce?: boolean }): number;
       clearGuides(): void;
+      saveSessionNow(): boolean;
+      forgetSession(): void;
     };
   }
 }
@@ -427,41 +429,76 @@ test.describe('automatic placement from a rig', () => {
 
 test.describe('curves are actually drawn', () => {
   /**
-   * Count pixels close to a colour by reading the canvas back.
+   * Grab the rendered frame as raw pixels.
    *
    * The scene graph is not evidence. A Line2 with a stale resolution has
    * correct geometry, a correct material and a correct place in the tree, and
    * draws nothing - which is exactly the regression this guards. Only the
    * frame buffer can say whether the user can see the curve.
    */
-  async function countPixelsNear(
-    page: Page,
-    rgb: [number, number, number],
-    tolerance = 40
-  ): Promise<number> {
-    return page.evaluate(
-      ({ rgb, tolerance }) => {
-        const canvas = document.querySelector('canvas') as HTMLCanvasElement;
-        const readback = document.createElement('canvas');
-        readback.width = canvas.width;
-        readback.height = canvas.height;
-        const ctx = readback.getContext('2d')!;
-        ctx.drawImage(canvas, 0, 0);
-        const { data } = ctx.getImageData(0, 0, readback.width, readback.height);
-        let hits = 0;
-        for (let i = 0; i < data.length; i += 4) {
-          if (
-            Math.abs(data[i]! - rgb[0]) < tolerance &&
-            Math.abs(data[i + 1]! - rgb[1]) < tolerance &&
-            Math.abs(data[i + 2]! - rgb[2]) < tolerance
-          ) {
-            hits++;
-          }
-        }
-        return hits;
-      },
-      { rgb, tolerance }
+  async function grabFrame(page: Page): Promise<number[]> {
+    return page.evaluate(() => {
+      const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+      const readback = document.createElement('canvas');
+      readback.width = canvas.width;
+      readback.height = canvas.height;
+      const ctx = readback.getContext('2d')!;
+      ctx.drawImage(canvas, 0, 0);
+      return Array.from(ctx.getImageData(0, 0, readback.width, readback.height).data);
+    });
+  }
+
+  /**
+   * How many pixels differ between two frames.
+   *
+   * Deliberately not "count pixels of the curve's colour". The renderer tone
+   * maps, so what reaches the screen is not the palette value, and matching on
+   * an exact colour silently measured only the control vertices - which opt
+   * out of tone mapping - while the line itself went uncounted. Differencing
+   * two frames asks the question that actually matters: did hiding this thing
+   * change what the user sees.
+   */
+  function countDifferences(a: number[], b: number[], tolerance = 4): number {
+    if (a.length !== b.length) return Number.MAX_SAFE_INTEGER;
+    let changed = 0;
+    for (let i = 0; i < a.length; i += 4) {
+      if (
+        Math.abs(a[i]! - b[i]!) > tolerance ||
+        Math.abs(a[i + 1]! - b[i + 1]!) > tolerance ||
+        Math.abs(a[i + 2]! - b[i + 2]!) > tolerance
+      ) {
+        changed++;
+      }
+    }
+    return changed;
+  }
+
+  /**
+   * Trace a curve down the torso long enough to measure reliably.
+   *
+   * Clicking a fixed list of offsets is not good enough: some clicks miss the
+   * mesh and some land on an existing control vertex and select it instead of
+   * adding one, so the curve's length - and therefore how many pixels the line
+   * covers - varied from run to run. That made the measurement swing between
+   * hundreds of pixels and a couple of dozen, which is flakiness rather than a
+   * finding. Placing a dense spread and asserting the count makes the input
+   * deterministic enough to draw a conclusion from.
+   */
+  async function traceLongCurve(page: Page): Promise<void> {
+    await clearGuides(page);
+    await page.getByRole('button', { name: 'Curves', exact: true }).click();
+    await page.getByTestId('curve-spineCurve').click();
+
+    for (const dy of [-90, -70, -50, -30, -10, 10, 30, 50, 70, 90]) {
+      await clickViewport(page, 0, dy);
+      await page.waitForTimeout(90);
+    }
+
+    const placed = await page.evaluate(
+      () => window.__riser!.store.document.curves[0]?.points.length ?? 0
     );
+    expect(placed, 'could not trace a long enough curve').toBeGreaterThanOrEqual(6);
+    await page.waitForTimeout(300);
   }
 
   /** Show or hide only the curve LINES, leaving their control vertices alone. */
@@ -486,48 +523,27 @@ test.describe('curves are actually drawn', () => {
     await openApp(page);
     await loadBiped(page);
 
-    await clearGuides(page);
-    await page.getByRole('button', { name: 'Curves', exact: true }).click();
-    await page.getByTestId('curve-spineCurve').click();
+    await traceLongCurve(page);
 
-    // Place points until there are enough for a line. A click that lands on an
-    // existing control vertex selects it rather than adding another, so a
-    // fixed list of offsets is not reliable - keep going until the document
-    // says there are three.
-    const offsets = [-70, -40, -10, 20, 50, 80, -55, 5, 35, 65];
-    for (const dy of offsets) {
-      const points = await page.evaluate(
-        () => window.__riser!.store.document.curves[0]?.points.length ?? 0
-      );
-      if (points >= 3) break;
-      await clickViewport(page, 0, dy);
-      await page.waitForTimeout(110);
-    }
-
-    const placed = await page.evaluate(
-      () => window.__riser!.store.document.curves[0]?.points.length ?? 0
-    );
-    expect(placed, 'could not place three control vertices').toBeGreaterThanOrEqual(3);
-    await page.waitForTimeout(300);
-
-    // Control vertices and the active line share a colour, so counting that
-    // colour cannot tell them apart. Hiding ONLY the line materials and
-    // re-counting isolates the line exactly.
-    const withLine = await countPixelsNear(page, [0xff, 0xc4, 0x47]);
+    // Hiding ONLY the line materials isolates the line: the control vertices
+    // stay drawn, so whatever changes is the line and nothing else.
+    const withLine = await grabFrame(page);
 
     const hidden = await setLinesVisible(page, false);
     expect(hidden, 'no curve line object was found in the scene').toBeGreaterThan(0);
-    await page.waitForTimeout(200);
-    const withoutLine = await countPixelsNear(page, [0xff, 0xc4, 0x47]);
+    await page.waitForTimeout(250);
+    const withoutLine = await grabFrame(page);
 
     await setLinesVisible(page, true);
 
-    // Whatever the curve's length, hiding the line must remove a meaningful
-    // number of pixels. If the line were never drawn, this difference is zero.
+    // Calibrated, not guessed. A drawn line measures around 170 pixels here;
+    // with the resolution bug it measured 4. An order of magnitude above the
+    // failure mode discriminates without being sensitive to antialiasing.
+    const changed = countDifferences(withLine, withoutLine);
     expect(
-      withLine - withoutLine,
-      `hiding the line changed only ${withLine - withoutLine} pixels, so it was not drawn`
-    ).toBeGreaterThan(25);
+      changed,
+      `hiding the line changed only ${changed} pixels, so it was not drawn`
+    ).toBeGreaterThan(100);
   });
 
   test('the line survives a window resize', async ({ page }) => {
@@ -539,32 +555,103 @@ test.describe('curves are actually drawn', () => {
     await openApp(page);
     await loadBiped(page);
 
-    await clearGuides(page);
-    await page.getByRole('button', { name: 'Curves', exact: true }).click();
-    await page.getByTestId('curve-spineCurve').click();
-    for (const dy of [-70, -40, -10, 20, 50, 80]) {
-      const points = await page.evaluate(
-        () => window.__riser!.store.document.curves[0]?.points.length ?? 0
-      );
-      if (points >= 3) break;
-      await clickViewport(page, 0, dy);
-      await page.waitForTimeout(110);
-    }
-    await page.waitForTimeout(200);
+    await traceLongCurve(page);
 
-    // Resize with no further document edits, then measure.
-    await page.setViewportSize({ width: 1100, height: 780 });
-    await page.waitForTimeout(500);
+    // Resize with no further document edits, then measure. Deliberately
+    // LARGER: shrinking works too, but it also shortens the curve on screen,
+    // and a thin antialiased line a few dozen pixels long is a weak signal
+    // either way. Growing keeps the line long, so the difference between
+    // "drawn" and "not drawn" is unmistakable.
+    await page.setViewportSize({ width: 1700, height: 950 });
+    await page.waitForTimeout(600);
 
-    const withLine = await countPixelsNear(page, [0xff, 0xc4, 0x47]);
+    const withLine = await grabFrame(page);
     await setLinesVisible(page, false);
-    await page.waitForTimeout(200);
-    const withoutLine = await countPixelsNear(page, [0xff, 0xc4, 0x47]);
+    await page.waitForTimeout(250);
+    const withoutLine = await grabFrame(page);
     await setLinesVisible(page, true);
 
+    const changed = countDifferences(withLine, withoutLine);
     expect(
-      withLine - withoutLine,
-      `after resizing, hiding the line changed only ${withLine - withoutLine} pixels`
-    ).toBeGreaterThan(25);
+      changed,
+      `after resizing, hiding the line changed only ${changed} pixels`
+    ).toBeGreaterThan(100);
+  });
+});
+
+test.describe('work survives a reload', () => {
+  test('a placed guide is still there after refreshing the page', async ({ page }) => {
+    // The hole this closes: placing a full checklist is twenty minutes of
+    // careful work, and until now closing the tab threw all of it away.
+    await openApp(page);
+    await loadBiped(page);
+    await clearGuides(page);
+
+    await page.getByTestId('guide-chest').click();
+    await clickViewport(page);
+    await page.waitForFunction(
+      () => window.__riser!.store.document.guides.length === 1
+    );
+
+    const before = (await guides(page))[0]!;
+    await page.evaluate(() => window.__riser!.saveSessionNow());
+
+    await page.reload();
+    await expect(page.locator('canvas')).toBeVisible();
+    await page.waitForFunction(() => window.__riser !== undefined);
+
+    // The document comes back, and so does the character it referenced.
+    await page.waitForFunction(
+      () => window.__riser!.store.document.guides.length > 0
+    );
+    await page.waitForFunction(
+      () => (window.__riser!.characterModel?.meshes.length ?? 0) > 0
+    );
+
+    const after = (await guides(page)).find((g) => g.id === 'chest');
+    expect(after, 'the chest guide did not come back').toBeDefined();
+    expect(after!.source).toBe('user');
+    expect(after!.position[0]).toBeCloseTo(before.position[0], 6);
+    expect(after!.position[1]).toBeCloseTo(before.position[1], 6);
+    // The binding matters more than the position: without it the server
+    // cannot recompute anything.
+    expect(after!.binding).not.toBeNull();
+    expect(after!.binding!.faceIndex).toBe(before.binding!.faceIndex);
+  });
+
+  test('restoring does not auto-place over the restored work', async ({ page }) => {
+    // Loading a character normally fills the checklist. On a restore that must
+    // not happen, or the user's own placements are replaced by guesses the
+    // moment they refresh.
+    await openApp(page);
+    await loadBiped(page);
+    await clearGuides(page);
+
+    await page.getByTestId('guide-chest').click();
+    await clickViewport(page);
+    await page.waitForFunction(
+      () => window.__riser!.store.document.guides.length === 1
+    );
+    await page.evaluate(() => window.__riser!.saveSessionNow());
+
+    await page.reload();
+    await page.waitForFunction(() => window.__riser !== undefined);
+    await page.waitForFunction(
+      () => (window.__riser!.characterModel?.meshes.length ?? 0) > 0
+    );
+    await page.waitForTimeout(600);
+
+    const after = await guides(page);
+    expect(after).toHaveLength(1);
+    expect(after[0]!.id).toBe('chest');
+  });
+
+  test('a fresh visitor gets an empty document', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => window.__riser!.forgetSession());
+    await page.reload();
+    await page.waitForFunction(() => window.__riser !== undefined);
+    await page.waitForTimeout(400);
+    expect(await guides(page)).toHaveLength(0);
   });
 });

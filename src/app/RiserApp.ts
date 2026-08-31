@@ -41,7 +41,22 @@ import {
   projectSamplesToSurface,
   SEARCH_FRACTION
 } from '../tools/curve/project';
+import {
+  clearSession,
+  isReloadableRef,
+  isWorthSaving,
+  loadSession,
+  saveSession
+} from '../doc/session';
 import { useUiStore } from './state';
+
+/**
+ * How long the document must sit still before it is written.
+ *
+ * Long enough that a drag writes once at the end rather than per frame, short
+ * enough that a browser crash costs at most a moment's work.
+ */
+const AUTOSAVE_DELAY_MS = 700;
 
 export class RiserApp {
   readonly viewport: Viewport;
@@ -63,6 +78,14 @@ export class RiserApp {
   /** Raycaster used for re-seating curve samples onto the surface. */
   private readonly projectionRaycaster = new THREE.Raycaster();
 
+  /**
+   * Set while a restored session is loading its character, so the automatic
+   * placement that normally follows a load does not run over the work being
+   * restored.
+   */
+  private restoring = false;
+  private autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor() {
     const ui = useUiStore.getState();
 
@@ -75,6 +98,7 @@ export class RiserApp {
     this.unsubscribeDoc = this.store.subscribe(() => {
       useUiStore.getState().bumpDoc(this.store.isDirty);
       this.syncFromDocument();
+      this.scheduleAutosave();
     });
   }
 
@@ -117,6 +141,7 @@ export class RiserApp {
     this.applyUiState();
     this.syncFromDocument();
     this.exposeForTesting();
+    this.restoreSession();
   }
 
   /**
@@ -136,6 +161,8 @@ export class RiserApp {
   }
 
   unmount(): void {
+    if (this.autosaveTimer) clearTimeout(this.autosaveTimer);
+    this.autosaveTimer = null;
     this.subdivs?.dispose();
     this.subdivs = null;
     this.unsubscribeFrame?.();
@@ -217,8 +244,9 @@ export class RiserApp {
 
     // Never open on an empty checklist when something can be worked out. A
     // rigged character contains the answer outright; an unrigged one can still
-    // be measured.
-    this.autoPlace({ announce: true });
+    // be measured. Skipped while restoring, where the checklist is already
+    // full of the user's own work.
+    if (!this.restoring) this.autoPlace({ announce: true });
   }
 
   /**
@@ -344,6 +372,96 @@ export class RiserApp {
 
   get characterModel(): CharacterModel | null {
     return this.character;
+  }
+
+  // -----------------------------------------------------------------------
+  // Session
+  // -----------------------------------------------------------------------
+
+  /**
+   * Write the document to the session slot shortly after it stops changing.
+   *
+   * Debounced rather than immediate: dragging a marker produces a mutation per
+   * frame, and serializing the whole layer sixty times a second to write it
+   * into localStorage would be felt.
+   */
+  private scheduleAutosave(): void {
+    if (this.restoring) return;
+    if (this.autosaveTimer) clearTimeout(this.autosaveTimer);
+    this.autosaveTimer = setTimeout(() => {
+      this.autosaveTimer = null;
+      this.saveSessionNow();
+    }, AUTOSAVE_DELAY_MS);
+  }
+
+  /** Write immediately. Exposed so tests do not have to wait on a timer. */
+  saveSessionNow(): boolean {
+    const doc = this.store.document;
+    if (!isWorthSaving(doc)) return false;
+    try {
+      return saveSession(doc, window.localStorage);
+    } catch {
+      return false;
+    }
+  }
+
+  /** Forget the stored session. Used by "start over". */
+  forgetSession(): void {
+    try {
+      clearSession(window.localStorage);
+    } catch {
+      // Nothing depends on this having worked.
+    }
+  }
+
+  /**
+   * Bring back whatever was open when the tab last closed.
+   *
+   * The document always comes back. The CHARACTER only comes back when its
+   * reference is something the browser can fetch again - a bundled asset or a
+   * URL. An upload is just a file name here: those bytes lived in the user's
+   * file picker and were never ours to keep, so the guides are restored and
+   * the user is told to reopen the mesh rather than being left with markers
+   * bound to nothing.
+   */
+  private restoreSession(): void {
+    let snapshot: ReturnType<typeof loadSession> = null;
+    try {
+      snapshot = loadSession(window.localStorage);
+    } catch {
+      return;
+    }
+    if (!snapshot) return;
+
+    const ui = useUiStore.getState();
+    this.restoring = true;
+    this.store.reset(snapshot.doc);
+    if (snapshot.doc.templateId) ui.setTemplateId(snapshot.doc.templateId);
+
+    const ref = snapshot.characterRef;
+    if (!isReloadableRef(ref)) {
+      this.restoring = false;
+      this.syncFromDocument();
+      ui.setNotice(
+        `Restored your last document. Load ${ref || 'the character'} again to ` +
+          'see the markers on the mesh.'
+      );
+      return;
+    }
+
+    void this.loadFromUrl(ref)
+      .then(() => {
+        ui.setNotice('Restored your last document.');
+      })
+      .catch(() => {
+        ui.setNotice(
+          'Restored your last document, but its character could not be loaded.'
+        );
+      })
+      .finally(() => {
+        this.restoring = false;
+        this.syncFromDocument();
+      });
   }
 
   /**
