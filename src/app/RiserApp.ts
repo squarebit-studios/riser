@@ -27,6 +27,12 @@ import {
 import { DocumentStore } from '../doc/history';
 import * as M from '../doc/mutations';
 import { createDocument, type RiserDocument, type Vec3 } from '../doc/types';
+import {
+  LocalStorageDocuments,
+  StorageError,
+  type DocumentStorage,
+  type DocumentSummary
+} from '../doc/storage';
 import { getTemplate } from '../templates';
 import { placeGuidesFromSkeleton } from '../tools/autoplace/fromSkeleton';
 import { placeGuidesFromProportions } from '../tools/autoplace/fromProportions';
@@ -96,6 +102,17 @@ export class RiserApp {
    * is a relative path meant to resolve beside the exported file.
    */
   private characterUrl = '';
+
+  /**
+   * Named documents.
+   *
+   * Local for now. `ServerDocuments` implements the same interface, so signing
+   * in later is a matter of swapping this rather than rewriting the callers -
+   * which is why the interface exists at all.
+   */
+  private readonly library: DocumentStorage = new LocalStorageDocuments();
+  /** The saved document currently open, so Save updates rather than duplicates. */
+  private openDocumentId: string | null = null;
 
   constructor() {
     const ui = useUiStore.getState();
@@ -437,6 +454,115 @@ export class RiserApp {
     } catch {
       return false;
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // The document library
+  // -----------------------------------------------------------------------
+
+  get currentDocumentId(): string | null {
+    return this.openDocumentId;
+  }
+
+  async listDocuments(): Promise<DocumentSummary[]> {
+    try {
+      return await this.library.list();
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Save under a name, creating a new document or updating the open one.
+   *
+   * Passing a name always creates a NEW document, which is what "Save as"
+   * means. Saving without one updates what is open, and falls back to creating
+   * if nothing is.
+   */
+  async saveDocument(name?: string): Promise<DocumentSummary | null> {
+    const ui = useUiStore.getState();
+    const doc =
+      name === undefined
+        ? this.store.document
+        : this.store.apply((d) => M.setName(d, name), 'Rename');
+
+    try {
+      const summary = await this.library.save(
+        doc,
+        name === undefined ? (this.openDocumentId ?? undefined) : undefined,
+        this.characterUrl
+      );
+      this.openDocumentId = summary.id;
+      this.store.markSaved();
+      ui.setNotice(`Saved "${summary.name}".`);
+      return summary;
+    } catch (err) {
+      ui.setError(
+        err instanceof StorageError ? err.message : 'Could not save the document.'
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Open a saved document, and put its character back on screen.
+   *
+   * The character is reloaded from the URL recorded when it was saved, not
+   * from the layer's own reference - that is a path relative to an exported
+   * file and means nothing to a browser. Automatic placement is suppressed
+   * throughout, exactly as it is for a session restore: this document already
+   * holds the user's work.
+   */
+  async openDocument(id: string): Promise<boolean> {
+    const ui = useUiStore.getState();
+    try {
+      const { summary, doc } = await this.library.load(id);
+      this.restoring = true;
+      this.store.reset(doc);
+      this.openDocumentId = id;
+      ui.setTemplateId(doc.templateId);
+
+      const url = summary.loadUrl ?? '';
+      if (isReloadableRef(url)) {
+        await this.loadFromUrl(url);
+      } else {
+        ui.setNotice(
+          `Opened "${summary.name}". Load its character again to see the markers ` +
+            'on the mesh.'
+        );
+      }
+      return true;
+    } catch (err) {
+      ui.setError(
+        err instanceof StorageError ? err.message : 'Could not open the document.'
+      );
+      return false;
+    } finally {
+      this.restoring = false;
+      this.syncFromDocument();
+      this.store.markSaved();
+    }
+  }
+
+  async deleteDocument(id: string): Promise<void> {
+    try {
+      await this.library.remove(id);
+      if (this.openDocumentId === id) this.openDocumentId = null;
+    } catch (err) {
+      useUiStore
+        .getState()
+        .setError(
+          err instanceof StorageError ? err.message : 'Could not delete the document.'
+        );
+    }
+  }
+
+  /** Start a new document, keeping the character that is already loaded. */
+  startNewDocument(): void {
+    this.openDocumentId = null;
+    this.newDocument(useUiStore.getState().templateId);
+    this.forgetSession();
+    this.autoPlace({ announce: false });
   }
 
   /** Change the reference written into the exported layer. */

@@ -257,16 +257,32 @@ and it becomes yours.
 
 ## Where documents live
 
-Riser holds your document in memory and nowhere else. There is no autosave, and
-closing or reloading the tab loses unplaced work.
+Your work is kept in the browser, in two separate places.
 
-Two buttons move it in and out:
+**The session.** Whatever you have open is written back shortly after it stops
+changing, and restored when you return. Closing the tab, refreshing, or a crash
+costs you nothing. Restoring deliberately does not re-run automatic placement,
+so a refresh never replaces your own markers with guesses.
 
-- **Export USD** downloads the document as a `.usda` file.
-- **Open** reads a `.usda` or `.usd` Riser layer back in.
+**Named documents.** The session is a single slot, so a second character would
+write over the first. The **Documents** menu keeps as many as you like:
 
-The status bar shows **Unsaved changes** or **Saved**, and the **Export USD**
-button carries a bullet while there is anything unexported.
+- **Save** updates whichever document is open.
+- **Save as** names a new one.
+- **New** starts a fresh document, keeping the character that is loaded.
+- Clicking a document in the list reopens it, and reloads its character.
+
+Reopening restores the layer and the mesh together, but only when the character
+came from a bundled asset or a URL. An uploaded file cannot be fetched again -
+those bytes were in your file picker and were never Riser's to keep - so the
+document comes back and Riser asks you to reopen the mesh.
+
+Documents live in this browser, on this machine. Nothing is on a server yet, so
+they do not follow you to another computer, and clearing site data removes them.
+**Export USD** is what produces a file you own.
+
+The status bar shows **Unsaved changes** or **Saved**, and both **Export USD**
+and **Documents** carry a bullet while there is anything unsaved.
 
 The document is stored as USD layer text and nothing else, in the file you
 export and in every planned storage backend. There is no second format, so what

@@ -30,7 +30,8 @@ Left to right.
 | **Auto-place** | Fills in guides automatically: from the character's own skeleton when it has one, otherwise by measuring its shape. Disabled until a character is loaded. Never overwrites anything you placed. |
 | **Undo** / **Redo** | Steps the document history. The tooltip names the step, for example *Undo Place Chest*. |
 | **Frame** | Frames the whole character. |
-| **Open** | Loads a Riser document back in. Accepts `.usda` and `.usd`. |
+| **Documents** | Save, name, reopen and delete documents kept in this browser. A bullet after the label means unsaved changes. |
+| **Import** | Loads a Riser layer from a file on disk. Accepts `.usda` and `.usd`. |
 | **Export USD** | Downloads the document as a `.usda` layer. A bullet after the label means there are unexported changes. |
 
 ### Shading

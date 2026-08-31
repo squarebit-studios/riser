@@ -109,12 +109,15 @@ The bullet beside the button means you have unsaved changes. Exporting clears
 it.
 
 That file is the deliverable. It opens in any USD tool, and it is what the
-server-side systems read. See [what do I do with the exported
+server-side systems read. Riser writes the character reference as a path
+relative to the layer, so keeping the two files in one directory is enough for
+it to resolve anywhere. See [what do I do with the exported
 .usda](faq.md#what-do-i-do-with-the-exported-usda) for what is inside it.
 
-> **Your work is not saved automatically.** Riser keeps no copy between page
-> loads. Export before you close the tab, and use **Open** to load a `.usda`
-> layer back in and carry on.
+> **Your work is kept for you.** Whatever you have open is restored when you
+> come back, and the **Documents** menu saves as many named documents as you
+> like. They live in this browser, though, so exporting is still what gives you
+> a file you own.
 
 ## Where to go next
 

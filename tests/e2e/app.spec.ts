@@ -42,6 +42,10 @@ declare global {
       clearGuides(): void;
       saveSessionNow(): boolean;
       forgetSession(): void;
+      saveDocument(name?: string): Promise<unknown>;
+      openDocument(id: string): Promise<boolean>;
+      listDocuments(): Promise<{ id: string; name: string }[]>;
+      currentDocumentId: string | null;
     };
   }
 }
@@ -850,5 +854,106 @@ test.describe('view modes', () => {
       'the wireframe was lost when the subdivision level changed'
     ).toBeGreaterThan(5000);
     void atDefault;
+  });
+});
+
+test.describe('the document library', () => {
+  /** Place one guide, so there is something worth saving. */
+  async function placeOne(page: Page, testId: string): Promise<void> {
+    await page.getByTestId(testId).click();
+    await clickViewport(page);
+    await page.waitForFunction(
+      () => window.__riser!.store.document.guides.length > 0
+    );
+  }
+
+  test('keeps two documents apart instead of overwriting', async ({ page }) => {
+    // The limitation this closes. Autosave means work survives a reload, but
+    // it is a single slot: a second character used to write over the first.
+    await openApp(page);
+    await loadBiped(page);
+    await clearGuides(page);
+    await placeOne(page, 'guide-chest');
+
+    await page.evaluate(() => window.__riser!.saveDocument('Hero'));
+    await clearGuides(page);
+    await placeOne(page, 'guide-pelvis');
+    await page.evaluate(() => window.__riser!.saveDocument('Villain'));
+
+    const saved = await page.evaluate(() => window.__riser!.listDocuments());
+    expect(saved.map((d) => d.name).sort()).toEqual(['Hero', 'Villain']);
+  });
+
+  test('reopens a document and puts its character back', async ({ page }) => {
+    await openApp(page);
+    await loadBiped(page);
+    await clearGuides(page);
+    await placeOne(page, 'guide-chest');
+
+    const before = (await guides(page))[0]!;
+    await page.evaluate(() => window.__riser!.saveDocument('Hero'));
+
+    // Move on to something else entirely, then come back.
+    await clearGuides(page);
+    await placeOne(page, 'guide-pelvis');
+
+    const saved = await page.evaluate(() => window.__riser!.listDocuments());
+    const hero = saved.find((d) => d.name === 'Hero')!;
+    await page.evaluate((id) => window.__riser!.openDocument(id), hero.id);
+    await page.waitForFunction(
+      () =>
+        window.__riser!.store.document.guides.some((g) => g.id === 'chest') &&
+        (window.__riser!.characterModel?.meshes.length ?? 0) > 0
+    );
+
+    const after = (await guides(page)).find((g) => g.id === 'chest')!;
+    expect(after.position[0]).toBeCloseTo(before.position[0], 6);
+    expect(after.position[1]).toBeCloseTo(before.position[1], 6);
+    expect(after.binding).not.toBeNull();
+    // The other document's work must not have come with it.
+    expect((await guides(page)).some((g) => g.id === 'pelvis')).toBe(false);
+  });
+
+  test('opening does not auto-place over the saved work', async ({ page }) => {
+    // Reopening loads the character, and loading a character normally fills
+    // the checklist. On an open that must not happen.
+    await openApp(page);
+    await loadBiped(page);
+    await clearGuides(page);
+    await placeOne(page, 'guide-chest');
+    await page.evaluate(() => window.__riser!.saveDocument('One guide'));
+
+    const saved = await page.evaluate(() => window.__riser!.listDocuments());
+    await page.evaluate((id) => window.__riser!.openDocument(id), saved[0]!.id);
+    await page.waitForTimeout(700);
+
+    const after = await guides(page);
+    expect(after).toHaveLength(1);
+    expect(after[0]!.id).toBe('chest');
+  });
+
+  test('saving again updates rather than duplicating', async ({ page }) => {
+    await openApp(page);
+    await loadBiped(page);
+    await clearGuides(page);
+    await placeOne(page, 'guide-chest');
+
+    await page.evaluate(() => window.__riser!.saveDocument('Hero'));
+    // No name: updates whatever is open.
+    await page.evaluate(() => window.__riser!.saveDocument());
+
+    const saved = await page.evaluate(() => window.__riser!.listDocuments());
+    expect(saved).toHaveLength(1);
+  });
+
+  test('the menu lists saved documents', async ({ page }) => {
+    await openApp(page);
+    await loadBiped(page);
+    await clearGuides(page);
+    await placeOne(page, 'guide-chest');
+    await page.evaluate(() => window.__riser!.saveDocument('Hero'));
+
+    await page.getByTestId('documents-menu').click();
+    await expect(page.getByTestId('document-list')).toContainText('Hero');
   });
 });

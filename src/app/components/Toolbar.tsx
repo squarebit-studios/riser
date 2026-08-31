@@ -10,6 +10,7 @@ import { useUiStore } from '../state';
 import { TEMPLATES } from '../../templates';
 import { STOCK_CHARACTERS } from '../stock';
 import { downloadUsda, readUsdaFile } from '../../doc/storage';
+import { DocumentsMenu } from './DocumentsMenu';
 import { SUPPORTED_EXTENSIONS } from '../../io/loadCharacter';
 import { MAX_SUBDIV_LEVEL, MIN_SUBDIV_LEVEL } from '../../viewport/SubdivSurface';
 import { VIEW_MODES } from '../../viewport/ViewModes';
@@ -222,8 +223,14 @@ export function Toolbar(): JSX.Element {
       </button>
 
       {/* Document -------------------------------------------------------- */}
-      <button className="rs-button" onClick={() => documentInput.current?.click()}>
-        Open
+      <DocumentsMenu />
+
+      <button
+        className="rs-button"
+        onClick={() => documentInput.current?.click()}
+        title="Open a .usda layer from disk"
+      >
+        Import
       </button>
       <input
         ref={documentInput}

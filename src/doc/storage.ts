@@ -22,7 +22,18 @@ export interface DocumentSummary {
   id: string;
   name: string;
   templateId: string;
+  /** The asset path written into the layer, relative to it. */
   characterRef: string;
+  /**
+   * Where the app can FETCH the character again, which the layer's own
+   * reference cannot say.
+   *
+   * `characterRef` is a path relative to the exported file, so it means
+   * nothing to a browser. Reopening a saved document has to put the mesh back
+   * on screen, and that needs a URL. Empty for an upload, whose bytes were
+   * never ours to keep.
+   */
+  loadUrl?: string;
   updatedAt: string;
   /** Present for server documents; absent locally. */
   ownerId?: string;
@@ -38,7 +49,7 @@ export interface DocumentStorage {
   list(): Promise<DocumentSummary[]>;
   load(id: string): Promise<{ summary: DocumentSummary; doc: RiserDocument }>;
   /** Create or overwrite. Returns the id, which the backend may assign. */
-  save(doc: RiserDocument, id?: string): Promise<DocumentSummary>;
+  save(doc: RiserDocument, id?: string, loadUrl?: string): Promise<DocumentSummary>;
   remove(id: string): Promise<void>;
 }
 
@@ -76,13 +87,18 @@ export class LocalStorageDocuments implements DocumentStorage {
     return { summary, doc: readUsda(raw) };
   }
 
-  async save(doc: RiserDocument, id?: string): Promise<DocumentSummary> {
+  async save(
+    doc: RiserDocument,
+    id?: string,
+    loadUrl = ''
+  ): Promise<DocumentSummary> {
     const docId = id ?? newId();
     const summary: DocumentSummary = {
       id: docId,
       name: doc.name,
       templateId: doc.templateId,
       characterRef: doc.characterRef,
+      loadUrl,
       updatedAt: new Date().toISOString()
     };
     try {
@@ -185,11 +201,20 @@ export class ServerDocuments implements DocumentStorage {
     return { summary, doc: readUsda(usda) };
   }
 
-  async save(doc: RiserDocument, id?: string): Promise<DocumentSummary> {
+  async save(
+    doc: RiserDocument,
+    id?: string,
+    loadUrl = ''
+  ): Promise<DocumentSummary> {
+    // `loadUrl` is sent but the backend does not store it yet; its validation
+    // pipe strips unknown fields, so this is forward compatible rather than
+    // broken. Reopening a server document therefore restores the layer but
+    // not the mesh until that column exists.
     const body = JSON.stringify({
       name: doc.name,
       templateId: doc.templateId,
       characterRef: doc.characterRef,
+      loadUrl,
       usda: writeUsda(doc)
     });
     return id

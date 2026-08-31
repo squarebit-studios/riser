@@ -118,14 +118,24 @@ Biped to Face only keeps the face guides and discards the body.
 
 `Ctrl`+`Z` undoes the switch and brings them back.
 
-## I reloaded the page and lost everything
+## I reloaded the page and my work came back, but not my character
 
-Riser holds your document in memory only. There is no autosave, and nothing is
-kept between page loads.
+That is expected for an uploaded file. Riser restores the document itself on
+every reload, but it can only fetch the character again when it came from a
+bundled asset or a URL. An upload's bytes were in your file picker and were
+never Riser's to keep, so it restores the markers and asks you to reopen the
+mesh. The markers are still bound correctly; they simply have nothing to be
+drawn on until the character is back.
 
-Use **Export USD** before you close the tab, and **Open** to load the `.usda`
-back in and carry on. The status bar shows **Unsaved changes** whenever there is
-something unexported, and the **Export USD** button carries a bullet.
+## Where are my documents kept?
+
+In this browser, on this machine. The **Documents** menu lists them, and
+whatever you have open is also written back automatically, so a refresh or a
+crash costs nothing.
+
+Nothing is on a server yet, so documents do not follow you to another computer,
+and clearing site data removes them. **Export USD** is what gives you a file you
+own and can put in your pipeline.
 
 ## My character is the wrong size
 
