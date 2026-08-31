@@ -5,14 +5,19 @@ on:
     branches: [main, dev, 'feature/**']
   pull_request:
     branches: [main, dev]
+  # So the full browser suite can be demanded on a branch without opening a PR.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # The fast gate. Runs on everything, finishes in a couple of minutes, and
+  # catches the mistakes that are actually made minute to minute: a type error,
+  # a broken unit test, a build that does not compile.
   web:
-    name: Web (typecheck, unit, build, e2e)
+    name: Web (typecheck, unit, build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +44,40 @@ jobs:
         run: |
           node tools/make-stock-assets.mjs
           git diff --exit-code public/assets
+
+  # The browser suite, kept off the everyday path.
+  #
+  # It is the only thing here that opens a real renderer, so it is also the
+  # only thing that catches a regression the unit tests cannot see. That makes
+  # it worth waiting for BEFORE A DEPLOY, and not worth waiting for after every
+  # push to a working branch: it ran for nineteen minutes on each one, which is
+  # long enough to stop people pushing.
+  #
+  # So it gates main, gates a pull request, and can be asked for by hand. On a
+  # branch push it does not run at all.
+  #
+  # Not sharded, and deliberately so. Playwright splits a shard by FILE unless
+  # `fullyParallel` is on, and the whole suite is one spec file, so a four way
+  # matrix put all 62 tests in the first shard and left three runners idle.
+  # Turning `fullyParallel` on would make sharding real, but it also lets tests
+  # inside a file run out of order, which is a change worth making with the
+  # suite actually run against it rather than on the way past.
+  e2e:
+    name: End-to-end (browser)
+    if: >-
+      github.ref == 'refs/heads/main' ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
@@ -89,7 +128,7 @@ jobs:
 
   deploy:
     name: Deploy to GitHub Pages
-    needs: [web, worker]
+    needs: [web, worker, e2e]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
