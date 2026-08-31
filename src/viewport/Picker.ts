@@ -252,7 +252,9 @@ export class Picker {
     width: number,
     height: number,
     targets: THREE.Object3D[],
-    limit = 8
+    // Generous, because layers add up: a clothed character can put a suit, a
+    // collar and skin in front of the body before the ray is halfway through.
+    limit = 64
   ): PickResult[] {
     this.ndc.set((x / width) * 2 - 1, -(y / height) * 2 + 1);
     this.raycaster.setFromCamera(this.ndc, this.camera);

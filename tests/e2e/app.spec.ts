@@ -398,6 +398,31 @@ test.describe('choosing where a click lands', () => {
     expect(depth).toBeGreaterThan(0.06);
   });
 
+  test('centre works on a layered production character', async ({ page }) => {
+    // Gary wears a spacesuit over his skin. Taking the first two crossings
+    // measured the millimetre between the two and put the marker back on the
+    // surface - on every clothed character, while looking perfect on the bare
+    // blockout the tests used.
+    await openApp(page);
+    await page.evaluate(() => window.__riser!.loadFromUrl('/assets/gary.usdc'));
+    await page.waitForFunction(
+      () => (window.__riser!.characterModel?.meshes.length ?? 0) > 0
+    );
+    await clearGuides(page);
+    await setPlacement(page, 'center');
+
+    await page.getByTestId('guide-chest').click();
+    await clickViewport(page);
+    await page.waitForFunction(
+      () => window.__riser!.store.document.guides.length > 0
+    );
+
+    // Gary's torso is about half a metre through, so a real centre placement
+    // is far deeper than the 0.022 estimate the fallback would give.
+    const depth = await page.evaluate(() => window.__riser!.placementDepth('chest'));
+    expect(depth).toBeGreaterThan(0.1);
+  });
+
   test('the chosen mode survives a reload', async ({ page }) => {
     await openApp(page);
     await setPlacement(page, 'center');

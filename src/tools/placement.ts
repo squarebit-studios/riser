@@ -136,9 +136,25 @@ export function resolvePlacement(
 /**
  * Half the distance through the volume under the cursor, or null.
  *
- * The first two crossings, not the first and last: a ray aimed at an arm will
- * often continue into the torso, and the centre of "the arm and the torso" is
- * not a place any joint belongs.
+ * NOT simply the first two crossings. That works on a single watertight mesh
+ * and fails on every real character, because a real character is layered: a
+ * ray at Gary's hip enters his spacesuit and then his skin a millimetre later,
+ * so "the first two crossings" measured the gap between his clothes and his
+ * body and put the marker back on the surface.
+ *
+ * So the crossings are counted the way solid geometry counts them. A face
+ * whose normal opposes the ray is going IN and a face whose normal follows it
+ * is coming OUT; walking the list and tracking how deep we are, the solid ends
+ * where the count returns to zero. Layers nest, and nesting resolves:
+ *
+ *   enter suit   depth 1
+ *   enter body   depth 2
+ *   exit  body   depth 1
+ *   exit  suit   depth 0   <- the far side of the hip
+ *
+ * It also keeps the property the naive version had by accident: a ray aimed at
+ * an arm closes on the arm and never reaches the torso behind it, because the
+ * arm's own exit brings the count back to zero first.
  */
 export function volumeDepth(
   surface: SurfacePick,
@@ -147,7 +163,9 @@ export function volumeDepth(
   if (!through || through.length < 2) return null;
 
   const entry = through[0]!;
-  const exit = through[1]!;
+  const exit = farSideOf(through);
+  if (!exit) return null;
+
   const span = entry.point.distanceTo(exit.point);
   if (!(span > 0)) return null;
 
@@ -155,6 +173,43 @@ export function volumeDepth(
   // character is the limit surface rather than the cage.
   const fromClick = surface.worldPoint.distanceTo(entry.point);
   return span / 2 + fromClick;
+}
+
+/**
+ * Where the solid the user clicked ends.
+ *
+ * Returns null when the crossings never close - an open mesh like a hair card,
+ * or an asset with inconsistent winding, where the count is not to be trusted.
+ * Guessing a far side from unreliable normals would put a joint somewhere
+ * arbitrary; saying so and falling back to an estimate is honest.
+ */
+function farSideOf(through: readonly PickResult[]): PickResult | null {
+  const direction = rayDirection(through);
+  if (!direction) return null;
+
+  let depth = 0;
+  for (const hit of through) {
+    depth += hit.normal.dot(direction) < 0 ? 1 : -1;
+    // Back out of every layer we went into: this is the far side.
+    if (depth <= 0) return hit;
+  }
+  return null;
+}
+
+/**
+ * The ray's direction, recovered from the crossings themselves.
+ *
+ * Every crossing lies on the ray, so the vector between the first and last is
+ * the direction - which saves threading the camera through a function whose
+ * whole value is being pure arithmetic.
+ */
+function rayDirection(through: readonly PickResult[]): THREE.Vector3 | null {
+  const first = through[0]!;
+  for (let i = through.length - 1; i > 0; i--) {
+    const direction = through[i]!.point.clone().sub(first.point);
+    if (direction.lengthSq() > 1e-18) return direction.normalize();
+  }
+  return null;
 }
 
 /** An offset that displaces the clicked point inward along the surface normal. */

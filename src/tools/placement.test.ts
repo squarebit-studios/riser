@@ -25,16 +25,23 @@ function surfacePick(offset: Vec3 = [0, 0, 0]): SurfacePick {
   };
 }
 
-/** A crossing of the click ray at distance `z` along the axis. */
-function crossing(z: number): PickResult {
+/**
+ * A crossing of the click ray at `z`, facing into or out of the solid.
+ *
+ * The ray travels along -z, so a face going IN has a normal pointing +z.
+ * Orientation is what lets nested layers - clothing over skin - be told apart
+ * from the two sides of one solid.
+ */
+function crossing(z: number, going: 'in' | 'out' = 'in'): PickResult {
   return {
     point: new THREE.Vector3(0, 0, z),
+    normal: new THREE.Vector3(0, 0, going === 'in' ? 1 : -1),
     distance: 1 - z
   } as PickResult;
 }
 
 /** A limb one unit thick: the ray enters at z = 1 and leaves at z = 0. */
-const THROUGH_A_LIMB = [crossing(1), crossing(0)];
+const THROUGH_A_LIMB = [crossing(1, 'in'), crossing(0, 'out')];
 
 const options = (extra: Partial<Parameters<typeof resolvePlacement>[2]> = {}) => ({
   interior: false,
@@ -100,12 +107,12 @@ describe('placing at the centre of the volume', () => {
     const thin = resolvePlacement(
       'center',
       surfacePick(),
-      options({ through: [crossing(1), crossing(0.8)] })
+      options({ through: [crossing(1, 'in'), crossing(0.8, 'out')] })
     );
     const thick = resolvePlacement(
       'center',
       surfacePick(),
-      options({ through: [crossing(1), crossing(0)] })
+      options({ through: [crossing(1, 'in'), crossing(0, 'out')] })
     );
     expect(Math.abs(thin.offset[2])).toBeCloseTo(0.1, 6);
     expect(Math.abs(thick.offset[2])).toBeCloseTo(0.5, 6);
@@ -117,7 +124,14 @@ describe('placing at the centre of the volume', () => {
     const result = resolvePlacement(
       'center',
       surfacePick(),
-      options({ through: [crossing(1), crossing(0.8), crossing(-2), crossing(-3)] })
+      options({
+        through: [
+          crossing(1, 'in'),
+          crossing(0.8, 'out'),
+          crossing(-2, 'in'),
+          crossing(-3, 'out')
+        ]
+      })
     );
     expect(Math.abs(result.offset[2])).toBeCloseTo(0.1, 6);
   });
@@ -135,7 +149,7 @@ describe('placing at the centre of the volume', () => {
     const result = resolvePlacement(
       'center',
       surfacePick(),
-      options({ through: [crossing(1)] })
+      options({ through: [crossing(1, 'in')] })
     );
     expect(result.measured).toBe(false);
   });
@@ -146,7 +160,7 @@ describe('placing at the centre of the volume', () => {
     const result = resolvePlacement(
       'center',
       surfacePick(),
-      options({ through: [crossing(1), crossing(1)] })
+      options({ through: [crossing(1, 'in'), crossing(1, 'out')] })
     );
     expect(result.measured).toBe(false);
   });
@@ -258,5 +272,77 @@ describe('every mode produces a usable offset', () => {
         }
       }
     }
+  });
+});
+
+describe('a character wearing clothes', () => {
+  /**
+   * Gary's hip, as actually measured: the ray enters his spacesuit, enters his
+   * skin a millimetre later, then leaves both on the far side.
+   */
+  const LAYERED_HIP = [
+    crossing(0.343, 'in'), // spacesuit, front
+    crossing(0.342, 'in'), // body, front
+    crossing(-0.166, 'out'), // body, back
+    crossing(-0.166, 'out') // spacesuit, back
+  ];
+
+  it('measures the whole hip, not the gap between suit and skin', () => {
+    // The bug this exists for. Taking the first two crossings measured the
+    // 1mm between a spacesuit and the body inside it, so a centre placement
+    // landed back on the surface - on every clothed character, while looking
+    // perfect on a bare blockout.
+    const pick = surfacePick();
+    pick.worldPoint.set(0, 0, 0.343);
+    expect(volumeDepth(pick, LAYERED_HIP)).toBeCloseTo(0.2545, 3);
+  });
+
+  it('still stops at the arm rather than running on into the torso', () => {
+    // The property the naive version had by accident, and which the layered
+    // fix must not lose: the arm's own exit closes the count first.
+    const pick = surfacePick();
+    pick.worldPoint.set(0, 0, 1);
+    const armThenTorso = [
+      crossing(1, 'in'),
+      crossing(0.8, 'out'),
+      crossing(-2, 'in'),
+      crossing(-3, 'out')
+    ];
+    expect(volumeDepth(pick, armThenTorso)).toBeCloseTo(0.1, 6);
+  });
+
+  it('handles three layers over the body', () => {
+    // Briefs over skin over a suit, which is what Gary's thigh really is.
+    const pick = surfacePick();
+    pick.worldPoint.set(0, 0, 0.172);
+    const thigh = [
+      crossing(0.172, 'in'),
+      crossing(0.167, 'in'),
+      crossing(0.167, 'in'),
+      crossing(-0.097, 'out'),
+      crossing(-0.099, 'out'),
+      crossing(-0.107, 'out')
+    ];
+    expect(volumeDepth(pick, thigh)).toBeCloseTo(0.1395, 3);
+  });
+
+  it('refuses to guess when the crossings never close', () => {
+    // An open mesh - a hair card, an eyelash - or inconsistent winding. The
+    // count cannot be trusted, so the caller falls back to an estimate and
+    // tells the user rather than inventing a far side.
+    const pick = surfacePick();
+    expect(
+      volumeDepth(pick, [crossing(1, 'in'), crossing(0.5, 'in'), crossing(0, 'in')])
+    ).toBeNull();
+  });
+
+  it('declines to measure when the ray starts inside the geometry', () => {
+    // A first crossing that is back-facing means the camera is already inside
+    // the solid, so there is no entry point to measure from. Inventing one
+    // would put the joint somewhere arbitrary; falling back to an estimate and
+    // saying so is the honest answer.
+    const pick = surfacePick();
+    pick.worldPoint.set(0, 0, 1);
+    expect(volumeDepth(pick, [crossing(1, 'out'), crossing(0, 'in')])).toBeNull();
   });
 });
