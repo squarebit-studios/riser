@@ -157,6 +157,16 @@ function GuideDetails({
             muted={guide.source !== 'user'}
           />
           <Field label="Position" value={formatVec(guide.position)} mono />
+          {/* Where the marker sits relative to the skin. Without this the
+              placement modes are invisible: an interior marker is drawn over
+              the mesh by x-ray, so from the angle it was placed it looks
+              exactly like a surface one, and the only way to tell was to
+              orbit the camera. */}
+          <Field
+            label="Depth"
+            value={describeDepth(app.placementDepth(guide.id))}
+            muted={Math.abs(app.placementDepth(guide.id)) < 1e-4}
+          />
           {guide.binding ? (
             <>
               <Field label="Bound to" value={guide.binding.primPath} mono />
@@ -355,4 +365,18 @@ function Field({
 
 function formatVec(v: readonly [number, number, number], digits = 3): string {
   return `${v[0].toFixed(digits)}, ${v[1].toFixed(digits)}, ${v[2].toFixed(digits)}`;
+}
+
+/**
+ * How far below the surface a marker sits, in words.
+ *
+ * Centimetres rather than document units, because the number is being read by
+ * a person judging whether a joint is in a sensible place, and "0.11" means
+ * nothing without knowing what a unit is here.
+ */
+function describeDepth(depth: number): string {
+  const cm = depth * 100;
+  if (Math.abs(cm) < 0.01) return 'on the surface';
+  if (cm < 0) return `${Math.abs(cm).toFixed(1)} cm above the surface`;
+  return `${cm.toFixed(1)} cm inside`;
 }
