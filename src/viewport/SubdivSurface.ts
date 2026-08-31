@@ -195,14 +195,36 @@ export class SubdivSurface {
    * wireframe is the honest picture of what is being rendered.
    */
   quadWireframe(): THREE.BufferGeometry | null {
-    const active = this.active;
-    if (!active) return null;
     try {
-      return toQuadWireframeGeometry(active.refined.mesh);
+      const active = this.active;
+      if (active) return toQuadWireframeGeometry(active.refined.mesh);
+
+      // Level 0 still has quads worth drawing. The cage arrives triangulated
+      // from USD, so its own wireframe shows the triangulation rather than the
+      // modelled edge flow; `recoverQuads` is what puts the quads back, and it
+      // is the same mesh subdivision would refine from. That makes level 0 a
+      // real choice rather than a way of turning the feature off.
+      return toQuadWireframeGeometry(this.cageQuads());
     } catch {
       // Falling back to the caller's triangle wireframe beats no wireframe.
       return null;
     }
+  }
+
+  /**
+   * The cage as quads, built once and shared with the refiner.
+   *
+   * Recovering quads is the expensive half of preparing a surface, so the
+   * wireframe and the subdivision use the same result rather than each paying
+   * for it.
+   */
+  private cageQuads(): SubdivMesh {
+    if (!this.cageSubdiv) {
+      const extracted = fromBufferGeometry(this.cage.geometry);
+      assignMaterialSlots(extracted.mesh, this.cage.geometry);
+      this.cageSubdiv = recoverQuads(extracted.mesh);
+    }
+    return this.cageSubdiv;
   }
 
   /** True when this level is built already, so switching to it is free. */

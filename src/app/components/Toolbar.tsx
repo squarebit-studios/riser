@@ -26,7 +26,6 @@
 // inventory.
 // ==========================================================================
 
-import { useRef } from 'react';
 import { useApp } from '../AppContext';
 import { useUiStore } from '../state';
 import { MAX_SUBDIV_LEVEL, MIN_SUBDIV_LEVEL } from '../../viewport/SubdivSurface';
@@ -56,13 +55,7 @@ export function Toolbar(): JSX.Element {
   const useHdri = useUiStore((s) => s.useHdri);
   const subdivLevel = useUiStore((s) => s.subdivLevel);
   const subdivClamped = useUiStore((s) => s.subdivClamped);
-  // Turning smoothing back on should return to the level the user last chose,
-  // not to a hardcoded one. Held here rather than in the store because it is a
-  // convenience, not state worth persisting or restoring.
-  const lastSubdivLevel = useRef(1);
-  if (subdivLevel > 0 && lastSubdivLevel.current !== subdivLevel) {
-    lastSubdivLevel.current = subdivLevel;
-  }
+  const smoothing = useUiStore((s) => s.smoothing);
   const showGeometry = useUiStore((s) => s.showGeometry);
   const showMarkers = useUiStore((s) => s.showMarkers);
   const showCurves = useUiStore((s) => s.showCurves);
@@ -298,16 +291,16 @@ export function Toolbar(): JSX.Element {
       <div className="flex items-center gap-px">
         <Button
           icon="shading"
-          active={subdivLevel > 0}
+          // Accent rather than the default pressed grey. A toggle that only
+          // darkens by a shade is hard to read at a glance, and this one
+          // changes what the whole viewport shows.
+          variant={smoothing ? 'primary' : 'default'}
+          active={smoothing}
           disabled={!characterName}
           data-testid="subdiv-toggle"
-          onClick={() =>
-            useUiStore
-              .getState()
-              .setSubdivLevel(subdivLevel > 0 ? 0 : lastSubdivLevel.current)
-          }
+          onClick={() => useUiStore.getState().toggleSmoothing()}
           title={
-            subdivLevel > 0
+            smoothing
               ? `Smoothing on, level ${subdivLevel}. Markers still bind to the original mesh.`
               : 'Smooth the surface for placement. Markers still bind to the original mesh.'
           }
@@ -336,11 +329,11 @@ export function Toolbar(): JSX.Element {
           {SUBDIV_LEVELS.map((level) => (
             <MenuItem
               key={level}
-              label={level === 0 ? 'Off' : `Level ${level}`}
-              checked={subdivLevel === level}
+              label={`Level ${level}`}
+              checked={smoothing && subdivLevel === level}
               description={
                 level === 0
-                  ? 'The mesh exactly as the file describes it'
+                  ? 'The mesh as the file describes it, drawn as quads'
                   : undefined
               }
               data-testid={`subdiv-level-${level}`}

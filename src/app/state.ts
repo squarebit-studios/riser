@@ -54,6 +54,9 @@ interface PersistedUi {
   showGrid: boolean;
   viewMode: ViewMode;
   subdivLevel: number;
+  /** Whether smoothing is on. Separate from the level, so level 0 is a
+   *  real choice: the unrefined mesh, drawn as quads. */
+  smoothing: boolean;
   placementMode: PlacementMode;
   /** Which lighting environment the viewport uses. */
   environment: EnvironmentId;
@@ -98,6 +101,9 @@ function loadLayout(): Partial<PersistedUi> {
       parsed.viewMode === 'litWireframe'
     ) {
       out.viewMode = parsed.viewMode;
+    }
+    if (typeof parsed.smoothing === 'boolean') {
+      out.smoothing = parsed.smoothing;
     }
     if (
       typeof parsed.subdivLevel === 'number' &&
@@ -150,6 +156,14 @@ export interface UiState {
    * Bindings are unaffected - they always name a cage triangle.
    */
   subdivLevel: number;
+  /**
+   * Whether smoothing is on, held apart from the level.
+   *
+   * Derived state ("on means level > 0") made level 0 unreachable while on,
+   * so the unrefined mesh could never be looked at as quads. They are two
+   * different questions: whether to smooth, and by how much.
+   */
+  smoothing: boolean;
   /** Set when a mesh was too dense for the requested level. */
   subdivClamped: boolean;
   /** How the character is shaded: lit, flat, wireframe, or lit with wires. */
@@ -211,6 +225,8 @@ export interface UiState {
   toggleSymmetry: () => void;
   toggleXray: () => void;
   setSubdivLevel: (level: number) => void;
+  setSmoothing: (on: boolean) => void;
+  toggleSmoothing: () => void;
   setViewMode: (mode: ViewMode) => void;
   setPlacementMode: (mode: PlacementMode) => void;
   setEnvironment: (id: EnvironmentId) => void;
@@ -249,6 +265,7 @@ export const useUiStore = create<UiState>((set) => ({
   symmetry: true,
   xray: true,
   subdivLevel: DEFAULT_SUBDIV_LEVEL,
+  smoothing: false,
   subdivClamped: false,
   viewMode: DEFAULT_VIEW_MODE,
   placementMode: DEFAULT_PLACEMENT_MODE,
@@ -296,7 +313,13 @@ export const useUiStore = create<UiState>((set) => ({
 
   toggleSymmetry: () => set((s) => ({ symmetry: !s.symmetry })),
   toggleXray: () => set((s) => ({ xray: !s.xray })),
-  setSubdivLevel: (subdivLevel) => set({ subdivLevel }),
+  setSubdivLevel: (subdivLevel) =>
+    // Choosing a level is also asking to see it. Picking "Level 2" from
+    // the menu while smoothing is off and having nothing happen would be
+    // a dead control.
+    set({ subdivLevel, smoothing: true }),
+  setSmoothing: (smoothing) => set({ smoothing }),
+  toggleSmoothing: () => set((s) => ({ smoothing: !s.smoothing })),
   setViewMode: (viewMode) => set({ viewMode }),
   setPlacementMode: (placementMode) => set({ placementMode }),
   setEnvironment: (environment) => set({ environment }),
@@ -349,6 +372,7 @@ useUiStore.subscribe((state, previous) => {
     state.showGrid !== previous.showGrid ||
     state.viewMode !== previous.viewMode ||
     state.subdivLevel !== previous.subdivLevel ||
+    state.smoothing !== previous.smoothing ||
     state.placementMode !== previous.placementMode ||
     state.environment !== previous.environment ||
     state.useHdri !== previous.useHdri;
@@ -363,6 +387,7 @@ useUiStore.subscribe((state, previous) => {
     showGrid: state.showGrid,
     viewMode: state.viewMode,
     subdivLevel: state.subdivLevel,
+    smoothing: state.smoothing,
     placementMode: state.placementMode,
     environment: state.environment,
     useHdri: state.useHdri

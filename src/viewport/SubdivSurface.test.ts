@@ -351,13 +351,26 @@ describe('budgeting subdivision across the whole character', () => {
 });
 
 describe('wireframe that follows the quads', () => {
-  it('has no edges at level 0, where the triangles are the truth', () => {
-    // Unsubdivided, the renderer really is drawing triangles, and a triangle
-    // wireframe is the honest picture of that. Returning null lets the caller
-    // use three's own.
+  it('draws the cage as quads at level 0', () => {
+    // Level 0 is a real choice now, not the off switch. The cage arrives
+    // triangulated from USD, so three's own wireframe shows the triangulation
+    // rather than the modelled edge flow, and the quads are recoverable from
+    // exactly the mesh subdivision would refine.
     const set = new SubdivSet([gridMesh(8)]);
     set.setLevel(0);
-    expect(set.quadWireframe(set.displayedMeshes()[0]!)).toBeNull();
+
+    const displayed = set.displayedMeshes()[0]!;
+    const quads = set.quadWireframe(displayed);
+    expect(quads).not.toBeNull();
+
+    // Compared against the triangle wireframe of the same mesh rather than
+    // against a number worked out by hand. Fewer edges is the property worth
+    // having, and it holds without anyone having to be right about how the
+    // grid was tessellated.
+    const triangles = new THREE.WireframeGeometry(displayed.geometry);
+    expect(quads!.getAttribute('position').count).toBeLessThan(
+      triangles.getAttribute('position').count
+    );
   });
 
   it('draws fewer edges than the triangulation would', () => {

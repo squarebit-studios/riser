@@ -32,13 +32,19 @@ export function OutlinerPanel(): JSX.Element {
   // Selection and visibility live on the three.js side. This redraws the list
   // after a change rather than keeping a second copy that could disagree with
   // what is on screen.
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   const redraw = (): void => setTick((n) => n + 1);
 
+  // `tick` belongs in these deps. Without it the list was memoised on the
+  // character alone, so hiding a piece never refreshed `item.visible`: the row
+  // went on showing the "hide" icon and the next click sent
+  // setVisible(path, false) a second time. Hiding worked and showing was
+  // unreachable, which reads as a broken toggle when the toggle is fine and
+  // the list it draws from is stale.
   const items = useMemo(
     () => app.scene.items(),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [characterName, app.characterModel]
+    [characterName, app.characterModel, tick]
   );
 
   if (!characterName) {

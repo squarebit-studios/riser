@@ -68,12 +68,18 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 ) {
   // An active ghost has to look pressed rather than merely hovered, or a
   // toggle that is ON is indistinguishable from the pointer resting on it.
+  //
+  // A primary button is left alone. Its variant already says "on" in accent,
+  // and adding the pressed grey on top puts two background utilities on the
+  // same element: which one wins is then down to the order Tailwind happens to
+  // emit them in, not to anything stated here. That is how the Smooth toggle
+  // came out blue in one state and grey in another with identical props.
   const activeClass =
-    active && variant === 'ghost'
-      ? 'bg-accent-soft text-accent hover:bg-accent-soft hover:text-accent'
-      : active
-        ? 'bg-panel-active text-ink'
-        : '';
+    !active || variant === 'primary'
+      ? ''
+      : variant === 'ghost'
+        ? 'bg-accent-soft text-accent hover:bg-accent-soft hover:text-accent'
+        : 'bg-panel-active text-ink';
 
   return (
     <button

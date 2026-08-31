@@ -48,7 +48,7 @@ Left to right.
 | **Auto-place** | Fills in markers automatically: from the character's own skeleton when it has one, otherwise by measuring its shape. Disabled until a character is loaded. Never overwrites anything you placed. |
 | **Shading** | How the character is drawn: Lit, Flat, Wire or Lit wire. See below. |
 | **Show** | What is drawn: the character, markers, curves, the skeleton, the ground grid, and whether markers show through the body. The button turns amber and counts what is hidden, so nothing can be invisible without the interface saying so. |
-| **Smooth** | Turns smoothing on and off. The three-dot button beside it chooses the level, 0 to 3. Display only: it never moves a marker you have placed. See below. |
+| **Smooth** | Turns smoothing on and off, accent blue while it is on. The three-dot button beside it chooses the level, 0 to 3. Display only: it never moves a marker you have placed. See below. |
 | **Undo** / **Redo** | Steps the document history. The tooltip names the step, for example *Undo Place Chest*. |
 | **Frame** | Frames the whole character. Also `A`. |
 
@@ -95,6 +95,11 @@ written against.
 That split follows how the control is used: smoothing goes on and off far more
 often than the level changes. Turning it back on returns to the level you last
 chose.
+
+The two are independent, so **level 0 with smoothing on** is a real choice and
+not another way of switching it off. It shows the mesh exactly as the file
+describes it, drawn as quads rather than as the triangulation it arrived in,
+which is usually what you want while judging edge flow.
 
 Each level you visit is kept, so moving the slider back to one you have already
 used is instant.

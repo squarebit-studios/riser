@@ -470,7 +470,7 @@ export class RiserApp {
     // will actually be on screen.
     const ui0 = useUiStore.getState();
     this.subdivs = new SubdivSet(model.meshes);
-    this.subdivs.setLevel(ui0.subdivLevel);
+    this.subdivs.setLevel(effectiveSubdivLevel(ui0));
     ui0.setSubdivClamped(this.subdivs.clamped);
     // A freshly built limit surface carries the material it was constructed
     // with and knows nothing about view modes, so the mode has to be reapplied
@@ -1307,13 +1307,17 @@ export class RiserApp {
     if (state.viewMode !== previous.viewMode) {
       this.viewModes?.setMode(state.viewMode);
     }
-    if (state.subdivLevel !== previous.subdivLevel && this.subdivs) {
-      this.subdivs.setLevel(state.subdivLevel);
+    if (
+      (state.subdivLevel !== previous.subdivLevel ||
+        state.smoothing !== previous.smoothing) &&
+      this.subdivs
+    ) {
+      this.subdivs.setLevel(effectiveSubdivLevel(state));
       // A rebuilt limit surface is new geometry with no BVH of its own.
       if (this.character) accelerate(this.character.root);
       const ui = useUiStore.getState();
       ui.setSubdivClamped(this.subdivs.clamped);
-      this.reportSubdivision(state.subdivLevel);
+      this.reportSubdivision(effectiveSubdivLevel(state));
       // Changing the level rebuilds the displayed meshes, so the shading has
       // to be put back on the new ones.
       this.viewModes?.refresh();
@@ -1524,4 +1528,17 @@ if (import.meta.hot) {
   import.meta.hot.accept(() => {
     window.location.reload();
   });
+}
+
+/**
+ * The level actually shown.
+ *
+ * The chosen level is remembered while smoothing is off, so turning it back on
+ * returns to where the user left it rather than to a hardcoded default.
+ */
+function effectiveSubdivLevel(state: {
+  smoothing: boolean;
+  subdivLevel: number;
+}): number {
+  return state.smoothing ? state.subdivLevel : 0;
 }

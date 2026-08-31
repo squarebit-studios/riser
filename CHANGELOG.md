@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.3] - 2026-08-31
+- Fixed: the eyes rendered black. The iris and sclera maps were being assigned to uniform names that do not exist, so they never reached the shader and it sampled nothing
+- Smoothing is on or off independently of the level, so level 0 is a real choice: the mesh as the file describes it, drawn as quads rather than as its triangulation
+- The Smooth button now reads accent blue when it is on and grey when it is off
+- Fixed: hiding a piece in the Scene tab could not be undone. The list was cached against the character alone, so the row never learned it was hidden and clicking again hid it a second time
+
 ## [0.8.2] - 2026-08-31
 - Fixed: the eyes were shaded but blank. Their iris and sclera maps are packed inside the .usdz, and Riser was looking for them beside it, so the shader ran with no textures. The dev server answered those requests with the app's own HTML instead of a 404, which is why nothing ever reported an error
 

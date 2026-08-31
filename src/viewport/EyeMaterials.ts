@@ -45,6 +45,19 @@ import {
   updateProjector
 } from '../vendor/squarebit-eye/eye-material.js';
 
+/**
+ * Look parameter -> the option `makeEyeUniforms` takes for it.
+ *
+ * Exported so a test can check these names against the uniforms the module
+ * really builds. A name that does not exist there fails silently at runtime,
+ * which is exactly how the eyes came out black, and a spelling is not
+ * something to find out about from a screenshot.
+ */
+export const TEXTURE_UNIFORMS = [
+  ['irisTexture', 'irisMap'],
+  ['scleraTexture', 'scleraMap']
+] as const;
+
 interface EyeUniforms {
   [key: string]: unknown;
 }
@@ -130,24 +143,36 @@ export class EyeMaterials {
       THREE.MeshStandardMaterial;
     material.name = `SquarebitEye:${look.primPath.split('/').pop() ?? 'eye'}`;
 
-    const eye = makeEyeUniforms(numericParams(params)) as EyeUniforms;
-
-    // The iris and sclera maps, resolved beside the character.
-    for (const [key, uniform] of [
-      ['irisTexture', 'irisMap'],
-      ['scleraTexture', 'scleraMap']
-    ] as const) {
+    // The maps are built BEFORE the uniforms and handed in as options, which
+    // is the interface the module documents. The previous version made the
+    // uniforms first and then assigned into `eye.irisMap` and `eye.scleraMap`,
+    // names that do not exist: the real ones are `sbeIrisMap` and
+    // `sbeScleraMap`. Writing to a missing key is not an error in JavaScript,
+    // so both textures were dropped without a word and the shader sampled an
+    // unbound map. The sclera is `sbeScleraColor * texture(sbeScleraMap, uv)`,
+    // which multiplies toward black, and that is why a correctly shaded eye
+    // rendered as a black one.
+    const maps: Record<string, THREE.Texture> = {};
+    for (const [key, option] of TEXTURE_UNIFORMS) {
       const path = params[key];
       if (typeof path !== 'string' || path.length === 0) continue;
       const texture = loader.load(this.textureUrl(path, baseUrl, archive));
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.flipY = false;
       this.textures.push(texture);
-      const slot = (eye as Record<string, { value?: unknown }>)[uniform];
-      if (slot && typeof slot === 'object') slot.value = texture;
+      maps[option] = texture;
     }
 
+    const eye = makeEyeUniforms({
+      ...numericParams(params),
+      ...maps
+    }) as EyeUniforms;
+
     applyEyeShader(material, EYE_CORE_GLSL, eye);
+
+    // Kept so the wiring can be inspected after the fact, by a test or by
+    // anyone debugging an eye that does not look right.
+    material.userData.squarebitEye = eye;
 
     // The projector is what places the iris inside the eye. Its matrix is
     // authored in the character's own units, which the exporter has already
