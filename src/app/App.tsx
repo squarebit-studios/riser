@@ -219,6 +219,15 @@ function useGlobalShortcuts(): void {
       }
       if (mod) return;
 
+      // "?" opens the documentation, which is what it does nearly everywhere
+      // else. Dispatched as an event so the menu bar - which owns the dialog -
+      // can answer it without this hook knowing about the dialog at all.
+      if (e.key === '?') {
+        window.dispatchEvent(new CustomEvent('riser:open-docs'));
+        e.preventDefault();
+        return;
+      }
+
       switch (e.key) {
         case '1':
           ui.setActiveTool('marker');

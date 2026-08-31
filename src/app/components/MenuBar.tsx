@@ -36,6 +36,7 @@ import {
 } from './ui/Menu';
 import { Icon } from './ui/Icon';
 import { ChangelogDialog } from './ChangelogDialog';
+import { DocsDialog } from './DocsDialog';
 import { APP_VERSION } from '../version';
 
 export function MenuBar(): JSX.Element {
@@ -45,6 +46,7 @@ export function MenuBar(): JSX.Element {
 
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [showChangelog, setShowChangelog] = useState(false);
+  const [showDocs, setShowDocs] = useState<string | null>(null);
   const dirty = useUiStore((s) => s.dirty);
   const characterName = useUiStore((s) => s.characterName);
   const hasSkeleton = useUiStore((s) => s.characterHasSkeleton);
@@ -67,6 +69,14 @@ export function MenuBar(): JSX.Element {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // The "?" shortcut lives in App.tsx with the other global keys; the dialog
+  // lives here. An event keeps the two from having to know about each other.
+  useEffect(() => {
+    const open = (): void => setShowDocs('getting-started');
+    window.addEventListener('riser:open-docs', open);
+    return () => window.removeEventListener('riser:open-docs', open);
+  }, []);
 
   const save = async (): Promise<void> => {
     await app.saveDocument();
@@ -373,11 +383,23 @@ export function MenuBar(): JSX.Element {
         {/* ---------------------------------------------------------- Help */}
         <MenuBarMenu id="help" label="Help">
           <MenuItem
-            label="Getting started"
+            label="Documentation"
             icon="help"
-            onSelect={() =>
-              window.open('https://github.com/squarebit-studios/riser#readme', '_blank')
-            }
+            shortcut="?"
+            description="Everything Riser does, in the app"
+            data-testid="open-docs"
+            onSelect={() => setShowDocs('getting-started')}
+          />
+          <MenuItem
+            label="Getting started"
+            icon="next"
+            onSelect={() => setShowDocs('getting-started')}
+          />
+          <MenuItem
+            label="Templates reference"
+            icon="list"
+            description="What each template asks for, guide by guide"
+            onSelect={() => setShowDocs('templates')}
           />
           <MenuItem
             label="What's new"
@@ -406,6 +428,9 @@ export function MenuBar(): JSX.Element {
       </span>
 
       {showChangelog && <ChangelogDialog onClose={() => setShowChangelog(false)} />}
+      {showDocs !== null && (
+        <DocsDialog initialSlug={showDocs} onClose={() => setShowDocs(null)} />
+      )}
 
       {/* Hidden file pickers ------------------------------------------- */}
       <input

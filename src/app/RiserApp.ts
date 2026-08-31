@@ -1260,3 +1260,30 @@ function hugsSurface(
  * gap rather than a deliberate placement inside the volume.
  */
 const INTERIOR_CURVE_FRACTION = 0.01;
+
+// ==========================================================================
+// Hot reloading
+//
+// RiserApp owns imperative three.js state - a renderer, a picker, a
+// subdivision cache, an environment controller - held in a single instance
+// that React creates once and never recreates. Vite's Fast Refresh can swap a
+// React component's code; it cannot swap the code inside a live object that
+// component is merely holding.
+//
+// Without this, editing anything under src/viewport or src/tools left the
+// running app on the OLD code while the module graph said otherwise. The
+// result was not an obvious failure but a half-updated app: characters that
+// silently stopped loading, a fix that appeared not to work, a stale Tailwind
+// config serving classes that no longer existed. Every one of those cost real
+// time to diagnose as "the dev server, not the code".
+//
+// So changes to this module - and to everything it imports, since the update
+// propagates up to the nearest accepting boundary - reload the page instead.
+// A full reload is slower than a hot patch and always correct, which is the
+// right trade for a module like this one.
+// ==========================================================================
+if (import.meta.hot) {
+  import.meta.hot.accept(() => {
+    window.location.reload();
+  });
+}

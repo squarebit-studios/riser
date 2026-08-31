@@ -10,6 +10,8 @@
 - Photographed lighting can be switched off for a generated sky — cleaner, more neutral, and needs no download
 - Version pill beside the Riser wordmark; clicking it shows what changed
 - In-app changelog, read from the same CHANGELOG.md everyone edits
+- Documentation is now in the app, under Help — six pages with images, searchable, and "?" opens it
+- Dev server changes to viewport or tool code now force a full reload, instead of leaving the app running old code
 - Depth readout in the details panel — "on the surface", or how far inside
 - Menu bar (File, Edit, View, Template, Help) carrying every action, including what the toolbar has no room for
 - Searchable template browser with All / Left / Suggested / Mine filters, collapsible groups and per-group progress

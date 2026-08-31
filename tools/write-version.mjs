@@ -15,7 +15,7 @@
 // Runs before `dev` and before `build`, so the files exist in both.
 // ==========================================================================
 
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -49,4 +49,9 @@ writeFileSync(join(publicDir, 'version.json'), text);
 // nobody maintains a second list of what changed.
 copyFileSync(join(root, 'CHANGELOG.md'), join(publicDir, 'CHANGELOG.md'));
 
-console.log(`version.json + CHANGELOG.md -> ${pkg.version}`);
+// The documentation, served so the in-app viewer can fetch it. Copied rather
+// than committed under public/ for the same reason as the changelog: docs/ is
+// where people edit, and a second copy would go stale.
+cpSync(join(root, 'docs'), join(publicDir, 'docs'), { recursive: true });
+
+console.log(`version.json + CHANGELOG.md + docs -> ${pkg.version}`);

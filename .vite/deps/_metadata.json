@@ -1,0 +1,148 @@
+{
+  "hash": "595be2c2",
+  "configHash": "08656e60",
+  "lockfileHash": "a55e1406",
+  "browserHash": "f3561f60",
+  "optimized": {
+    "@squarebit/subdivs-three": {
+      "src": "../../node_modules/@squarebit/subdivs-three/dist-lib/index.js",
+      "file": "@squarebit_subdivs-three.js",
+      "fileHash": "f8b8b2c8",
+      "needsInterop": false
+    },
+    "react": {
+      "src": "../../node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "a13babb5",
+      "needsInterop": true
+    },
+    "react-dom": {
+      "src": "../../node_modules/react-dom/index.js",
+      "file": "react-dom.js",
+      "fileHash": "04c488de",
+      "needsInterop": true
+    },
+    "react-dom/client": {
+      "src": "../../node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "717ab183",
+      "needsInterop": true
+    },
+    "three": {
+      "src": "../../node_modules/three/build/three.module.js",
+      "file": "three.js",
+      "fileHash": "ad5092e9",
+      "needsInterop": false
+    },
+    "three/addons/controls/OrbitControls.js": {
+      "src": "../../node_modules/three/examples/jsm/controls/OrbitControls.js",
+      "file": "three_addons_controls_OrbitControls__js.js",
+      "fileHash": "df922f30",
+      "needsInterop": false
+    },
+    "three/addons/environments/RoomEnvironment.js": {
+      "src": "../../node_modules/three/examples/jsm/environments/RoomEnvironment.js",
+      "file": "three_addons_environments_RoomEnvironment__js.js",
+      "fileHash": "9d788244",
+      "needsInterop": false
+    },
+    "three/addons/lines/Line2.js": {
+      "src": "../../node_modules/three/examples/jsm/lines/Line2.js",
+      "file": "three_addons_lines_Line2__js.js",
+      "fileHash": "e9af47aa",
+      "needsInterop": false
+    },
+    "three/addons/lines/LineGeometry.js": {
+      "src": "../../node_modules/three/examples/jsm/lines/LineGeometry.js",
+      "file": "three_addons_lines_LineGeometry__js.js",
+      "fileHash": "a07b0106",
+      "needsInterop": false
+    },
+    "three/addons/lines/LineMaterial.js": {
+      "src": "../../node_modules/three/examples/jsm/lines/LineMaterial.js",
+      "file": "three_addons_lines_LineMaterial__js.js",
+      "fileHash": "8da7d7b7",
+      "needsInterop": false
+    },
+    "three/addons/loaders/DRACOLoader.js": {
+      "src": "../../node_modules/three/examples/jsm/loaders/DRACOLoader.js",
+      "file": "three_addons_loaders_DRACOLoader__js.js",
+      "fileHash": "c822f868",
+      "needsInterop": false
+    },
+    "three/addons/loaders/EXRLoader.js": {
+      "src": "../../node_modules/three/examples/jsm/loaders/EXRLoader.js",
+      "file": "three_addons_loaders_EXRLoader__js.js",
+      "fileHash": "ab065780",
+      "needsInterop": false
+    },
+    "three/addons/loaders/FBXLoader.js": {
+      "src": "../../node_modules/three/examples/jsm/loaders/FBXLoader.js",
+      "file": "three_addons_loaders_FBXLoader__js.js",
+      "fileHash": "f98f316b",
+      "needsInterop": false
+    },
+    "three/addons/loaders/GLTFLoader.js": {
+      "src": "../../node_modules/three/examples/jsm/loaders/GLTFLoader.js",
+      "file": "three_addons_loaders_GLTFLoader__js.js",
+      "fileHash": "b4d68afe",
+      "needsInterop": false
+    },
+    "three/addons/loaders/OBJLoader.js": {
+      "src": "../../node_modules/three/examples/jsm/loaders/OBJLoader.js",
+      "file": "three_addons_loaders_OBJLoader__js.js",
+      "fileHash": "5357fba0",
+      "needsInterop": false
+    },
+    "three/addons/loaders/usd/USDAParser.js": {
+      "src": "../../node_modules/three/examples/jsm/loaders/usd/USDAParser.js",
+      "file": "three_addons_loaders_usd_USDAParser__js.js",
+      "fileHash": "c6d7a2e2",
+      "needsInterop": false
+    },
+    "three/addons/loaders/USDLoader.js": {
+      "src": "../../node_modules/three/examples/jsm/loaders/USDLoader.js",
+      "file": "three_addons_loaders_USDLoader__js.js",
+      "fileHash": "16309e66",
+      "needsInterop": false
+    },
+    "zustand": {
+      "src": "../../node_modules/zustand/esm/index.mjs",
+      "file": "zustand.js",
+      "fileHash": "9055dba0",
+      "needsInterop": false
+    },
+    "react/jsx-dev-runtime": {
+      "src": "../../node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "641c7e5f",
+      "needsInterop": true
+    }
+  },
+  "chunks": {
+    "chunk-EHRWVRIJ": {
+      "file": "chunk-EHRWVRIJ.js"
+    },
+    "chunk-UFASA7K4": {
+      "file": "chunk-UFASA7K4.js"
+    },
+    "chunk-RK33QQCL": {
+      "file": "chunk-RK33QQCL.js"
+    },
+    "chunk-4SFRHSJ3": {
+      "file": "chunk-4SFRHSJ3.js"
+    },
+    "chunk-YR3OBSFG": {
+      "file": "chunk-YR3OBSFG.js"
+    },
+    "chunk-5RBVL3WY": {
+      "file": "chunk-5RBVL3WY.js"
+    },
+    "chunk-36FFVN7D": {
+      "file": "chunk-36FFVN7D.js"
+    },
+    "chunk-EQCVQC35": {
+      "file": "chunk-EQCVQC35.js"
+    }
+  }
+}

@@ -104,3 +104,81 @@
     @apply flex w-full items-center gap-2 rounded-control px-2 py-1.5 text-left transition-colors;
   }
 }
+
+/* -------------------------------------------------------------------------
+   Rendered documentation.
+
+   Markdown arrives as bare HTML with no classes, so it is styled by element.
+   Scoped under .rs-docs so nothing here can reach the rest of the interface.
+   ------------------------------------------------------------------------- */
+@layer components {
+  .rs-docs {
+    @apply text-[13px] leading-relaxed text-ink-dim;
+  }
+  .rs-docs > div > *:first-child {
+    @apply mt-0;
+  }
+  .rs-docs h1 {
+    @apply mb-3 mt-6 text-xl font-semibold text-ink;
+  }
+  .rs-docs h2 {
+    @apply mb-2 mt-7 border-b border-edge pb-1.5 text-base font-semibold text-ink;
+  }
+  .rs-docs h3 {
+    @apply mb-1.5 mt-5 font-semibold text-ink;
+  }
+  .rs-docs p {
+    @apply my-2.5;
+  }
+  .rs-docs ul {
+    @apply my-2.5 list-disc space-y-1 pl-5;
+  }
+  .rs-docs ol {
+    @apply my-2.5 list-decimal space-y-1 pl-5;
+  }
+  .rs-docs a {
+    @apply text-accent underline underline-offset-2 hover:text-accent-hover;
+  }
+  .rs-docs strong {
+    @apply font-semibold text-ink;
+  }
+  .rs-docs code {
+    @apply rounded bg-panel px-1 py-0.5 font-mono text-[12px] text-ink;
+  }
+  .rs-docs pre {
+    @apply my-3 overflow-x-auto rounded-control bg-panel p-3;
+  }
+  .rs-docs pre code {
+    @apply bg-transparent p-0;
+  }
+  .rs-docs img {
+    @apply my-3 max-w-full rounded-control border border-edge;
+  }
+  .rs-docs blockquote {
+    @apply my-3 border-l-2 border-edge-strong pl-3 text-ink-faint;
+  }
+  .rs-docs hr {
+    @apply my-6 border-edge;
+  }
+  /* A wide table scrolls inside itself rather than widening the page. */
+  .rs-docs table {
+    @apply my-3 block w-full overflow-x-auto border-collapse text-left;
+  }
+  .rs-docs th {
+    @apply border-b border-edge-strong px-2 py-1.5 font-semibold text-ink;
+  }
+  .rs-docs td {
+    @apply border-b border-edge px-2 py-1.5 align-top;
+  }
+  .rs-docs table tr:last-child td {
+    @apply border-b-0;
+  }
+  /* The text is worth copying - a path, a command, a guide name. */
+  .rs-docs p,
+  .rs-docs li,
+  .rs-docs td,
+  .rs-docs th,
+  .rs-docs code {
+    user-select: text;
+  }
+}

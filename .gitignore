@@ -56,3 +56,4 @@ __pycache__/
 # Committing them is how the two drifted apart in the first place.
 public/version.json
 public/CHANGELOG.md
+public/docs/

@@ -1120,6 +1120,60 @@ test.describe('view modes', () => {
   });
 });
 
+test.describe('documentation in the app', () => {
+  test('every page renders from the Help menu', async ({ page }) => {
+    // The docs were written as markdown in docs/ and, before this, could only
+    // be read by someone browsing the repository - which is nobody who needs
+    // them.
+    await openApp(page);
+    await page.getByTestId('menu-help').click();
+    await page.getByTestId('open-docs').click();
+    await expect(page.getByTestId('docs-dialog')).toBeVisible();
+
+    for (const slug of [
+      'getting-started',
+      'interface',
+      'concepts',
+      'templates',
+      'keyboard',
+      'faq'
+    ]) {
+      await page.getByTestId(`docs-page-${slug}`).click();
+      // Rendered prose, not a stub or an error page.
+      await expect
+        .poll(async () => (await page.locator('.rs-docs').innerText()).length, {
+          message: `${slug} did not render`
+        })
+        .toBeGreaterThan(500);
+    }
+  });
+
+  test('links between pages stay inside the dialog', async ({ page }) => {
+    // The docs link to each other as `concepts.md`, which in a browser would
+    // download a markdown file rather than open a page.
+    await openApp(page);
+    await page.getByTestId('menu-help').click();
+    await page.getByTestId('open-docs').click();
+    await page.getByTestId('docs-page-getting-started').click();
+    await page.waitForTimeout(600);
+
+    const link = page.locator('.rs-docs a[href$=".md"]').first();
+    if ((await link.count()) > 0) {
+      await link.click();
+      await expect(page.getByTestId('docs-dialog')).toBeVisible();
+      expect(page.url()).not.toContain('.md');
+    }
+  });
+
+  test('the question mark opens the documentation', async ({ page }) => {
+    await openApp(page);
+    await page.keyboard.press('?');
+    await expect(page.getByTestId('docs-dialog')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('docs-dialog')).not.toBeVisible();
+  });
+});
+
 test.describe('lighting environments', () => {
   async function meanColour(page: Page): Promise<[number, number, number]> {
     return page.evaluate(() => {
