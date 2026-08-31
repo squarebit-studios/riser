@@ -52,18 +52,32 @@ export function StatusBar(): JSX.Element {
     return `Click the character to place ${def.label}.`;
   }
 
+  const placed = app.store.document.guides.length;
+  const required = template.guides.filter((g) => !g.optional).length;
+
   return (
     <footer className="flex h-7 shrink-0 items-center gap-3 border-t border-edge bg-panel px-3 text-[11px] text-ink-faint">
+      {/* The next thing to do, in words. This is the line a first-time user
+          reads when they do not know what the interface wants from them, so
+          it says what to do rather than reporting what is true. */}
       <span className={notice ? 'text-guide-active' : 'text-ink-dim'}>
         {notice ?? prompt}
       </span>
+
       <div className="flex-1" />
-      <span title="Undo history">{app.store.undoLabel ?? 'No edits yet'}</span>
-      <span className={dirty ? 'text-guide-active' : ''}>
-        {dirty ? 'Unsaved changes' : 'Saved'}
+
+      <span className="hidden lg:inline" title="Markers placed">
+        {placed} of {required} placed
       </span>
-      <span className="hidden md:inline">
-        1 markers · 2 curves · F focus · A frame · S symmetry · X x-ray
+      <span className="hidden xl:inline" title="Undo history">
+        {app.store.undoLabel ?? 'No edits yet'}
+      </span>
+      <span
+        className={`flex items-center gap-1 ${dirty ? 'text-guide-active' : ''}`}
+        title={dirty ? 'Your work is autosaved to this browser' : undefined}
+      >
+        {dirty && <span aria-hidden="true">•</span>}
+        {dirty ? 'Unsaved' : 'Saved'}
       </span>
     </footer>
   );

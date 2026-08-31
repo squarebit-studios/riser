@@ -17,6 +17,7 @@ import { SurfacePicker, resolveBindingWorld } from '../viewport/Picker';
 import { Overlays } from '../viewport/Overlays';
 import { SubdivSet } from '../viewport/SubdivSurface';
 import { ViewModeController } from '../viewport/ViewModes';
+import { SkeletonView } from '../viewport/SkeletonView';
 import { documentToWorld, documentToWorldDirection } from '../viewport/space';
 import { CharacterModel } from '../io/CharacterModel';
 import {
@@ -67,6 +68,15 @@ import { useUiStore } from './state';
  */
 const AUTOSAVE_DELAY_MS = 700;
 
+/**
+ * Face count above which smoothing is worth a warning.
+ *
+ * Not a hard limit - the app stays usable past it - but the point where a
+ * character stops feeling immediate, so the user gets told before the next
+ * level makes it worse.
+ */
+const HEAVY_LIMIT_FACES = 600_000;
+
 export class RiserApp {
   readonly viewport: Viewport;
   readonly store: DocumentStore;
@@ -81,6 +91,7 @@ export class RiserApp {
   private character: CharacterModel | null = null;
   private subdivs: SubdivSet | null = null;
   private viewModes: ViewModeController | null = null;
+  private skeletonView = new SkeletonView();
   private unsubscribeDoc: () => void;
   private unsubscribeUi: (() => void) | null = null;
   private unsubscribeFrame: (() => void) | null = null;
@@ -142,6 +153,8 @@ export class RiserApp {
     // Follows what is DISPLAYED, which is the cage at subdivision level 0 and
     // the limit surface above it - not the character's mesh list, which is
     // always the cages.
+    this.viewport.scene.add(this.skeletonView.object);
+
     this.viewModes = new ViewModeController(() =>
       this.subdivs?.displayedMeshes() ?? this.character?.meshes ?? []
     );
@@ -161,6 +174,9 @@ export class RiserApp {
       // only updates its own, so update the other one here.
       this.markerLayer.update(this.viewport.camera);
       this.curveLayer.update(this.viewport.camera);
+      // Cheap when hidden - it returns immediately - and correct when shown
+      // even if something else is driving the bones.
+      this.skeletonView.update();
 
       // Line2 computes its width in SCREEN space, so its material has to know
       // the canvas size. Setting this only when the document changed left it
@@ -201,6 +217,7 @@ export class RiserApp {
     this.autosaveTimer = null;
     this.viewModes?.dispose();
     this.viewModes = null;
+    this.skeletonView.dispose();
     this.subdivs?.dispose();
     this.subdivs = null;
     this.unsubscribeFrame?.();
@@ -266,6 +283,12 @@ export class RiserApp {
     // with and knows nothing about view modes, so the mode has to be reapplied
     // after every rebuild.
     this.viewModes?.setMode(ui0.viewMode);
+    this.viewModes?.setSurfaceVisible(ui0.showGeometry);
+
+    // The rig, if there is one. Shown only when asked for, but built now so
+    // the toggle is instant rather than costing a traversal on first use.
+    this.skeletonView.setCharacter(model.root);
+    this.skeletonView.setVisible(ui0.showSkeleton);
 
     const bounds = model.bounds;
     this.overlays?.fitTo(bounds);
@@ -843,6 +866,36 @@ export class RiserApp {
     this.store.apply((d) => M.removeAllGuides(d), 'Clear all markers');
   }
 
+  /** Remove one guide, so its slot goes back to unplaced. */
+  clearGuide(id: string): void {
+    if (!this.store.document.guides.some((g) => g.id === id)) return;
+    const label = getTemplate(useUiStore.getState().templateId).guides.find(
+      (g) => g.id === id
+    )?.label;
+    this.store.apply((d) => M.removeGuide(d, id), `Clear ${label ?? id}`);
+  }
+
+  /** Accept an automatic guess as the user's own, without moving it. */
+  confirmGuide(id: string): void {
+    const guide = this.store.document.guides.find((g) => g.id === id);
+    if (!guide || guide.source === 'user') return;
+    const label = getTemplate(useUiStore.getState().templateId).guides.find(
+      (g) => g.id === id
+    )?.label;
+    this.store.apply((d) => M.confirmGuide(d, id), `Confirm ${label ?? id}`);
+  }
+
+  /** Accept every automatic guess at once. */
+  confirmAllGuides(): number {
+    const pending = this.store.document.guides.filter((g) => g.source !== 'user');
+    if (pending.length === 0) return 0;
+    this.store.apply(
+      (d) => M.confirmAllGuides(d),
+      `Confirm ${pending.length} suggested markers`
+    );
+    return pending.length;
+  }
+
   clearCurves(): void {
     this.store.apply((d) => M.removeAllCurves(d), 'Clear all curves');
   }
@@ -870,7 +923,9 @@ export class RiserApp {
     }
     if (state.subdivLevel !== previous.subdivLevel && this.subdivs) {
       this.subdivs.setLevel(state.subdivLevel);
-      useUiStore.getState().setSubdivClamped(this.subdivs.clamped);
+      const ui = useUiStore.getState();
+      ui.setSubdivClamped(this.subdivs.clamped);
+      this.reportSubdivision(state.subdivLevel);
       // Changing the level rebuilds the displayed meshes, so the shading has
       // to be put back on the new ones.
       this.viewModes?.refresh();
@@ -888,6 +943,12 @@ export class RiserApp {
     if (state.showCurves !== previous.showCurves) {
       this.curveLayer.setVisible(state.showCurves);
     }
+    if (state.showGeometry !== previous.showGeometry) {
+      this.viewModes?.setSurfaceVisible(state.showGeometry);
+    }
+    if (state.showSkeleton !== previous.showSkeleton) {
+      this.skeletonView.setVisible(state.showSkeleton);
+    }
     if (
       state.activeGuideId !== previous.activeGuideId ||
       state.selectedGuideId !== previous.selectedGuideId ||
@@ -900,6 +961,44 @@ export class RiserApp {
     }
   }
 
+  /**
+   * Say what smoothing actually did, when it is not what was asked for.
+   *
+   * Silence here is the bad outcome: someone drags the slider to 3, the
+   * surface does not change, and nothing in the interface accounts for it.
+   * They are left to conclude the control is broken rather than that their
+   * character is too heavy for it.
+   *
+   * The message names the reason and the number, because "too heavy" without a
+   * figure is not something the user can act on - and the action available to
+   * them is a real one: decimate the mesh, or work at a lower level.
+   */
+  private reportSubdivision(requested: number): void {
+    const subdivs = this.subdivs;
+    if (!subdivs) return;
+    const ui = useUiStore.getState();
+
+    if (subdivs.clamped) {
+      const effective = subdivs.effectiveLevel;
+      ui.setNotice(
+        `Smoothing level ${requested} is too heavy for this character - ` +
+          `${subdivs.totalCageFaces().toLocaleString()} faces before smoothing. ` +
+          `Showing level ${effective} instead.`
+      );
+      return;
+    }
+
+    // Not clamped, but close enough to be worth a word: the next level up is
+    // where this character stops being interactive.
+    const limitFaces = subdivs.totals.limitFaces;
+    if (requested > 0 && limitFaces > HEAVY_LIMIT_FACES) {
+      ui.setNotice(
+        `Smoothed to ${limitFaces.toLocaleString()} faces. Higher levels may ` +
+          'become slow on this character.'
+      );
+    }
+  }
+
   private applyUiState(): void {
     const ui = useUiStore.getState();
     this.viewport.setTheme(ui.dark);
@@ -909,6 +1008,8 @@ export class RiserApp {
     this.curveLayer.setXray(ui.xray);
     this.markerLayer.setVisible(ui.showMarkers);
     this.curveLayer.setVisible(ui.showCurves);
+    this.viewModes?.setSurfaceVisible(ui.showGeometry);
+    this.skeletonView.setVisible(ui.showSkeleton);
   }
 
   // -----------------------------------------------------------------------

@@ -251,8 +251,101 @@ describe('cage binding recovers the clicked limit-surface point', () => {
 });
 
 /** three stores layers as a bitmask; `test` wants another mask, not an index. */
+/**
+ * A plane cut into an n x n grid of quads.
+ *
+ * Synthetic rather than the stock biped, because these tests are about face
+ * COUNTS - the density budget and what gets cached - and a helper that lets a
+ * test say exactly how heavy its character is beats one that makes it depend
+ * on whatever the generator happens to emit.
+ */
+function gridMesh(n: number): THREE.Mesh {
+  const geometry = new THREE.PlaneGeometry(1, 1, n, n);
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial());
+  mesh.name = `grid${n}`;
+  return mesh;
+}
+
 function layerMask(layer: number): THREE.Layers {
   const layers = new THREE.Layers();
   layers.set(layer);
   return layers;
 }
+
+describe('caching built levels', () => {
+  it('returns to a level it has already built without rebuilding', () => {
+    // A slider is a control people sweep. Refining on every movement is what
+    // makes one stutter; refining once per level is what makes it respond.
+    const set = new SubdivSet([gridMesh(8)]);
+    set.setLevel(1);
+    const first = set.displayedMeshes()[0];
+
+    set.setLevel(0);
+    set.setLevel(1);
+    // The same mesh object, not an equivalent one - proof it was not rebuilt.
+    expect(set.displayedMeshes()[0]).toBe(first);
+  });
+
+  it('knows which levels are already built', () => {
+    const set = new SubdivSet([gridMesh(8)]);
+    expect(set.hasCached(0)).toBe(true);
+    expect(set.hasCached(2)).toBe(false);
+
+    set.setLevel(2);
+    expect(set.hasCached(2)).toBe(true);
+  });
+
+  it('keeps every level it has visited', () => {
+    const set = new SubdivSet([gridMesh(8)]);
+    set.setLevel(1);
+    set.setLevel(2);
+    expect(set.hasCached(1)).toBe(true);
+    expect(set.hasCached(2)).toBe(true);
+  });
+
+  it('only ever has one level attached to the cage', () => {
+    // Every cached level is a child of the cage. Leaving more than one
+    // attached would draw two surfaces on top of each other.
+    const set = new SubdivSet([gridMesh(8)]);
+    set.setLevel(1);
+    set.setLevel(2);
+    set.setLevel(1);
+
+    const cage = set.cages[0]!;
+    const limits = cage.children.filter((c) => c.name.includes('limit'));
+    expect(limits).toHaveLength(1);
+  });
+});
+
+describe('budgeting subdivision across the whole character', () => {
+  it('counts every mesh, not each one on its own', () => {
+    // The bug this covers: a production character arrives as thirty-odd
+    // pieces. Each passes the density test alone while the character as a
+    // whole is far too heavy, and the tab locks up.
+    const many = Array.from({ length: 30 }, () => gridMesh(40));
+    const set = new SubdivSet(many);
+    expect(set.totalCageFaces()).toBeGreaterThan(50_000);
+
+    set.setLevel(2);
+    expect(set.clamped).toBe(true);
+    expect(set.effectiveLevel).toBeLessThan(2);
+  });
+
+  it('reports a reduction even when nothing had to be rebuilt', () => {
+    // Asking for 3 on a character already pinned at 1 rebuilds nothing, but
+    // it is still a request that was reduced - and if that is not reported the
+    // slider moves, the surface does not, and nothing explains why.
+    const many = Array.from({ length: 30 }, () => gridMesh(40));
+    const set = new SubdivSet(many);
+    set.setLevel(2);
+    set.setLevel(3);
+    expect(set.clamped).toBe(true);
+  });
+
+  it('leaves a light character alone', () => {
+    const set = new SubdivSet([gridMesh(8)]);
+    set.setLevel(2);
+    expect(set.clamped).toBe(false);
+    expect(set.effectiveLevel).toBe(2);
+  });
+});

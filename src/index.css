@@ -1,3 +1,14 @@
+/* =========================================================================
+   Riser - Copyright (c) 2026 Squarebit LLC. All rights reserved.
+
+   Base styles and the few component classes worth having in CSS.
+
+   Most styling lives in the React primitives under src/app/components/ui/,
+   because a variant is easier to get right in TypeScript than in a pile of
+   class names. What stays here is what CSS does better: resets, scrollbars,
+   focus behaviour, and the handful of shapes used everywhere.
+   ========================================================================= */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -13,48 +24,83 @@
 
   body {
     @apply bg-panel text-ink font-sans text-[13px] antialiased;
+    /* Chrome is never the subject. Selecting it is almost always a misfire. */
+    user-select: none;
   }
 
-  /* The viewport takes the pointer; text selection there is always a mistake. */
+  /* Text the user might genuinely want to copy - a path, a coordinate. */
+  input,
+  textarea,
+  .rs-selectable {
+    user-select: text;
+  }
+
   canvas {
     touch-action: none;
     user-select: none;
   }
 
-  /* Slim scrollbars, so the checklist does not lose 15px to chrome. */
+  /* Keyboard users get a ring; mouse users never see one. */
+  :focus {
+    outline: none;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-panel;
+  }
+
+  /* Slim scrollbars, so a list does not lose 15px to chrome. */
   * {
     scrollbar-width: thin;
-    scrollbar-color: #3d434c transparent;
+    scrollbar-color: theme('colors.panel.hover') transparent;
   }
   *::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 10px;
+    height: 10px;
   }
   *::-webkit-scrollbar-thumb {
-    background: #3d434c;
-    border-radius: 4px;
+    background: theme('colors.panel.hover');
+    border-radius: 6px;
+    /* Inset, so the bar reads as floating in the gutter rather than filling it. */
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: theme('colors.panel.active');
+    background-clip: content-box;
   }
   *::-webkit-scrollbar-track {
     background: transparent;
   }
+
+  /* Someone who has asked their system to stop animating things means it. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
 @layer components {
-  .rs-panel {
-    @apply bg-panel border-edge;
+  /* A horizontal rule inside a bar or a menu. */
+  .rs-divider {
+    @apply h-5 w-px shrink-0 bg-edge;
   }
 
-  .rs-button {
-    @apply rounded px-2.5 py-1.5 text-ink-dim transition-colors;
-    @apply hover:bg-panel-lighter hover:text-ink;
-    @apply disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent;
+  /* The grabbable strip between two panels. */
+  .rs-splitter {
+    @apply relative shrink-0 bg-edge transition-colors;
+  }
+  .rs-splitter:hover,
+  .rs-splitter[data-dragging='true'] {
+    @apply bg-accent;
   }
 
-  .rs-button-active {
-    @apply bg-panel-lighter text-ink;
-  }
-
+  /* A list row: checklist entries, menu items, document names. */
   .rs-row {
-    @apply flex w-full items-center gap-2 rounded px-2 py-1 text-left transition-colors;
+    @apply flex w-full items-center gap-2 rounded-control px-2 py-1.5 text-left transition-colors;
   }
 }

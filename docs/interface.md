@@ -1,15 +1,38 @@
 # The interface
 
-Riser has four regions and a status strip. Nothing is hidden in a menu.
+Riser has a menu bar, a toolbar, three panels and a status strip.
 
-![The whole window, with the four regions](images/overview.png)
+![The whole window](images/overview.png)
 
-- The **toolbar** across the top: what you are working on and how it is shown.
-- The **checklist** down the left: what to place, and what is next.
+- The **menu bar** across the top: everything Riser can do. Every action
+  appears here, whether or not it also has a button.
+- The **toolbar** under it: the few things you reach for constantly.
+- The **markers panel** down the left: what to place, and what is next.
 - The **viewport** in the middle: where you click.
-- The **inspector** down the right: what exactly is selected.
+- The **details panel** down the right: what exactly is selected.
 - The **status bar** along the bottom: what to do next, and anything the app
   needs to tell you.
+
+Both side panels can be **resized** by dragging their inner edge, and
+**collapsed** to a labelled rail by clicking the chevron in their header or
+double-clicking that edge. Widths are remembered between visits.
+**View › Reset panels** puts everything back.
+
+## Menu bar
+
+The toolbar can only hold what fits, so the menus hold everything. If you
+cannot find a control, it is in a menu.
+
+| Menu | What is in it |
+|---|---|
+| **File** | New, Save, Save as, the bundled characters, opening your own file, recent documents, importing a marker layer, and Export USD. |
+| **Edit** | Undo, Redo, automatic placement, confirming suggestions, mirroring, and clearing markers or curves. |
+| **View** | Shading, what is drawn, step-by-step guidance, framing, and resetting the panels. |
+| **Template** | Which rig layout to place: Biped, Quadruped or Face only. |
+| **Help** | Documentation, and the keyboard shortcuts. |
+
+Items you cannot use right now are shown greyed out rather than hidden, so it
+stays possible to learn that they exist.
 
 ## Toolbar
 
@@ -19,20 +42,31 @@ Left to right.
 
 | Control | What it does |
 |---|---|
-| **Stock character** | Loads one of the bundled characters: Biped (blockout), Quadruped (blockout), Biped (rigged). |
-| **Upload** | Opens a file picker for your own character. Accepts `.usd`, `.usda`, `.usdc`, `.usdz`, `.glb`, `.gltf`, `.fbx`, `.obj`. |
-| **Template** | Which rig layout to place: Biped, Quadruped or Face only. Changing it drops anything the new template does not define. |
 | **Markers** / **Curves** | Switches the active tool. Also `1` and `2`. |
-| **Symmetry** | Mirrors placements across the character's centre line, and shows the symmetry plane in the viewport. On by default. Also `S`. |
-| **X-ray** | Draws markers and curves through the mesh. On by default. Also `X`. |
-| **Lit** / **Flat** / **Wire** / **Lit wire** | How the character is shaded. See below. |
-| **Subdiv** | Catmull-Clark preview level, 0 to 3. Display only: it never moves a marker you have placed. The number turns amber when the level had to be reduced for a dense mesh. |
-| **Auto-place** | Fills in guides automatically: from the character's own skeleton when it has one, otherwise by measuring its shape. Disabled until a character is loaded. Never overwrites anything you placed. |
+| **Mirror** | Mirrors placements across the character's centre line, and shows the symmetry plane in the viewport. On by default. Also `S`. |
+| **Auto-place** | Fills in markers automatically: from the character's own skeleton when it has one, otherwise by measuring its shape. Disabled until a character is loaded. Never overwrites anything you placed. |
+| **Shading** | How the character is drawn: Lit, Flat, Wire or Lit wire. See below. |
+| **Show** | What is drawn: the character, markers, curves, the skeleton, the ground grid, and whether markers show through the body. The button turns amber and counts what is hidden, so nothing can be invisible without the interface saying so. |
+| **Smooth** | Catmull-Clark preview level, 0 to 3. Display only: it never moves a marker you have placed. See below. |
 | **Undo** / **Redo** | Steps the document history. The tooltip names the step, for example *Undo Place Chest*. |
-| **Frame** | Frames the whole character. |
-| **Documents** | Save, name, reopen and delete documents kept in this browser. A bullet after the label means unsaved changes. |
-| **Import** | Loads a Riser layer from a file on disk. Accepts `.usda` and `.usd`. |
-| **Export USD** | Downloads the document as a `.usda` layer. A bullet after the label means there are unexported changes. |
+| **Frame** | Frames the whole character. Also `A`. |
+
+Saving, loading and exporting live in the **File** menu.
+
+### Smoothing
+
+Riser opens at level 0, showing the character exactly as the file describes it.
+Smoothing is something you turn on, not something applied to your asset before
+you have seen it. Level 0 is also the surface your markers are really written
+against.
+
+Each level you visit is kept, so moving the slider back to one you have already
+used is instant.
+
+If a level is too heavy for the character, Riser shows the highest one it can
+and says so in the status bar, naming the face count. A very dense character
+may be held at level 1 or 0 - that is the mesh being already detailed enough,
+not a failure.
 
 ### Shading
 
@@ -48,13 +82,44 @@ Four ways to draw the character. Each answers a question the others cannot.
 Shading is display only. It never moves a guide, and you can place and drag
 markers in any mode, including through an invisible surface in **Wire**.
 
-## Checklist
+## Markers panel
 
-![The guide checklist](images/checklist.png)
+![The markers panel](images/checklist.png)
 
-The left rail lists everything the current template asks for, grouped by body
-part. It follows the active tool: guides while the marker tool is active,
+The left panel lists everything the current template asks for, grouped by body
+part. It follows the active tool: markers while the marker tool is active,
 curves while the curve tool is.
+
+### Step-by-step
+
+By default the panel opens with a card at the top showing **one** marker to
+place, with the hint for it and where it goes. Place it and the card advances;
+**Skip** moves on without placing.
+
+Turn it off with the **x** on the card, or from **View › Step-by-step
+guidance**, and the panel becomes the list alone. The choice is remembered.
+
+### Finding things
+
+A template can ask for forty markers, so the panel has a search box - `Ctrl+F`
+focuses it - and four filters:
+
+| Filter | Shows |
+|---|---|
+| **All** | Everything the template defines. |
+| **Left** | Only what is still unplaced. |
+| **Suggested** | Only what Riser placed for you, and you have not confirmed. |
+| **Mine** | Only what you placed or adjusted. |
+
+Groups fold away, and each carries a ring showing how much of it is done. A
+search temporarily opens every group, so what matched is never hidden inside a
+folded one.
+
+### Right-click
+
+Right-clicking a row offers: place it next, focus it in the viewport, confirm
+it if Riser guessed it, and clear it. Right-clicking the viewport offers
+framing, automatic placement, shading and visibility.
 
 The highlighted row is the **active** entry, and it is what your next click on
 the mesh will place. Click a row to make it active. After you place something,

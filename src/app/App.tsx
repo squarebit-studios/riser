@@ -1,17 +1,26 @@
 // ==========================================================================
 // Riser - Copyright (c) 2026 Squarebit LLC. All rights reserved.
 //
-// The application layout, and the keyboard shortcuts that are global rather
-// than owned by a tool.
+// The application layout, and the shortcuts that belong to the app rather than
+// to a tool.
+//
+// The shape is deliberately ordinary - menu bar, toolbar, panels either side
+// of the work, status line - because an ordinary shape is one nobody has to
+// learn. The character is the largest thing on screen and everything else gets
+// out of its way.
 // ==========================================================================
 
 import { useEffect } from 'react';
 import { AppProvider, useApp } from './AppContext';
 import { Viewport3D } from './components/Viewport3D';
+import { MenuBar } from './components/MenuBar';
 import { Toolbar } from './components/Toolbar';
-import { Checklist } from './components/Checklist';
+import { TemplateBrowser } from './components/TemplateBrowser';
 import { Inspector } from './components/Inspector';
 import { StatusBar } from './components/StatusBar';
+import { SidePanel } from './components/ui/SidePanel';
+import { ContextMenu, MenuItem, MenuLabel, MenuSeparator, useContextMenu } from './components/ui/Menu';
+import { VIEW_MODES } from '../viewport/ViewModes';
 import { useUiStore } from './state';
 
 export function App(): JSX.Element {
@@ -25,21 +34,126 @@ export function App(): JSX.Element {
 function Shell(): JSX.Element {
   useGlobalShortcuts();
 
+  const leftWidth = useUiStore((s) => s.leftWidth);
+  const rightWidth = useUiStore((s) => s.rightWidth);
+  const leftCollapsed = useUiStore((s) => s.leftCollapsed);
+  const rightCollapsed = useUiStore((s) => s.rightCollapsed);
+  const activeTool = useUiStore((s) => s.activeTool);
+
   return (
     <div className="flex h-full flex-col bg-panel text-ink">
+      <MenuBar />
       <Toolbar />
+
       <div className="flex min-h-0 flex-1">
-        <aside className="w-60 shrink-0 border-r border-edge bg-panel">
-          <Checklist />
-        </aside>
-        <main className="min-w-0 flex-1">
-          <Viewport3D />
+        <SidePanel
+          side="left"
+          title={activeTool === 'curve' ? 'Curves' : 'Markers'}
+          icon={activeTool === 'curve' ? 'curve' : 'list'}
+          width={leftWidth}
+          collapsed={leftCollapsed}
+          onWidthChange={(w) => useUiStore.getState().setPanelWidth('left', w)}
+          onCollapsedChange={(c) => useUiStore.getState().setPanelCollapsed('left', c)}
+        >
+          <TemplateBrowser />
+        </SidePanel>
+
+        <main className="relative min-w-0 flex-1">
+          <ViewportArea />
         </main>
-        <aside className="w-72 shrink-0 border-l border-edge bg-panel">
+
+        <SidePanel
+          side="right"
+          title="Details"
+          icon="sliders"
+          width={rightWidth}
+          collapsed={rightCollapsed}
+          onWidthChange={(w) => useUiStore.getState().setPanelWidth('right', w)}
+          onCollapsedChange={(c) => useUiStore.getState().setPanelCollapsed('right', c)}
+        >
           <Inspector />
-        </aside>
+        </SidePanel>
       </div>
+
       <StatusBar />
+    </div>
+  );
+}
+
+/**
+ * The viewport, and the menu you get by right-clicking it.
+ *
+ * The menu carries what someone is likely to want without travelling to the
+ * top of the screen: framing, shading, and getting a hidden thing back. It
+ * deliberately does not try to act on whatever was under the cursor - a
+ * right-click that sometimes means "this marker" and sometimes means "the
+ * view" is a menu you have to read every time.
+ */
+function ViewportArea(): JSX.Element {
+  const app = useApp();
+  const menu = useContextMenu();
+  const viewMode = useUiStore((s) => s.viewMode);
+  const showGeometry = useUiStore((s) => s.showGeometry);
+  const showMarkers = useUiStore((s) => s.showMarkers);
+  const guided = useUiStore((s) => s.guided);
+  const characterName = useUiStore((s) => s.characterName);
+
+  return (
+    <div className="h-full w-full" {...menu.props}>
+      <Viewport3D />
+
+      <ContextMenu point={menu.point} onClose={menu.close} label="Viewport">
+        <MenuItem
+          label="Frame character"
+          icon="frame"
+          shortcut="A"
+          disabled={!characterName}
+          onSelect={() => app.frameCharacter()}
+        />
+        <MenuItem
+          label="Focus selection"
+          shortcut="F"
+          onSelect={() => app.frameSelection()}
+        />
+
+        <MenuSeparator />
+        <MenuItem
+          label="Place markers automatically"
+          icon="sparkles"
+          disabled={!app.canAutoPlace}
+          onSelect={() => app.autoPlace({ announce: true })}
+        />
+
+        <MenuSeparator />
+        <MenuLabel>Shading</MenuLabel>
+        {VIEW_MODES.map((mode) => (
+          <MenuItem
+            key={mode.id}
+            label={mode.label}
+            checked={viewMode === mode.id}
+            onSelect={() => useUiStore.getState().setViewMode(mode.id)}
+          />
+        ))}
+
+        <MenuSeparator />
+        <MenuItem
+          label="Character"
+          icon="cube"
+          checked={showGeometry}
+          onSelect={() => useUiStore.getState().toggleGeometry()}
+        />
+        <MenuItem
+          label="Markers"
+          icon="marker"
+          checked={showMarkers}
+          onSelect={() => useUiStore.getState().toggleMarkers()}
+        />
+        <MenuItem
+          label="Step-by-step guidance"
+          checked={guided}
+          onSelect={() => useUiStore.getState().setGuided(!guided)}
+        />
+      </ContextMenu>
     </div>
   );
 }
@@ -81,6 +195,29 @@ function useGlobalShortcuts(): void {
         app.redo();
         return;
       }
+      if (mod && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        void app.saveDocument();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        app.startNewDocument();
+        return;
+      }
+      // Ctrl+F for the template search, the way every list with a search field
+      // behaves. Without it the field is there but nobody reaches it.
+      if (mod && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        ui.setPanelCollapsed('left', false);
+        requestAnimationFrame(() => {
+          document
+            .querySelector<HTMLInputElement>('[data-testid="template-search"]')
+            ?.focus();
+        });
+        return;
+      }
+      if (mod) return;
 
       switch (e.key) {
         case '1':

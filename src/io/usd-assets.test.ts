@@ -18,14 +18,50 @@ import { RIGGED_STOCK_URLS, STOCK_CHARACTERS } from '../app/stock';
 
 const ASSET_DIR = join(process.cwd(), 'public', 'assets');
 
+/**
+ * Read a bundled asset the way the browser does.
+ *
+ * The binary/text split is not a detail. `.usdc` read as UTF-8 still parses -
+ * USDLoader hands back an empty Group rather than throwing - so getting this
+ * wrong does not produce an error, it produces a character with no meshes and
+ * a pile of confusing downstream failures. That is exactly what happened when
+ * the first binary asset was added to this list.
+ */
 function loadAsset(url: string): THREE.Group {
   const filename = url.replace(/^\/assets\//, '');
-  const text = readFileSync(join(ASSET_DIR, filename), 'utf8');
-  return new USDLoader().parse(text);
+  const path = join(ASSET_DIR, filename);
+  const binary = /\.(usdc|usdz)$/i.test(filename);
+
+  if (binary) {
+    const buffer = readFileSync(path);
+    return new USDLoader().parse(
+      buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+    );
+  }
+  return new USDLoader().parse(readFileSync(path, 'utf8'));
 }
 
-describe.each(STOCK_CHARACTERS.map((c) => [c.label, c.url] as const))(
-  'stock asset %s',
+function modelFor(url: string): CharacterModel {
+  return new CharacterModel(loadAsset(url), {
+    ref: url,
+    format: 'usd',
+    metersPerUnit: 1,
+    upAxis: 'Y'
+  });
+}
+
+/**
+ * The assets tools/make-stock-assets.mjs writes.
+ *
+ * Separated from the rest because these tests assert on their exact
+ * construction - two meshes, named Body and Head - which is a fact about the
+ * generator, not a requirement Riser places on characters. A real production
+ * asset arrives as thirty-odd pieces and is no less valid for it.
+ */
+const GENERATED = STOCK_CHARACTERS.filter((c) => c.url.endsWith('.usda'));
+
+describe.each(GENERATED.map((c) => [c.label, c.url] as const))(
+  'generated stock asset %s',
   (_label, url) => {
     it('parses through three USDLoader', () => {
       const group = loadAsset(url);
@@ -65,13 +101,19 @@ describe.each(STOCK_CHARACTERS.map((c) => [c.label, c.url] as const))(
       }
     });
 
+  }
+);
+
+describe.each(STOCK_CHARACTERS.map((c) => [c.label, c.url] as const))(
+  'stock asset %s',
+  (_label, url) => {
+    it('parses into something with geometry', () => {
+      const model = modelFor(url);
+      expect(model.meshes.length).toBeGreaterThan(0);
+    });
+
     it('stands on the ground and is a plausible size', () => {
-      const model = new CharacterModel(loadAsset(url), {
-        ref: url,
-        format: 'usd',
-        metersPerUnit: 1,
-        upAxis: 'Y'
-      });
+      const model = modelFor(url);
       const box = model.bounds;
       const size = box.getSize(new THREE.Vector3());
 
@@ -85,14 +127,16 @@ describe.each(STOCK_CHARACTERS.map((c) => [c.label, c.url] as const))(
     it('supports a binding round trip on its real geometry', () => {
       // The end-to-end property: a point picked on this character can be
       // expressed as a binding and recovered from it.
-      const model = new CharacterModel(loadAsset(url), {
-        ref: url,
-        format: 'usd',
-        metersPerUnit: 1,
-        upAxis: 'Y'
-      });
+      const model = modelFor(url);
 
-      const mesh = model.primaryMesh!;
+      // The biggest mesh, not the first. On a production character the first
+      // piece in the file is as likely to be an eyelash as a torso.
+      let mesh = model.meshes[0]!;
+      for (const candidate of model.meshes) {
+        if (triangleCount(candidate.geometry) > triangleCount(mesh.geometry)) {
+          mesh = candidate;
+        }
+      }
       const tris = triangleCount(mesh.geometry);
       expect(tris).toBeGreaterThan(100);
 
@@ -121,14 +165,12 @@ describe.each(STOCK_CHARACTERS.map((c) => [c.label, c.url] as const))(
     });
 
     it('is symmetric about x = 0, so mirroring has something to hit', () => {
-      const model = new CharacterModel(loadAsset(url), {
-        ref: url,
-        format: 'usd',
-        metersPerUnit: 1,
-        upAxis: 'Y'
-      });
+      const model = modelFor(url);
       const box = model.bounds;
-      expect(Math.abs(box.min.x + box.max.x)).toBeLessThan(0.02);
+      // Relative to the character's width: a 2mm absolute tolerance is strict
+      // on a blockout and arbitrary on a two-metre production asset.
+      const width = box.max.x - box.min.x;
+      expect(Math.abs(box.min.x + box.max.x)).toBeLessThan(width * 0.02);
     });
   }
 );

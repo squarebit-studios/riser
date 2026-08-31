@@ -225,8 +225,20 @@ geometry that does not change when the preview does.
 That also means nothing downstream needs to know about subdivision. The server
 recovers your exact point with no subdivision code at all.
 
-If a mesh is already dense, Riser quietly reduces the level rather than freezing
-the tab, and the number beside the slider turns amber to say so.
+Smoothing starts **off**, at level 0. The character appears exactly as its file
+describes it, and smoothing is something you turn on rather than something
+applied to your asset before you have seen it. Level 0 is also the surface your
+bindings are really written against, which makes it the honest thing to open
+with.
+
+Every level you visit is kept, so returning to one you have already used is
+instant rather than a fresh refinement.
+
+If a character is too heavy for the level you ask for, Riser shows the highest
+one it can and says so in the status bar, naming the face count. The budget is
+counted across the **whole character**, not per mesh - a production asset
+arrives as thirty or forty pieces, each small enough to look harmless on its
+own while the sum is far too heavy to subdivide.
 
 ## Provenance: who placed this
 

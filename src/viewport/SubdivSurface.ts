@@ -56,10 +56,26 @@ export const MIN_SUBDIV_LEVEL = 0;
  * cage; beyond that the gain is invisible and the refine cost is not.
  */
 export const MAX_SUBDIV_LEVEL = 3;
-export const DEFAULT_SUBDIV_LEVEL = 2;
+/**
+ * Start unsubdivided.
+ *
+ * The character appears exactly as the file describes it, immediately, and
+ * smoothing becomes something the user asks for rather than something the app
+ * did to their asset before they ever saw it. It is also the honest default:
+ * level 0 is the surface the bindings are actually written against.
+ */
+export const DEFAULT_SUBDIV_LEVEL = 0;
 
 /** Above this many cage faces, refining in the main thread stalls visibly. */
 const MAX_CAGE_FACES_FOR_LEVEL = [Infinity, 200_000, 50_000, 12_000];
+
+/** One refined level, kept so returning to it is free. */
+interface BuiltLevel {
+  mesh: THREE.Mesh;
+  refined: RefinedSurface;
+  render: RenderMesh;
+  normals: Float32Array;
+}
 
 export interface SubdivStats {
   level: number;
@@ -78,13 +94,29 @@ export interface SubdivStats {
  */
 export class SubdivSurface {
   readonly cage: THREE.Mesh;
-  /** Null at level 0, where the cage is what gets displayed. */
-  private limit: THREE.Mesh | null = null;
 
+  /**
+   * Every level built so far, kept so that returning to one is free.
+   *
+   * Refining is the expensive step - on a 137k-face character it is most of a
+   * second - and a slider is a control people sweep back and forth. Paying
+   * that once per level instead of once per movement is the difference
+   * between a slider that responds and one that stutters.
+   *
+   * Bounded by MAX_SUBDIV_LEVEL, which is 3, and dropped entirely when the
+   * character changes.
+   */
+  private readonly builtLevels = new Map<number, BuiltLevel>();
+  /** The level currently attached to the cage. Null at level 0. */
+  private active: BuiltLevel | null = null;
+
+  /**
+   * The welded, quad-recovered cage.
+   *
+   * Level-independent, so it is computed once and shared by every level rather
+   * than rebuilt on each refinement.
+   */
   private cageSubdiv: SubdivMesh | null = null;
-  private refined: RefinedSurface | null = null;
-  private render: RenderMesh | null = null;
-  private normals: Float32Array | null = null;
   private level = 0;
   private clamped = false;
   private failed = false;
@@ -98,18 +130,18 @@ export class SubdivSurface {
     return {
       level: this.level,
       cageFaces: this.cageSubdiv ? meshCounts(this.cageSubdiv).faces : 0,
-      limitFaces: this.refined ? meshCounts(this.refined.mesh).faces : 0,
+      limitFaces: this.active ? meshCounts(this.active.refined.mesh).faces : 0,
       clamped: this.clamped
     };
   }
 
   /** The mesh the camera renders and the user clicks. */
   get displayed(): THREE.Mesh {
-    return this.limit ?? this.cage;
+    return this.active?.mesh ?? this.cage;
   }
 
   get isSubdivided(): boolean {
-    return this.limit !== null;
+    return this.active !== null;
   }
 
   /**
@@ -120,27 +152,62 @@ export class SubdivSurface {
    * freezing the tab to prove a point helps nobody. `stats.clamped` reports it
    * so the UI can say so.
    */
-  setLevel(level: number): void {
+  /**
+   * Set the level, optionally against a budget the whole character shares.
+   *
+   * `totalCageFaces` is the face count of every mesh on the character, not
+   * just this one. It matters because a character is rarely one mesh: a
+   * production asset arrives as thirty or forty pieces - body, hair, teeth,
+   * eyes, clothing - each small enough to pass this test on its own while the
+   * character as a whole is far too heavy to subdivide.
+   */
+  setLevel(level: number, totalCageFaces?: number): void {
     const requested = clampLevel(level);
-    const effective = this.effectiveLevel(requested);
+    const effective = this.effectiveLevel(requested, totalCageFaces);
+    // Recorded before the early return. Asking for level 3 on a mesh already
+    // pinned at 1 rebuilds nothing, but it is still a request that was
+    // reduced, and the UI has to be able to say so - otherwise the slider
+    // moves, the surface does not, and nothing explains why.
+    this.clamped = effective !== requested;
     if (effective === this.level && !this.failed) return;
 
-    this.teardownLimit();
+    this.detach();
     this.level = effective;
-    this.clamped = effective !== requested;
 
-    if (effective > 0) this.build(effective);
+    if (effective > 0) {
+      const cached = this.builtLevels.get(effective);
+      if (cached) this.attach(cached);
+      else this.build(effective);
+    }
     this.applyLayers();
   }
 
-  private effectiveLevel(requested: number): number {
+  /** True when this level is built already, so switching to it is free. */
+  hasCached(level: number): boolean {
+    return level === 0 || this.builtLevels.has(clampLevel(level));
+  }
+
+  private effectiveLevel(requested: number, totalCageFaces?: number): number {
     if (requested === 0) return 0;
-    const faces = this.cageFaceCount();
+    // The budget is spent by the character, so the character's total is what
+    // has to fit - falling back to this mesh alone only when no total is given.
+    const faces = totalCageFaces ?? this.cageFaceCount();
     let level = requested;
     while (level > 0 && faces > (MAX_CAGE_FACES_FOR_LEVEL[level] ?? Infinity)) {
       level--;
     }
     return level;
+  }
+
+  /**
+   * Faces in this mesh's own cage geometry.
+   *
+   * Read from the geometry rather than from `stats`, which reports the
+   * recovered-quad cage and is therefore zero until a surface has been built -
+   * exactly when the budget needs to be computed.
+   */
+  faceCount(): number {
+    return this.cageFaceCount();
   }
 
   private cageFaceCount(): number {
@@ -152,29 +219,34 @@ export class SubdivSurface {
 
   private build(level: number): void {
     try {
-      // Renderer geometry splits vertices at UV and normal seams, which the
-      // subdivision rules would read as infinitely sharp creases. fromBuffer-
-      // Geometry welds them back together first.
-      const extracted = fromBufferGeometry(this.cage.geometry);
+      if (!this.cageSubdiv) {
+        // Renderer geometry splits vertices at UV and normal seams, which the
+        // subdivision rules would read as infinitely sharp creases.
+        // fromBufferGeometry welds them back together first.
+        const extracted = fromBufferGeometry(this.cage.geometry);
 
-      // USD and glTF both arrive triangulated, and subdividing raw triangles
-      // puts an extraordinary vertex in the middle of every one - visible as
-      // shading artifacts on what was authored as a quad grid. Recovering the
-      // quads first is what makes the result look like the DCC's own preview.
-      this.cageSubdiv = recoverQuads(extracted.mesh);
+        // USD and glTF both arrive triangulated, and subdividing raw triangles
+        // puts an extraordinary vertex in the middle of every one - visible as
+        // shading artifacts on what was authored as a quad grid. Recovering
+        // the quads first is what makes the result match the DCC's own
+        // preview.
+        this.cageSubdiv = recoverQuads(extracted.mesh);
+      }
 
-      this.refined = buildRefinedSurface(this.cageSubdiv, level);
-      this.normals = computeVertexNormals(this.refined.mesh);
-      this.render = buildRenderMesh(this.refined.mesh);
-      updateRenderMesh(this.render, this.refined.mesh, this.normals);
+      const refined = buildRefinedSurface(this.cageSubdiv, level);
+      const normals = computeVertexNormals(refined.mesh);
+      const render = buildRenderMesh(refined.mesh);
+      updateRenderMesh(render, refined.mesh, normals);
 
-      const limit = new THREE.Mesh(this.render.geometry, this.cage.material);
-      limit.name = `${this.cage.name || 'Mesh'}:limit`;
+      const mesh = new THREE.Mesh(render.geometry, this.cage.material);
+      mesh.name = `${this.cage.name || 'Mesh'}:limit${level}`;
       // A child of the cage, so the transform is shared by construction.
-      limit.matrixAutoUpdate = false;
-      limit.updateMatrix();
-      this.cage.add(limit);
-      this.limit = limit;
+      mesh.matrixAutoUpdate = false;
+      mesh.updateMatrix();
+
+      const built: BuiltLevel = { mesh, refined, render, normals };
+      this.builtLevels.set(level, built);
+      this.attach(built);
       this.failed = false;
     } catch (err) {
       // A cage the kernel cannot handle must not take the app down with it -
@@ -183,10 +255,26 @@ export class SubdivSurface {
         `Subdivision failed for ${this.cage.name || 'a mesh'}; showing the cage.`,
         err
       );
-      this.teardownLimit();
+      this.detach();
       this.level = 0;
       this.failed = true;
     }
+  }
+
+  /** Put a built level on screen. */
+  private attach(built: BuiltLevel): void {
+    // Taken from the cage each time rather than kept, because the material can
+    // have changed since this level was built - a view mode swap, say.
+    built.mesh.material = this.cage.material;
+    this.cage.add(built.mesh);
+    this.active = built;
+  }
+
+  /** Take the current level off screen, keeping it in the cache. */
+  private detach(): void {
+    if (!this.active) return;
+    this.cage.remove(this.active.mesh);
+    this.active = null;
   }
 
   /**
@@ -197,17 +285,27 @@ export class SubdivSurface {
    * rather than a re-refine.
    */
   refresh(): void {
-    if (!this.refined || !this.render || !this.normals) return;
+    const active = this.active;
+    if (!active) return;
     const positions = this.cage.geometry.getAttribute('position');
     if (!positions) return;
 
     applyStencils(
-      this.refined.table,
+      active.refined.table,
       positions.array as Float32Array,
-      this.refined.mesh.positions
+      active.refined.mesh.positions
     );
-    computeVertexNormals(this.refined.mesh, this.normals);
-    updateRenderMesh(this.render, this.refined.mesh, this.normals);
+    computeVertexNormals(active.refined.mesh, active.normals);
+    updateRenderMesh(active.render, active.refined.mesh, active.normals);
+
+    // Every other cached level is now stale against the moved cage. Dropping
+    // them is cheaper than re-stencilling surfaces nobody is looking at, and
+    // far safer than keeping one that would come back wrong.
+    for (const [level, built] of this.builtLevels) {
+      if (built === active) continue;
+      built.mesh.geometry.dispose();
+      this.builtLevels.delete(level);
+    }
   }
 
   /**
@@ -217,9 +315,9 @@ export class SubdivSurface {
    * find the same mesh and the offset comes out zero with no special case.
    */
   private applyLayers(): void {
-    if (this.limit) {
+    if (this.active) {
       this.cage.layers.set(LAYER_CAGE);
-      this.limit.layers.set(LAYER_SCENE);
+      this.active.mesh.layers.set(LAYER_SCENE);
     } else {
       this.cage.layers.set(LAYER_SCENE);
       this.cage.layers.enable(LAYER_CAGE);
@@ -227,15 +325,10 @@ export class SubdivSurface {
   }
 
   private teardownLimit(): void {
-    if (this.limit) {
-      this.cage.remove(this.limit);
-      this.limit.geometry.dispose();
-      this.limit = null;
-    }
+    this.detach();
+    for (const built of this.builtLevels.values()) built.mesh.geometry.dispose();
+    this.builtLevels.clear();
     this.cageSubdiv = null;
-    this.refined = null;
-    this.render = null;
-    this.normals = null;
   }
 
   dispose(): void {
@@ -270,7 +363,18 @@ export class SubdivSet {
 
   setLevel(level: number): void {
     this.level = clampLevel(level);
-    for (const surface of this.surfaces) surface.setLevel(this.level);
+    // One budget for the whole character. Deciding per mesh let a 34-piece
+    // character through at level 2 - every piece passed on its own, and the
+    // sum was 137k faces becoming 2.2M, which locks the tab.
+    const total = this.totalCageFaces();
+    for (const surface of this.surfaces) surface.setLevel(this.level, total);
+  }
+
+  /** Faces across every cage on the character. */
+  totalCageFaces(): number {
+    let total = 0;
+    for (const surface of this.surfaces) total += surface.faceCount();
+    return total;
   }
 
   get currentLevel(): number {
@@ -280,6 +384,29 @@ export class SubdivSet {
   /** True when any surface had to reduce the requested level. */
   get clamped(): boolean {
     return this.surfaces.some((s) => s.stats.clamped);
+  }
+
+  /**
+   * The level actually on screen, which is not always the one asked for.
+   *
+   * `currentLevel` reports the request. This reports the result, and the two
+   * differ exactly when the character was too heavy - which is the moment the
+   * user has to be told something, so the difference has to be legible.
+   */
+  get effectiveLevel(): number {
+    let level = 0;
+    for (const surface of this.surfaces) level = Math.max(level, surface.stats.level);
+    return level;
+  }
+
+  /** True when every surface already has this level built. */
+  hasCached(level: number): boolean {
+    return this.surfaces.every((s) => s.hasCached(level));
+  }
+
+  /** The control cages, which are what bindings are written against. */
+  get cages(): THREE.Mesh[] {
+    return this.surfaces.map((s) => s.cage);
   }
 
   get isSubdivided(): boolean {

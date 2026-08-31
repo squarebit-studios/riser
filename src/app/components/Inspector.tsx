@@ -12,6 +12,7 @@
 import React from 'react';
 import { useApp } from '../AppContext';
 import { useUiStore } from '../state';
+import { Button } from './ui/Button';
 import { curveDef, getTemplate, guideDef } from '../../templates';
 import * as M from '../../doc/mutations';
 import { documentToWorld } from '../../viewport/space';
@@ -178,24 +179,35 @@ function GuideDetails({
             />
           )}
 
-          <div className="mt-2 flex gap-1 px-1">
-            <button
-              className="rs-button flex-1 bg-panel-light"
+          <div className="mt-2 flex gap-1.5 px-1">
+            <Button
+              icon="frame"
+              className="flex-1"
               onClick={() => app.frameSelection()}
             >
               Focus
-            </button>
-            <button
-              className="rs-button flex-1 bg-panel-light"
+            </Button>
+            {guide.source !== 'user' && (
+              <Button
+                icon="check"
+                className="flex-1"
+                title="Keep it exactly here, and stop Auto-place replacing it"
+                onClick={() => app.confirmGuide(def.id)}
+              >
+                Confirm
+              </Button>
+            )}
+            <Button
+              variant="danger"
+              icon="trash"
+              aria-label={`Remove ${def.label}`}
               onClick={() =>
                 app.store.apply(
                   (d) => M.removeGuide(d, def.id),
                   `Remove ${def.label}`
                 )
               }
-            >
-              Remove
-            </button>
+            />
           </div>
         </>
       )}
@@ -264,9 +276,9 @@ function CurveDetails({
             />
           </label>
 
-          <div className="mt-2 flex gap-1 px-1">
-            <button
-              className="rs-button flex-1 bg-panel-light"
+          <div className="mt-2 flex gap-1.5 px-1">
+            <Button
+              className="flex-1"
               onClick={() =>
                 app.store.apply(
                   (d) => M.setCurveClosed(d, curve.id, !curve.closed),
@@ -275,18 +287,18 @@ function CurveDetails({
               }
             >
               {curve.closed ? 'Open' : 'Close'}
-            </button>
-            <button
-              className="rs-button flex-1 bg-panel-light"
+            </Button>
+            <Button
+              variant="danger"
+              icon="trash"
+              aria-label={`Remove ${def.label}`}
               onClick={() =>
                 app.store.apply(
                   (d) => M.removeCurve(d, curve.id),
                   `Remove ${def.label}`
                 )
               }
-            >
-              Remove
-            </button>
+            />
           </div>
         </>
       )}

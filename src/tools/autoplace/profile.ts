@@ -397,11 +397,22 @@ export function findLandmarks(profile: BodyProfile): BodyLandmarks | null {
   // Ordering alone is not enough. A quadruped produces perfectly ordered
   // landmarks that are nonsense as biped anatomy - measured on the stock
   // horse, the "shoulders" land at 52% of its height, where a person's are at
-  // 82%. Bounds wide enough for a child, a heroic build or a stylised figure,
-  // and narrow enough to notice an animal.
+  // 82%.
+  //
+  // The two ratios are NOT equally diagnostic, and treating them as though
+  // they were is what made Riser refuse a perfectly ordinary stylised
+  // character. Where the shoulders sit is close to a species marker: every
+  // upright biped puts them high, and an animal cannot. Leg length is a STYLE
+  // choice - a cartoon strongman has stubby legs and a crotch at 23% of his
+  // height, which the old floor of 30% rejected outright even though two leg
+  // masses, a midline that closes, and shoulders at 82% all said "biped".
+  //
+  // So the shoulder check keeps its teeth and the crotch check becomes a
+  // nudge: wrong-looking proportions lower the confidence that is reported to
+  // the user, rather than refusing to place anything at all.
   const crotchFraction = (crotchY - minY) / height;
   const shoulderFraction = (shoulderY - minY) / height;
-  if (crotchFraction < 0.3 || crotchFraction > 0.62) confidence *= 0.5;
+  if (crotchFraction < 0.18 || crotchFraction > 0.65) confidence *= 0.8;
   if (shoulderFraction < 0.68 || shoulderFraction > 0.92) confidence *= 0.5;
 
   return {

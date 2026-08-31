@@ -85,6 +85,40 @@ async function clearGuides(page: Page): Promise<void> {
 }
 
 /**
+ * Choose a rig template from the Template menu.
+ *
+ * The template used to be a <select> in the toolbar. It moved into the menu
+ * bar in the redesign, on the principle that the toolbar holds what you touch
+ * constantly and a menu holds everything else.
+ */
+async function chooseTemplate(page: Page, label: string): Promise<void> {
+  await page.getByTestId('menu-template').click();
+  await page.getByRole('menuitemcheckbox', { name: label, exact: true }).click();
+}
+
+/** The id the Template menu marks as current. */
+async function currentTemplate(page: Page): Promise<string> {
+  return page.evaluate(() => window.__riser!.store.document.templateId);
+}
+
+/**
+ * Choose a shading mode from the toolbar's shading dropdown.
+ *
+ * Four separate toolbar buttons became one dropdown: they are mutually
+ * exclusive states of a single setting, and four buttons said "four features".
+ */
+async function setMode(page: Page, id: string): Promise<void> {
+  await page.getByTestId('shading-menu').click();
+  await page.getByTestId(`shading-${id}`).click();
+  await page.waitForTimeout(400);
+}
+
+/** Switch between the Markers and Curves tools in the segmented control. */
+async function chooseTool(page: Page, name: 'Markers' | 'Curves'): Promise<void> {
+  await page.getByRole('radio', { name, exact: true }).click();
+}
+
+/**
  * Click the centre of the canvas. Deliberately a single click with no
  * movement: the tool only places on a click that did not become a drag, so
  * this also exercises that discriminator.
@@ -142,7 +176,8 @@ test.describe('loading a character', () => {
     // them unresolvable.
     expect(model.ref).toBe('./biped-blockout.usda');
     expect(model.ref.startsWith('./')).toBe(true);
-    await expect(page.getByText('biped-blockout.usda')).toBeVisible();
+    // The menu bar names the loaded character; the inspector names it too.
+    await expect(page.getByText('biped-blockout.usda').first()).toBeVisible();
   });
 });
 
@@ -273,7 +308,7 @@ test.describe('drawing curves', () => {
     await loadBiped(page);
 
     await clearGuides(page);
-    await page.getByRole('button', { name: 'Curves', exact: true }).click();
+    await chooseTool(page, 'Curves');
     await page.getByTestId('curve-spineCurve').click();
 
     for (const dy of [-60, -20, 20, 60]) {
@@ -445,7 +480,7 @@ test.describe('automatic placement from a rig', () => {
     // than refuse it. Riser shipped this template and this character, and for
     // a while choosing both still gave an empty checklist.
     await openApp(page);
-    await page.getByTitle('Which rig layout to place').selectOption('quadruped');
+    await chooseTemplate(page, 'Quadruped');
     await page.evaluate(() =>
       window.__riser!.loadFromUrl('/assets/quadruped-blockout.usda')
     );
@@ -475,11 +510,9 @@ test.describe('automatic placement from a rig', () => {
     // store, React re-rendered the picker back to its old value, and the two
     // disagreed from then on - so the app measured a horse as a biped and
     // quietly placed nothing.
-    const picker = page.getByTitle('Which rig layout to place');
-
     await openApp(page);
-    await picker.selectOption('quadruped');
-    await expect(picker).toHaveValue('quadruped');
+    await chooseTemplate(page, 'Quadruped');
+    expect(await currentTemplate(page)).toBe('quadruped');
 
     await page.evaluate(() =>
       window.__riser!.loadFromUrl('/assets/quadruped-blockout.usda')
@@ -488,10 +521,13 @@ test.describe('automatic placement from a rig', () => {
       () => (window.__riser!.characterModel?.meshes.length ?? 0) > 0
     );
 
-    await expect(picker).toHaveValue('quadruped');
-    expect(
-      await page.evaluate(() => window.__riser!.store.document.templateId)
-    ).toBe('quadruped');
+    expect(await currentTemplate(page)).toBe('quadruped');
+    // And the menu still agrees, which is the half that used to drift: the
+    // document said quadruped while the chrome had reverted to biped.
+    await page.getByTestId('menu-template').click();
+    await expect(
+      page.getByRole('menuitemcheckbox', { name: 'Quadruped', exact: true })
+    ).toHaveAttribute('aria-checked', 'true');
   });
 });
 
@@ -557,7 +593,7 @@ test.describe('curves are actually drawn', () => {
    */
   async function buildLongCurve(page: Page): Promise<void> {
     await clearGuides(page);
-    await page.getByRole('button', { name: 'Curves', exact: true }).click();
+    await chooseTool(page, 'Curves');
     // Selecting it in the checklist is what makes it the ACTIVE curve, which
     // is what draws it in the active colour with its control vertices shown.
     await page.getByTestId('curve-spineCurve').click();
@@ -807,11 +843,6 @@ test.describe('view modes', () => {
     return changed;
   }
 
-  async function setMode(page: Page, label: string): Promise<void> {
-    await page.getByRole('button', { name: label, exact: true }).click();
-    await page.waitForTimeout(400);
-  }
-
   test('each mode renders differently from the others', async ({ page }) => {
     await openApp(page);
     await loadBiped(page);
@@ -825,13 +856,13 @@ test.describe('view modes', () => {
 
     const lit = await frame(page);
 
-    await setMode(page, 'Flat');
+    await setMode(page, 'flat');
     const flat = await frame(page);
 
-    await setMode(page, 'Wire');
+    await setMode(page, 'wireframe');
     const wire = await frame(page);
 
-    await setMode(page, 'Lit wire');
+    await setMode(page, 'litWireframe');
     const litWire = await frame(page);
 
     // Every mode has to be visibly its own thing. Faceted shading changes the
@@ -859,9 +890,9 @@ test.describe('view modes', () => {
     await page.waitForTimeout(500);
 
     const before = await frame(page);
-    await setMode(page, 'Wire');
-    await setMode(page, 'Flat');
-    await setMode(page, 'Lit');
+    await setMode(page, 'wireframe');
+    await setMode(page, 'flat');
+    await setMode(page, 'lit');
     const after = await frame(page);
 
     expect(differences(before, after), 'lit did not come back unchanged').toBeLessThan(
@@ -876,7 +907,7 @@ test.describe('view modes', () => {
     await openApp(page);
     await loadBiped(page);
     await clearGuides(page);
-    await setMode(page, 'Wire');
+    await setMode(page, 'wireframe');
 
     await page.getByTestId('guide-chest').click();
     await clickViewport(page);
@@ -895,7 +926,7 @@ test.describe('view modes', () => {
     // wireframe silently disappears.
     await openApp(page);
     await loadBiped(page);
-    await setMode(page, 'Wire');
+    await setMode(page, 'wireframe');
     const atDefault = await frame(page);
 
     await page.locator('input[type="range"]').fill('0');
@@ -904,7 +935,7 @@ test.describe('view modes', () => {
 
     // Still a wireframe: nothing like the lit render, which would be mostly
     // solid surface.
-    await setMode(page, 'Lit');
+    await setMode(page, 'lit');
     const litAtZero = await frame(page);
     expect(
       differences(atZero, litAtZero),
@@ -1010,7 +1041,8 @@ test.describe('the document library', () => {
     await placeOne(page, 'guide-chest');
     await page.evaluate(() => window.__riser!.saveDocument('Hero'));
 
-    await page.getByTestId('documents-menu').click();
-    await expect(page.getByTestId('document-list')).toContainText('Hero');
+    // The Documents button became the File menu's recent-documents list.
+    await page.getByTestId('menu-file').click();
+    await expect(page.getByRole('menuitem', { name: /Hero/ })).toBeVisible();
   });
 });

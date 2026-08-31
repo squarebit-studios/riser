@@ -28,9 +28,12 @@ Three characters are bundled:
 
 - **Biped (blockout)**, a plain two-legged figure with no rig.
 - **Quadruped (blockout)**, a four-legged figure with no rig. Switch the
-  **Template** to Quadruped before loading it, so Riser measures it as an
-  animal rather than as a person.
+  template to Quadruped from the **Template** menu before loading it, so Riser
+  measures it as an animal rather than as a person.
 - **Biped (rigged)**, the same biped carrying a real UsdSkel skeleton.
+- **Gary**, a production character converted from Maya. Thirty-four separate
+  meshes, 137,000 triangles and no rig - useful precisely because he is not
+  built to be measured, the way the blockouts are.
 
 You can also load your own: use the **Upload** button, or drop a file on the
 viewport. Riser reads `.usd`, `.usda`, `.usdc`, `.usdz`, `.glb`, `.gltf`,

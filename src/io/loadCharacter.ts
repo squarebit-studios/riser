@@ -18,6 +18,7 @@ import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { CharacterModel, type CharacterSource } from './CharacterModel';
 import { applyFit, computeFitTransform, guessUnitScale, visibleBounds } from './normalize';
+import { applyStudioMaterial } from './studioMaterial';
 
 /** Matches the decoder the store's ModelViewer already points at. */
 const DRACO_DECODER_PATH = 'https://www.gstatic.com/draco/versioned/decoders/1.5.7/';
@@ -132,6 +133,10 @@ async function buildModel(
     recenterXZ: options.recenterXZ ?? true
   });
   applyFit(root, fit);
+
+  // A character that arrived unshaded renders as a black silhouette, which is
+  // useless to place markers on. Assets that brought real materials keep them.
+  applyStudioMaterial(root);
 
   return new CharacterModel(root, source);
 }

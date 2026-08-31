@@ -61,6 +61,8 @@ const WIRE_NAME = 'RiserWireframe';
  */
 export class ViewModeController {
   private mode: ViewMode = DEFAULT_VIEW_MODE;
+  /** Whether the character's surface is drawn at all - the Geometry toggle. */
+  private surfaceVisible = true;
   private flatMaterials = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
   private wireMaterial: THREE.LineBasicMaterial | null = null;
   private hiddenMaterial: THREE.Material | null = null;
@@ -76,6 +78,24 @@ export class ViewModeController {
   setMode(mode: ViewMode): void {
     this.mode = mode;
     this.refresh();
+  }
+
+  /**
+   * Show or hide the character's surface, independently of the shading mode.
+   *
+   * Hidden the same way `wireframe` suppresses the surface - an invisible
+   * MATERIAL rather than `mesh.visible = false` - so the mesh stays pickable.
+   * That is deliberate: someone who hides the geometry to see their markers
+   * clearly still expects to be able to click the character and place one.
+   */
+  setSurfaceVisible(visible: boolean): void {
+    if (this.surfaceVisible === visible) return;
+    this.surfaceVisible = visible;
+    this.refresh();
+  }
+
+  get isSurfaceVisible(): boolean {
+    return this.surfaceVisible;
   }
 
   /**
@@ -107,6 +127,17 @@ export class ViewModeController {
       | THREE.Material
       | THREE.Material[]
       | undefined;
+
+    // Hidden outright, whatever the mode says. The edge overlay goes too: a
+    // wireframe is a way of drawing the geometry, so "don't draw the geometry"
+    // has to mean it as well, or turning Geometry off in wireframe mode would
+    // appear to do nothing.
+    if (!this.surfaceVisible) {
+      mesh.material = this.hidden();
+      mesh.visible = true;
+      this.setWireframe(mesh, false);
+      return;
+    }
 
     switch (this.mode) {
       case 'lit':

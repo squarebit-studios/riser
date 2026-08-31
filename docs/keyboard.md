@@ -18,6 +18,9 @@ These work anywhere in the window, except while you are typing in a text field.
 | `Ctrl`+`Z` | Undo |
 | `Ctrl`+`Shift`+`Z` | Redo |
 | `Ctrl`+`Y` | Redo |
+| `Ctrl`+`S` | Save the document |
+| `Ctrl`+`N` | New document, keeping the loaded character |
+| `Ctrl`+`F` | Search the markers panel, opening it if it is collapsed |
 
 On macOS, `Cmd` works in place of `Ctrl`.
 
@@ -48,6 +51,7 @@ keyboard focus. Clicking in the viewport gives it focus.
 |---|---|
 | Left drag | Orbit |
 | Right drag | Pan |
+| Right click | Open the viewport menu: framing, automatic placement, shading, visibility |
 | Wheel | Zoom |
 
 A press and release without moving is a **click**, not a drag. The threshold is

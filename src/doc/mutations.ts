@@ -40,6 +40,33 @@ export function removeAllGuides(doc: RiserDocument): RiserDocument {
 }
 
 /**
+ * Accept an automatically placed guide as the user's own.
+ *
+ * Confirming does not move anything - it changes who owns the position, which
+ * is what stops the next automatic pass from replacing it. That makes it the
+ * cheap way to say "this guess was right", as opposed to nudging a guide by a
+ * millimetre to claim it, which is what people do otherwise.
+ */
+export function confirmGuide(doc: RiserDocument, id: string): RiserDocument {
+  return {
+    ...doc,
+    guides: doc.guides.map((g) =>
+      g.id === id ? { ...g, source: 'user' as const, confidence: 1 } : g
+    )
+  };
+}
+
+/** Accept every automatic guide at once. */
+export function confirmAllGuides(doc: RiserDocument): RiserDocument {
+  return {
+    ...doc,
+    guides: doc.guides.map((g) =>
+      g.source === 'user' ? g : { ...g, source: 'user' as const, confidence: 1 }
+    )
+  };
+}
+
+/**
  * Move a guide, and mark it as the user's.
  *
  * Dragging an auto-placed guide is the moment it stops being a guess. If the

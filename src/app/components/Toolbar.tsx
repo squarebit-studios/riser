@@ -1,292 +1,249 @@
 // ==========================================================================
 // Riser - Copyright (c) 2026 Squarebit LLC. All rights reserved.
 //
-// The top bar: character, template, tools, view, and saving.
+// The toolbar: what you reach for constantly, and nothing else.
+//
+// The previous version was fifteen identical grey rectangles in a row - undo,
+// x-ray, four separate shading buttons, a slider, auto-place - all shouting at
+// the same volume. A row where everything is emphasised is a row where nothing
+// is, and the user has to read all fifteen labels to find the one that
+// matters.
+//
+// What changed, and why:
+//
+//   ONE PRIMARY.        Auto-place is the accent-coloured button, because on a
+//                       fresh character it is the thing to press. Everything
+//                       else is quieter than it.
+//   SHADING COLLAPSED.  Four buttons became one dropdown. They are mutually
+//                       exclusive states of a single setting, and four buttons
+//                       said "four features" instead.
+//   VISIBILITY GROUPED. An eye menu holds what to show. Six toggles scattered
+//                       through a bar is six things to scan; one eye is one.
+//   A SEGMENT FOR MODE. Markers and Curves are a segmented control, because
+//                       its shape says "pick one" without a word of copy.
+//
+// Everything here also lives in the menu bar. This is the shortcut, not the
+// inventory.
 // ==========================================================================
 
-import React, { useRef } from 'react';
 import { useApp } from '../AppContext';
 import { useUiStore } from '../state';
-import { TEMPLATES } from '../../templates';
-import { STOCK_CHARACTERS } from '../stock';
-import { downloadUsda, readUsdaFile } from '../../doc/storage';
-import { DocumentsMenu } from './DocumentsMenu';
-import { SUPPORTED_EXTENSIONS } from '../../io/loadCharacter';
 import { MAX_SUBDIV_LEVEL, MIN_SUBDIV_LEVEL } from '../../viewport/SubdivSurface';
 import { VIEW_MODES } from '../../viewport/ViewModes';
+import { Button, IconButton, SegmentedControl } from './ui/Button';
+import { Slider } from './ui/Controls';
+import { DropdownMenu, MenuItem, MenuLabel, MenuSeparator } from './ui/Menu';
+import { Icon } from './ui/Icon';
 
 export function Toolbar(): JSX.Element {
   const app = useApp();
-  const characterInput = useRef<HTMLInputElement>(null);
-  const documentInput = useRef<HTMLInputElement>(null);
 
   const activeTool = useUiStore((s) => s.activeTool);
-  const templateId = useUiStore((s) => s.templateId);
   const symmetry = useUiStore((s) => s.symmetry);
-  const xray = useUiStore((s) => s.xray);
   const hasSkeleton = useUiStore((s) => s.characterHasSkeleton);
   const characterName = useUiStore((s) => s.characterName);
   const viewMode = useUiStore((s) => s.viewMode);
   const subdivLevel = useUiStore((s) => s.subdivLevel);
   const subdivClamped = useUiStore((s) => s.subdivClamped);
-  const dirty = useUiStore((s) => s.dirty);
+  const showGeometry = useUiStore((s) => s.showGeometry);
+  const showMarkers = useUiStore((s) => s.showMarkers);
+  const showCurves = useUiStore((s) => s.showCurves);
+  const showSkeleton = useUiStore((s) => s.showSkeleton);
+  const showGrid = useUiStore((s) => s.showGrid);
+  const xray = useUiStore((s) => s.xray);
   // Re-render undo/redo enablement when the document changes.
   useUiStore((s) => s.docRevision);
 
+  const currentMode = VIEW_MODES.find((m) => m.id === viewMode) ?? VIEW_MODES[0]!;
+  // Anything hidden is worth saying out loud - "why can't I see my markers" is
+  // otherwise a genuinely hard question to answer from the viewport alone.
+  const hiddenCount = [!showGeometry, !showMarkers, !showCurves].filter(Boolean).length;
+
   return (
-    <header className="flex h-11 shrink-0 items-center gap-1 border-b border-edge bg-panel px-3">
-      <span className="mr-3 select-none text-sm font-semibold tracking-tight text-ink">
-        Riser
-      </span>
-
-      {/* Character ------------------------------------------------------- */}
-      <select
-        className="rs-button max-w-[11rem] bg-panel-light"
-        defaultValue=""
-        onChange={(e) => {
-          const url = e.target.value;
-          if (url) void app.loadFromUrl(url);
-          e.target.value = '';
-        }}
-        title="Load one of the bundled characters"
-      >
-        <option value="" disabled>
-          Stock character
-        </option>
-        {STOCK_CHARACTERS.map((c) => (
-          <option key={c.url} value={c.url}>
-            {c.label}
-          </option>
-        ))}
-      </select>
-
-      <button className="rs-button" onClick={() => characterInput.current?.click()}>
-        Upload
-      </button>
-      <input
-        ref={characterInput}
-        type="file"
-        hidden
-        accept={SUPPORTED_EXTENSIONS.map((e) => `.${e}`).join(',')}
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) void app.loadFromFile(file);
-          e.target.value = '';
-        }}
+    <div className="flex h-11 shrink-0 items-center gap-1.5 border-y border-edge bg-panel-light px-2.5">
+      {/* Tool ------------------------------------------------------------ */}
+      <SegmentedControl
+        value={activeTool}
+        onChange={(tool) => useUiStore.getState().setActiveTool(tool)}
+        options={[
+          { value: 'marker', label: 'Markers', icon: 'marker', hint: 'Place markers (1)' },
+          { value: 'curve', label: 'Curves', icon: 'curve', hint: 'Draw curves (2)' }
+        ]}
       />
 
-      <Divider />
-
-      {/* Template -------------------------------------------------------- */}
-      <select
-        className="rs-button bg-panel-light"
-        value={templateId}
-        onChange={(e) => app.applyTemplateChange(e.target.value)}
-        title="Which rig layout to place"
-      >
-        {TEMPLATES.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.label}
-          </option>
-        ))}
-      </select>
-
-      <Divider />
-
-      {/* Tools ----------------------------------------------------------- */}
-      <ToggleButton
-        active={activeTool === 'marker'}
-        onClick={() => useUiStore.getState().setActiveTool('marker')}
-        title="Marker tool (1)"
-      >
-        Markers
-      </ToggleButton>
-      <ToggleButton
-        active={activeTool === 'curve'}
-        onClick={() => useUiStore.getState().setActiveTool('curve')}
-        title="Curve tool (2)"
-      >
-        Curves
-      </ToggleButton>
-
-      <Divider />
-
-      <ToggleButton
+      <IconButton
+        icon="mirror"
+        label="Mirror across the centre line (S)"
         active={symmetry}
         onClick={() => useUiStore.getState().toggleSymmetry()}
-        title="Mirror placements across the character's centre line"
-      >
-        Symmetry
-      </ToggleButton>
-      <ToggleButton
-        active={xray}
-        onClick={() => useUiStore.getState().toggleXray()}
-        title="Draw markers and curves through the mesh"
-      >
-        X-ray
-      </ToggleButton>
+      />
 
-      <Divider />
+      <div className="rs-divider" />
 
-      {/* Shading. Wireframe is not decoration: it is the only way to see
-          whether a guide meant for a joint centre is actually inside the limb
-          rather than stuck to the near side of it. */}
-      {VIEW_MODES.map((entry) => (
-        <ToggleButton
-          key={entry.id}
-          active={viewMode === entry.id}
-          onClick={() => useUiStore.getState().setViewMode(entry.id)}
-          title={entry.hint}
-        >
-          {entry.label}
-        </ToggleButton>
-      ))}
-
-      <Divider />
-
-      {/* Subdivision -----------------------------------------------------
-          Display only. Bindings always name a control cage triangle, so
-          changing this never moves a marker the user has placed. */}
-      <label
-        className="flex items-center gap-1.5 px-1 text-ink-dim"
-        title={
-          subdivClamped
-            ? 'Subdivision level was reduced because the mesh is already dense.'
-            : 'Catmull-Clark preview level. Markers still bind to the control cage.'
-        }
-      >
-        <span className="text-[11px] uppercase tracking-wide text-ink-faint">Subdiv</span>
-        <input
-          type="range"
-          min={MIN_SUBDIV_LEVEL}
-          max={MAX_SUBDIV_LEVEL}
-          step={1}
-          value={subdivLevel}
-          onChange={(e) => useUiStore.getState().setSubdivLevel(Number(e.target.value))}
-          className="w-16 accent-guide-placed"
-        />
-        <span
-          className={`w-3 font-mono text-[11px] ${
-            subdivClamped ? 'text-guide-active' : 'text-ink-faint'
-          }`}
-        >
-          {subdivLevel}
-        </span>
-      </label>
-
-      <Divider />
-
-      {/* Auto-place. Only offered when there is a rig to read; it never
-          overwrites anything placed by hand, so it is safe to press twice. */}
-      <button
-        className="rs-button"
+      {/* Auto-place: the one primary action in the bar. ------------------ */}
+      <Button
+        variant="primary"
+        icon="sparkles"
         onClick={() => app.autoPlace({ announce: true })}
         disabled={!characterName}
         title={
           !characterName
             ? 'Load a character first.'
             : hasSkeleton
-              ? "Place guides from the character's own skeleton, which is exact. Your own placements are kept."
-              : 'Estimate guides by measuring the character. Approximate, and your own placements are kept.'
+              ? "Place markers from the character's own rig. Exact, and your own placements are kept."
+              : 'Estimate markers by measuring the character. Approximate, and your own placements are kept.'
         }
       >
         Auto-place
-      </button>
+      </Button>
 
-      <Divider />
+      <div className="rs-divider" />
 
-      <button
-        className="rs-button"
-        onClick={() => app.undo()}
-        disabled={!app.store.canUndo}
-        title={app.store.undoLabel ? `Undo ${app.store.undoLabel}` : 'Undo'}
+      {/* Shading, as one control ---------------------------------------- */}
+      <DropdownMenu
+        label="Shading"
+        trigger={(props) => (
+          <Button
+            {...props}
+            ref={props.ref}
+            icon="shading"
+            trailingIcon="chevronDown"
+            title="How the character is shaded"
+            data-testid="shading-menu"
+          >
+            {currentMode.label}
+          </Button>
+        )}
       >
-        Undo
-      </button>
-      <button
-        className="rs-button"
-        onClick={() => app.redo()}
-        disabled={!app.store.canRedo}
-        title={app.store.redoLabel ? `Redo ${app.store.redoLabel}` : 'Redo'}
+        <MenuLabel>Shading</MenuLabel>
+        {VIEW_MODES.map((mode) => (
+          <MenuItem
+            key={mode.id}
+            label={mode.label}
+            checked={viewMode === mode.id}
+            description={mode.hint}
+            data-testid={`shading-${mode.id}`}
+            onSelect={() => useUiStore.getState().setViewMode(mode.id)}
+          />
+        ))}
+      </DropdownMenu>
+
+      {/* Visibility ------------------------------------------------------ */}
+      <DropdownMenu
+        label="Show and hide"
+        trigger={(props) => (
+          <Button
+            {...props}
+            ref={props.ref}
+            icon={hiddenCount > 0 ? 'eyeOff' : 'eye'}
+            trailingIcon="chevronDown"
+            title="Choose what is drawn"
+            data-testid="visibility-menu"
+            className={hiddenCount > 0 ? 'text-guide-active' : undefined}
+          >
+            {hiddenCount > 0 ? `${hiddenCount} hidden` : 'Show'}
+          </Button>
+        )}
       >
-        Redo
-      </button>
+        <MenuLabel>Show</MenuLabel>
+        <MenuItem
+          label="Character"
+          icon="cube"
+          checked={showGeometry}
+          description="Stays clickable while hidden"
+          data-testid="show-geometry"
+          onSelect={() => useUiStore.getState().toggleGeometry()}
+        />
+        <MenuItem
+          label="Markers"
+          icon="marker"
+          checked={showMarkers}
+          data-testid="show-markers"
+          onSelect={() => useUiStore.getState().toggleMarkers()}
+        />
+        <MenuItem
+          label="Curves"
+          icon="curve"
+          checked={showCurves}
+          data-testid="show-curves"
+          onSelect={() => useUiStore.getState().toggleCurves()}
+        />
+        <MenuItem
+          label="Skeleton"
+          icon="bone"
+          checked={showSkeleton}
+          disabled={!hasSkeleton}
+          description={hasSkeleton ? "The character's own rig" : 'This character has no rig'}
+          data-testid="show-skeleton"
+          onSelect={() => useUiStore.getState().toggleSkeleton()}
+        />
+        <MenuItem
+          label="Ground grid"
+          icon="grid"
+          checked={showGrid}
+          onSelect={() => useUiStore.getState().toggleGrid()}
+        />
+
+        <MenuSeparator />
+        <MenuItem
+          label="See markers through the body"
+          checked={xray}
+          description="Draws them over the character rather than inside it"
+          onSelect={() => useUiStore.getState().toggleXray()}
+        />
+      </DropdownMenu>
+
+      <div className="rs-divider" />
+
+      {/* Subdivision. Display only - bindings always name a cage triangle,
+          so moving this never moves a marker the user placed. */}
+      <Slider
+        label="Smooth"
+        value={subdivLevel}
+        min={MIN_SUBDIV_LEVEL}
+        max={MAX_SUBDIV_LEVEL}
+        onChange={(level) => useUiStore.getState().setSubdivLevel(level)}
+        warn={subdivClamped}
+        hint={
+          subdivClamped
+            ? 'Reduced automatically - this mesh is already dense.'
+            : 'Smooth the surface for placement. Markers still bind to the original mesh.'
+        }
+      />
 
       <div className="flex-1" />
 
-      <button
-        className="rs-button"
-        onClick={() => app.frameCharacter()}
-        title="Frame the whole character (A). F focuses the selection instead."
-      >
-        Frame
-      </button>
+      {subdivClamped && (
+        <span
+          className="flex items-center gap-1 text-[11px] text-guide-active"
+          title="The mesh was already dense, so the level was reduced to keep the viewport responsive."
+        >
+          <Icon name="warning" size={13} />
+          reduced
+        </span>
+      )}
 
-      {/* Document -------------------------------------------------------- */}
-      <DocumentsMenu />
-
-      <button
-        className="rs-button"
-        onClick={() => documentInput.current?.click()}
-        title="Open a .usda layer from disk"
-      >
-        Import
-      </button>
-      <input
-        ref={documentInput}
-        type="file"
-        hidden
-        accept=".usda,.usd"
-        onChange={async (e) => {
-          const file = e.target.files?.[0];
-          e.target.value = '';
-          if (!file) return;
-          try {
-            app.loadDocument(await readUsdaFile(file));
-          } catch (err) {
-            useUiStore
-              .getState()
-              .setError(err instanceof Error ? err.message : String(err));
-          }
-        }}
+      <IconButton
+        icon="undo"
+        label={app.store.undoLabel ? `Undo ${app.store.undoLabel}` : 'Undo'}
+        disabled={!app.store.canUndo}
+        onClick={() => app.undo()}
+      />
+      <IconButton
+        icon="redo"
+        label={app.store.redoLabel ? `Redo ${app.store.redoLabel}` : 'Redo'}
+        disabled={!app.store.canRedo}
+        onClick={() => app.redo()}
       />
 
-      <button
-        className="rs-button"
-        onClick={() => {
-          downloadUsda(app.store.document);
-          app.store.markSaved();
-        }}
-        title="Download this document as a USD layer"
-      >
-        Export USD{dirty ? ' •' : ''}
-      </button>
-    </header>
-  );
-}
+      <div className="rs-divider" />
 
-function Divider(): JSX.Element {
-  return <div className="mx-1.5 h-5 w-px bg-edge" />;
-}
-
-function ToggleButton({
-  active,
-  onClick,
-  title,
-  children
-}: {
-  active: boolean;
-  onClick: () => void;
-  title?: string;
-  children: React.ReactNode;
-}): JSX.Element {
-  return (
-    <button
-      className={`rs-button ${active ? 'rs-button-active' : ''}`}
-      onClick={onClick}
-      title={title}
-    >
-      {children}
-    </button>
+      <IconButton
+        icon="frame"
+        label="Frame the whole character (A)"
+        onClick={() => app.frameCharacter()}
+        disabled={!characterName}
+      />
+    </div>
   );
 }

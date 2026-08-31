@@ -177,3 +177,69 @@ describe('following what is actually displayed', () => {
     controller.dispose();
   });
 });
+
+describe('hiding the character', () => {
+  it('stops drawing the surface without hiding the object', () => {
+    // Hidden through the MATERIAL, not `visible`. three skips the children of
+    // an invisible object, and hiding the mesh would take anything parented to
+    // it with it - which is the bug the wireframe mode already had to avoid.
+    const body = mesh();
+    const modes = new ViewModeController(() => [body]);
+    modes.setSurfaceVisible(false);
+
+    expect(body.visible).toBe(true);
+    expect((body.material as THREE.Material).visible).toBe(false);
+  });
+
+  it('keeps the mesh pickable while hidden', () => {
+    // Someone who hides the character to see their markers clearly still
+    // expects to be able to click it and place one.
+    const body = mesh();
+    const modes = new ViewModeController(() => [body]);
+    modes.setSurfaceVisible(false);
+
+    const raycaster = new THREE.Raycaster(
+      new THREE.Vector3(0, 0, 5),
+      new THREE.Vector3(0, 0, -1)
+    );
+    const hits: THREE.Intersection[] = [];
+    body.raycast(raycaster, hits);
+    expect(hits.length).toBeGreaterThan(0);
+  });
+
+  it('takes the wireframe with it', () => {
+    // A wireframe is a way of DRAWING the geometry, so "do not draw the
+    // geometry" has to mean it too - otherwise turning the character off in
+    // wireframe mode appears to do nothing at all.
+    const body = mesh();
+    const modes = new ViewModeController(() => [body]);
+    modes.setMode('wireframe');
+    expect(wireOf(body)).toBeDefined();
+
+    modes.setSurfaceVisible(false);
+    expect(wireOf(body)).toBeUndefined();
+  });
+
+  it('puts the surface back, in whatever mode is current', () => {
+    const body = mesh();
+    const original = body.material;
+    const modes = new ViewModeController(() => [body]);
+
+    modes.setSurfaceVisible(false);
+    modes.setSurfaceVisible(true);
+    expect(body.material).toBe(original);
+
+    modes.setMode('litWireframe');
+    modes.setSurfaceVisible(false);
+    modes.setSurfaceVisible(true);
+    expect(body.material).toBe(original);
+    expect(wireOf(body)).toBeDefined();
+  });
+
+  it('reports its own state', () => {
+    const modes = new ViewModeController(() => [mesh()]);
+    expect(modes.isSurfaceVisible).toBe(true);
+    modes.setSurfaceVisible(false);
+    expect(modes.isSurfaceVisible).toBe(false);
+  });
+});

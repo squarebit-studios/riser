@@ -35,6 +35,17 @@ export const STOCK_CHARACTERS: readonly StockCharacter[] = [
     label: 'Biped (rigged)',
     url: '/assets/biped-rigged.usda',
     templateId: 'biped'
+  },
+  {
+    // A production character, converted from Maya with tools/mb-to-usd.py.
+    //
+    // Worth bundling because it is the first asset here that was not built to
+    // be measured: 34 separate meshes, 137k triangles, an A-pose rather than a
+    // T-pose, and no rig. The blockouts are clean in ways real work is not,
+    // and a measurement that only holds on them is not a measurement.
+    label: 'Gary',
+    url: '/assets/gary.usdc',
+    templateId: 'biped'
   }
 ];
 
