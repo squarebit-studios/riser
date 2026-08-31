@@ -57,3 +57,6 @@ __pycache__/
 public/version.json
 public/CHANGELOG.md
 public/docs/
+
+# Vite's dependency pre-bundling cache. Machine-local build output.
+.vite/
