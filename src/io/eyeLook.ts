@@ -144,6 +144,44 @@ export function isUsableLook(look: EyeLook): boolean {
  * and inflating is not needed.
  */
 function crateInsideUsdz(source: ArrayBuffer): ArrayBuffer | null {
+  return entryInsideUsdz(source, (name) => /\.usdc?$/i.test(name));
+}
+
+/**
+ * A named file out of a USDZ archive.
+ *
+ * The eye's iris and sclera maps live INSIDE the archive and are referenced by
+ * a path relative to the USD, like `./gary_tex/T_Iris_Base_2_D.jpg`. Resolving
+ * that against the character's URL asks the server for a file nobody ever
+ * unpacked, which is how the eyes ended up shaded but blank: the shader was
+ * applied correctly and its textures quietly never arrived.
+ *
+ * Matched on the trailing path, so `./gary_tex/x.jpg` finds the `gary_tex/x.jpg`
+ * the archive actually stores.
+ */
+export function fileInsideUsdz(
+  source: ArrayBuffer,
+  path: string
+): ArrayBuffer | null {
+  const wanted = path.replace(/^\.?\//, '').toLowerCase();
+  if (wanted.length === 0) return null;
+  return entryInsideUsdz(source, (name) => {
+    const entry = name.toLowerCase();
+    return entry === wanted || entry.endsWith('/' + wanted);
+  });
+}
+
+/**
+ * Scan local file headers for the first entry a predicate accepts.
+ *
+ * Read this way rather than with a zip library because USDZ mandates stored
+ * (uncompressed) entries: the payload is already there, and inflating is not
+ * needed.
+ */
+function entryInsideUsdz(
+  source: ArrayBuffer,
+  accept: (name: string) => boolean
+): ArrayBuffer | null {
   const bytes = new Uint8Array(source);
   const view = new DataView(source);
   // "PK"
@@ -157,7 +195,7 @@ function crateInsideUsdz(source: ArrayBuffer): ArrayBuffer | null {
     const name = new TextDecoder().decode(
       bytes.subarray(at + 30, at + 30 + nameLength)
     );
-    if (!/\.usdc?$/i.test(name)) continue;
+    if (!accept(name)) continue;
 
     const size = view.getUint32(at + 22, true);
     const start = at + 30 + nameLength + extraLength;

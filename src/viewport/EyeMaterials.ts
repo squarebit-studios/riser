@@ -28,7 +28,12 @@
 // ==========================================================================
 
 import * as THREE from 'three';
-import { eyeLookFor, isUsableLook, type EyeLook } from '../io/eyeLook';
+import {
+  eyeLookFor,
+  fileInsideUsdz,
+  isUsableLook,
+  type EyeLook
+} from '../io/eyeLook';
 import { EYE_CORE_GLSL } from '../vendor/squarebit-eye/eye-core';
 // The vendored module is untyped JavaScript, copied verbatim from the Eye
 // repo the way the store's widget copies it. Its shape is declared in
@@ -53,6 +58,8 @@ interface EyeUniforms {
 export class EyeMaterials {
   private readonly applied = new Map<string, THREE.Material>();
   private readonly textures: THREE.Texture[] = [];
+  /** Blob URLs minted for textures unpacked from a USDZ, so they can be revoked. */
+  private readonly blobs: string[] = [];
 
   /** How many eyes are currently shaded. Reported to the user, and tested. */
   get count(): number {
@@ -69,7 +76,16 @@ export class EyeMaterials {
   apply(
     meshes: readonly THREE.Mesh[],
     looks: readonly EyeLook[],
-    baseUrl: string
+    baseUrl: string,
+    /**
+     * The character file itself, when it is a USDZ.
+     *
+     * A USDZ is a zip, and the eye's textures are packed inside it rather than
+     * sitting beside it on the server. Without the archive there is nothing to
+     * unpack them from and the maps are looked for next to the character,
+     * which is right for a loose `.usda` and wrong for everything else.
+     */
+    archive?: ArrayBuffer
   ): number {
     if (looks.length === 0) return 0;
 
@@ -83,7 +99,7 @@ export class EyeMaterials {
       if (this.applied.has(primPath)) continue;
 
       try {
-        const material = this.buildMaterial(mesh, look, loader, baseUrl);
+        const material = this.buildMaterial(mesh, look, loader, baseUrl, archive);
         if (!material) continue;
 
         mesh.material = material;
@@ -102,7 +118,8 @@ export class EyeMaterials {
     mesh: THREE.Mesh,
     look: EyeLook,
     loader: THREE.TextureLoader,
-    baseUrl: string
+    baseUrl: string,
+    archive?: ArrayBuffer
   ): THREE.Material | null {
     const params = look.params;
 
@@ -122,7 +139,7 @@ export class EyeMaterials {
     ] as const) {
       const path = params[key];
       if (typeof path !== 'string' || path.length === 0) continue;
-      const texture = loader.load(resolve(baseUrl, path));
+      const texture = loader.load(this.textureUrl(path, baseUrl, archive));
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.flipY = false;
       this.textures.push(texture);
@@ -146,12 +163,37 @@ export class EyeMaterials {
     return material;
   }
 
+  /**
+   * Where a texture should actually be fetched from.
+   *
+   * Inside the archive first, because that is where a USDZ keeps it. Falling
+   * back to a path beside the character covers a loose `.usda` that references
+   * its maps as ordinary files, which is the other shape these assets come in.
+   */
+  private textureUrl(
+    path: string,
+    baseUrl: string,
+    archive?: ArrayBuffer
+  ): string {
+    if (archive) {
+      const packed = fileInsideUsdz(archive, path);
+      if (packed) {
+        const url = URL.createObjectURL(new Blob([packed], { type: mimeFor(path) }));
+        this.blobs.push(url);
+        return url;
+      }
+    }
+    return resolve(baseUrl, path);
+  }
+
   /** Drop the materials and textures this built. */
   dispose(): void {
     for (const material of this.applied.values()) material.dispose();
     this.applied.clear();
     for (const texture of this.textures) texture.dispose();
     this.textures.length = 0;
+    for (const url of this.blobs) URL.revokeObjectURL(url);
+    this.blobs.length = 0;
   }
 }
 
@@ -170,6 +212,15 @@ function numericParams(
     if (typeof value === 'number' || Array.isArray(value)) out[key] = value;
   }
   return out;
+}
+
+/** Image type for a packed texture, so the blob decodes as what it is. */
+function mimeFor(path: string): string {
+  const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase();
+  if (ext === 'png') return 'image/png';
+  if (ext === 'webp') return 'image/webp';
+  if (ext === 'exr' || ext === 'hdr') return 'application/octet-stream';
+  return 'image/jpeg';
 }
 
 /** Resolve a look's relative texture path against the character's own URL. */

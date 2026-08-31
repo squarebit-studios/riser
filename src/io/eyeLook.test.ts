@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readEyeLooks, eyeLookFor, isUsableLook } from './eyeLook';
+import {
+  readEyeLooks,
+  eyeLookFor,
+  isUsableLook,
+  fileInsideUsdz
+} from './eyeLook';
 
 /**
  * Gary's inner USDC, taken out of the shipped USDZ.
@@ -127,5 +132,60 @@ describe('reading a look out of a USDZ archive', () => {
     const looks = readEyeLooks(archive);
     expect(looks).toHaveLength(2);
     expect(looks[0]!.params.ior).toBeCloseTo(1.376, 3);
+  });
+});
+
+describe('textures packed inside the usdz', () => {
+  function garyUsdz(): ArrayBuffer {
+    const file = readFileSync(join(process.cwd(), 'public', 'assets', 'gary.usdz'));
+    return file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
+  }
+
+  /**
+   * The bug this exists to prevent.
+   *
+   * The eye look stores its maps as paths relative to the USD, and the first
+   * version resolved them against the character's URL. That asks the server
+   * for `/assets/gary_tex/T_Iris_Base_2_D.jpg`, which nobody ever unpacked.
+   * In the dev server it came back `200 text/html` - the SPA fallback - so
+   * there was no 404 to notice and the eyes rendered shaded but blank.
+   */
+  it('finds the iris map the look actually names', () => {
+    const usdz = garyUsdz();
+    const looks = readEyeLooks(usdz);
+    expect(looks.length).toBeGreaterThan(0);
+
+    const path = looks[0]!.params.irisTexture;
+    expect(typeof path).toBe('string');
+
+    const packed = fileInsideUsdz(usdz, path as string);
+    expect(packed).not.toBeNull();
+
+    // Really a JPEG, not just some bytes at an offset that happened to parse.
+    const head = new Uint8Array(packed!);
+    expect(head[0]).toBe(0xff);
+    expect(head[1]).toBe(0xd8);
+    expect(packed!.byteLength).toBeGreaterThan(10_000);
+  });
+
+  it('finds the sclera map too', () => {
+    const usdz = garyUsdz();
+    const looks = readEyeLooks(usdz);
+    const packed = fileInsideUsdz(usdz, looks[0]!.params.scleraTexture as string);
+    expect(packed).not.toBeNull();
+    expect(new Uint8Array(packed!)[0]).toBe(0xff);
+  });
+
+  it('matches a leading ./ against the name the archive stores', () => {
+    const usdz = garyUsdz();
+    const bare = fileInsideUsdz(usdz, 'gary_tex/T_Sclera_D.jpg');
+    const dotted = fileInsideUsdz(usdz, './gary_tex/T_Sclera_D.jpg');
+    expect(bare).not.toBeNull();
+    expect(dotted!.byteLength).toBe(bare!.byteLength);
+  });
+
+  it('returns null rather than guessing when a file is not there', () => {
+    expect(fileInsideUsdz(garyUsdz(), './gary_tex/not_a_real_map.jpg')).toBeNull();
+    expect(fileInsideUsdz(garyUsdz(), '')).toBeNull();
   });
 });

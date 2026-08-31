@@ -341,7 +341,15 @@ export class RiserApp {
       const looks = readEyeLooks(source);
       if (looks.length === 0) return;
 
-      const shaded = this.eyes.apply(model.meshes, looks, this.characterUrl);
+      const shaded = this.eyes.apply(
+        model.meshes,
+        looks,
+        this.characterUrl,
+        // A USDZ carries its textures inside itself. This is the same
+        // buffer the looks were just read out of, so unpacking them costs
+        // no second fetch.
+        typeof source === 'string' ? undefined : source
+      );
       if (shaded > 0) {
         useUiStore
           .getState()

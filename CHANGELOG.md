@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.8.2] - 2026-08-31
+- Fixed: the eyes were shaded but blank. Their iris and sclera maps are packed inside the .usdz, and Riser was looking for them beside it, so the shader ran with no textures. The dev server answered those requests with the app's own HTML instead of a 404, which is why nothing ever reported an error
+
 ## [0.8.1] - 2026-08-31
 - Scene tab listing every piece a character is made of, with its triangle count and whether it is skinned
 - Select a piece to see which one it is in the viewport, and hide it to reach whatever is underneath. On a clothed character that is how a hip marker gets onto the hip rather than the spacesuit
