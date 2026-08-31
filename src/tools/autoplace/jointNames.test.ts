@@ -359,3 +359,99 @@ describe('matching invariants', () => {
     expect(matchJointsToGuides(BIPED_GUIDE_IDS, [], BIPED_JOINT_HINTS)).toEqual([]);
   });
 });
+
+describe('a studio rig, where every joint is suffixed', () => {
+  // Names taken verbatim from a production rig. Every skinning joint carries
+  // `_bind`, sides are infix `_l_`/`_r_`, and twist and bend chains sit
+  // between the real joints carrying the same anatomy words.
+
+  it('ignores the rigging suffix', () => {
+    // The failure this fixes: `_bind` turned `thigh` into `thighbind`, which
+    // matched nothing. Measured on the real rig, name matching placed ONE
+    // guide out of thirty-two.
+    expect(parseJointName('thigh_l_bind').core).toBe('thigh');
+    expect(parseJointName('chest_bind').core).toBe('chest');
+    expect(parseJointName('head_jnt').core).toBe('head');
+    expect(parseJointName('spine_0_bind').core).toBe('spine0');
+  });
+
+  it('still reads the side from an infix marker', () => {
+    expect(parseJointName('thigh_l_bind').side).toBe('left');
+    expect(parseJointName('clavicle_r_bind').side).toBe('right');
+    expect(parseJointName('chest_bind').side).toBe('center');
+  });
+
+  it('marks twist and bend chains as helpers', () => {
+    // These are the dangerous ones. `arm_bend_1_l_bind` contains "arm" and
+    // would happily claim the shoulder guide, putting a marker a third of the
+    // way down the bicep with full confidence.
+    for (const name of [
+      'arm_bend_2_l_bind',
+      'leg_bend_0_l_bind',
+      'ankleTwist_r_bind',
+      'shoulderTwist_l_bind',
+      'toe_l_pivot'
+    ]) {
+      expect(parseJointName(name).helper, name).toBe(true);
+    }
+  });
+
+  it('does not mistake a real joint for a helper', () => {
+    for (const name of ['thigh_l_bind', 'knee_r_bind', 'chest_bind', 'root']) {
+      expect(parseJointName(name).helper ?? false, name).toBe(false);
+    }
+  });
+
+  it('never matches a helper to a guide', () => {
+    const matches = matchJointsToGuides(
+      ['shoulderL', 'elbowL'],
+      ['arm_bend_1_l_bind', 'arm_bend_2_l_bind'],
+      BIPED_JOINT_HINTS
+    );
+    expect(matches).toEqual([]);
+  });
+
+  it('prefers a skinning joint over a driver at the same position', () => {
+    // A rig carries both, at distance 0.0000 from each other. The bind is the
+    // joint that actually deforms the mesh.
+    const matches = matchJointsToGuides(
+      ['hipL'],
+      ['thigh_l_driver', 'thigh_l_bind'],
+      BIPED_JOINT_HINTS
+    );
+    expect(matches[0]?.jointName).toBe('thigh_l_bind');
+  });
+
+  it('still takes a driver when it is the only option', () => {
+    // That same rig has `head_driver` and no `head_bind` at all, so refusing
+    // drivers outright would lose the head.
+    const matches = matchJointsToGuides(['head'], ['head_driver'], BIPED_JOINT_HINTS);
+    expect(matches[0]?.jointName).toBe('head_driver');
+  });
+
+  it('separates the clavicle from the shoulder when a rig has both', () => {
+    // "Shoulder" means different joints in different conventions: Mixamo's
+    // `LeftShoulder` is the clavicle, while a rig carrying BOTH clearly means
+    // the upper arm by it. Ranking, not special-casing, decides.
+    const matches = matchJointsToGuides(
+      ['clavicleL', 'shoulderL'],
+      ['clavicle_l_bind', 'shoulder_l_bind'],
+      BIPED_JOINT_HINTS
+    );
+    const by = Object.fromEntries(matches.map((m) => [m.guideId, m.jointName]));
+    expect(by.clavicleL).toBe('clavicle_l_bind');
+    expect(by.shoulderL).toBe('shoulder_l_bind');
+  });
+
+  it('still gives Mixamo the clavicle for its LeftShoulder', () => {
+    // The other side of that ranking, and the regression it must not cause.
+    const matches = matchJointsToGuides(
+      ['clavicleL', 'shoulderL'],
+      ['mixamorig:LeftShoulder', 'mixamorig:LeftArm'],
+      BIPED_JOINT_HINTS
+    );
+    const by = Object.fromEntries(matches.map((m) => [m.guideId, m.jointName]));
+    expect(by.clavicleL).toBe('mixamorig:LeftShoulder');
+    expect(by.shoulderL).toBe('mixamorig:LeftArm');
+  });
+});

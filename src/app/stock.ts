@@ -40,14 +40,23 @@ export const STOCK_CHARACTERS: readonly StockCharacter[] = [
     // A production character, converted from Maya with tools/mb-to-usd.py.
     //
     // Worth bundling because it is the first asset here that was not built to
-    // be measured: 34 separate meshes, 137k triangles, an A-pose rather than a
-    // T-pose, and no rig. The blockouts are clean in ways real work is not,
-    // and a measurement that only holds on them is not a measurement.
+    // be measured: 33 meshes, an A-pose rather than a T-pose, a 482-joint rig,
+    // and clothing layered over skin. The blockouts are clean in ways real
+    // work is not, and every one of those differences has already caught a bug
+    // that the blockouts could not.
+    //
+    // USDZ rather than USDC, and not for compression: three only reads
+    // textures out of a USD when it is a USDZ. For a plain .usdc the loader's
+    // asset table is empty and every texture resolves to null, so the same
+    // character arrives untextured. See USDComposer's `_loadTexture`.
     label: 'Gary',
-    url: '/assets/gary.usdc',
+    url: '/assets/gary.usdz',
     templateId: 'biped'
   }
 ];
 
 /** Characters that carry a skeleton. Used by tests, and by the UI copy. */
-export const RIGGED_STOCK_URLS: readonly string[] = ['/assets/biped-rigged.usda'];
+export const RIGGED_STOCK_URLS: readonly string[] = [
+  '/assets/biped-rigged.usda',
+  '/assets/gary.usdz'
+];

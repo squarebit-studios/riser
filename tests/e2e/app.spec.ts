@@ -415,7 +415,7 @@ test.describe('choosing where a click lands', () => {
     // surface - on every clothed character, while looking perfect on the bare
     // blockout the tests used.
     await openApp(page);
-    await page.evaluate(() => window.__riser!.loadFromUrl('/assets/gary.usdc'));
+    await page.evaluate(() => window.__riser!.loadFromUrl('/assets/gary.usdz'));
     await page.waitForFunction(
       () => (window.__riser!.characterModel?.meshes.length ?? 0) > 0
     );
@@ -1273,6 +1273,51 @@ test.describe('the marker you are placing stays selected', () => {
     await expect(page.locator('aside[aria-label="Markers"]')).not.toContainText(
       'Placed'
     );
+  });
+});
+
+test.describe('a production character', () => {
+  test('Gary loads textured, rigged, and auto-placed from his skeleton', async ({
+    page
+  }) => {
+    test.slow();
+    // Everything the blockouts cannot exercise: clothing layered over skin,
+    // a 482-joint studio rig with `_bind` suffixes and twist chains, textures
+    // that only reach the browser through a USDZ, and centimetre authoring.
+    await openApp(page);
+    await page.evaluate(() => window.__riser!.loadFromUrl('/assets/gary.usdz'));
+    await page.waitForFunction(
+      () => (window.__riser!.characterModel?.meshes.length ?? 0) > 0,
+      undefined,
+      { timeout: 40000 }
+    );
+    await page.waitForTimeout(2500);
+
+    const model = await page.evaluate(() => {
+      const m = window.__riser!.characterModel!;
+      let skinned = 0;
+      let textured = 0;
+      for (const mesh of m.meshes as unknown as {
+        isSkinnedMesh?: boolean;
+        material: { map?: unknown } | { map?: unknown }[];
+      }[]) {
+        if (mesh.isSkinnedMesh) skinned++;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        if (mats.some((mat) => mat?.map)) textured++;
+      }
+      return { meshes: m.meshes.length, skinned, textured };
+    });
+
+    expect(model.meshes).toBeGreaterThan(20);
+    // The rig survived the round trip.
+    expect(model.skinned).toBe(model.meshes);
+    // And the textures did, which they only do out of a USDZ.
+    expect(model.textured).toBeGreaterThan(5);
+
+    // Placed from the rig, not measured - the exact tier.
+    const placed = await guides(page);
+    expect(placed.length).toBeGreaterThan(40);
+    expect(placed.every((g) => g.source === 'skeleton')).toBe(true);
   });
 });
 

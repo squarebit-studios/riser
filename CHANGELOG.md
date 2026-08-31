@@ -1,6 +1,10 @@
 # Changelog
 
 ## [0.7.0] - 2026-08-31
+- Gary is now a rigged, textured production character — 482 joints, clothing over skin, and 46 of 49 markers placed exactly from his own skeleton
+- Studio rig naming is understood: `_bind`, `_jnt` and similar suffixes are ignored, and twist, bend and roll chains are never mistaken for real joints
+- A rig carrying both a clavicle and a shoulder now gets both right, without breaking conventions where "shoulder" means the clavicle
+- Face joints (chin, nose, ears, mouth corners) are matched when a rig names them anatomically
 - Maya navigation: Alt+left tumbles, Alt+middle pans, Alt+right zooms — the plain bindings still work without Alt, so no modifier is required to look at anything
 - Blend shape panel — fire a character's shapes to check your markers still sit right when the face moves; nothing there changes the document
 - Touch: a long press opens the viewport menu, since an iPad has no right button. Pinch and two-finger gestures are untouched

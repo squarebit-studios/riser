@@ -25,6 +25,22 @@
 export type Side = 'left' | 'right' | 'center';
 
 export interface ParsedJoint {
+  /**
+   * True when this is a deformation helper - a twist, bend or roll joint -
+   * rather than an anatomical one. Never matched to a guide.
+   */
+  helper?: boolean;
+  /**
+   * True when the name marked this as a skinning joint (`_bind`, `_jnt`).
+   *
+   * A tiebreak, not a filter. A rig often carries both `thigh_l_bind` and
+   * `thigh_l_driver` at the SAME position - measured at distance 0.0000 on a
+   * production rig - so preferring the bind costs nothing and names the joint
+   * that actually deforms the mesh. It cannot be a filter, because some
+   * anatomy exists only as a driver: that same rig has `head_driver` and no
+   * `head_bind` at all, and refusing drivers would lose the head.
+   */
+  skinning?: boolean;
   /** The name as the rig spelled it. */
   raw: string;
   /** Lowercase, punctuation and side tokens removed. */
@@ -53,6 +69,59 @@ const VENDOR_PREFIXES = [
 /** Whole words that mean "left", once the name is split into tokens. */
 const LEFT_WORDS = new Set(['l', 'lf', 'left']);
 const RIGHT_WORDS = new Set(['r', 'rt', 'right']);
+
+/**
+ * Tokens that say what a node IS to the rigger rather than what it is
+ * anatomically.
+ *
+ * Studio rigs are full of them - `thigh_l_bind`, `head_jnt`, `spine_0_skin` -
+ * and they are pure noise to a name match. Left in, they turn `thigh` into
+ * `thighbind` and the whole leg matches nothing: measured on a real production
+ * rig, name matching placed ONE guide out of thirty-two because every joint
+ * carried a `_bind` suffix.
+ *
+ * Stripped anywhere in the name, not just at the end, because conventions put
+ * them in both places.
+ */
+const RIGGING_NOISE = new Set([
+  'bind',
+  'bn',
+  'bone',
+  'ctl',
+  'ctrl',
+  'def',
+  'deform',
+  'drv',
+  'driver',
+  'jnt',
+  'joint',
+  'jt',
+  'skin',
+  'sk'
+]);
+
+/**
+ * Words marking a joint that exists to help deformation rather than to be a
+ * joint.
+ *
+ * Twist and bend chains sit between the real joints - `arm_bend_2_l`,
+ * `leg_bend_0_l`, `ankleTwist_r` - and they are dangerous rather than merely
+ * useless: `arm_bend_1_l_bind` reduces to a core containing "arm" and would
+ * happily claim the shoulder guide, putting a marker a third of the way down
+ * the bicep with full confidence.
+ *
+ * A name carrying one of these is refused outright rather than scored low.
+ */
+const HELPER_WORDS = new Set([
+  'bend',
+  'twist',
+  'roll',
+  'helper',
+  'aux',
+  'tweak',
+  'follow',
+  'pivot'
+]);
 
 /**
  * Split a joint name into tokens on every convention in use: separators
@@ -102,6 +171,8 @@ export function parseJointName(raw: string): ParsedJoint {
   }
 
   let side: Side = 'center';
+  let helper = false;
+  let skinning = false;
   const kept: string[] = [];
   for (const token of tokens) {
     if (LEFT_WORDS.has(token)) {
@@ -112,10 +183,22 @@ export function parseJointName(raw: string): ParsedJoint {
       side = 'right';
       continue;
     }
+    if (HELPER_WORDS.has(token)) {
+      helper = true;
+      continue;
+    }
+    // Dropped, not kept: these describe the node's role in the rig, not the
+    // anatomy the guide is looking for.
+    if (RIGGING_NOISE.has(token)) {
+      if (token === 'bind' || token === 'jnt' || token === 'joint' || token === 'skin') {
+        skinning = true;
+      }
+      continue;
+    }
     kept.push(token);
   }
 
-  return { raw, core: kept.join(''), side };
+  return { raw, core: kept.join(''), side, helper, skinning };
 }
 
 /** The side a guide id implies, from its L/R suffix. */
@@ -148,22 +231,40 @@ export const BIPED_JOINT_HINTS: Readonly<Record<string, JointHint>> = {
   // LOWER one. Same string, different bone. These lists get the chain roughly
   // right, and `orderSpineChain` in fromSkeleton.ts corrects it using the
   // hierarchy, which is the only thing that actually knows.
-  spine01: { cores: ['spine', 'spine1', 'spinelower', 'abdomen', 'waist'] },
-  spine02: { cores: ['spine2', 'spinemid', 'chestlower'] },
+  spine01: { cores: ['spine', 'spine0', 'spine1', 'spinelower', 'abdomen', 'waist'] },
+  spine02: { cores: ['spine2', 'spine3', 'spinemid', 'chestlower'] },
   chest: {
     cores: ['chest', 'spine3', 'spineupper', 'upperchest', 'ribcage', 'torsoupper']
   },
-  neck: { cores: ['neck', 'neck1', 'neckbase'] },
-  head: { cores: ['head', 'skull'] },
-  headTop: { cores: ['headtopend', 'headtop', 'headend', 'crown'] },
+  neck: { cores: ['neck', 'neck0', 'neck1', 'neckbase'] },
+  head: { cores: ['head', 'skull', 'neck3'] },
+  headTop: { cores: ['headtopend', 'headtop', 'headend', 'headtip', 'crown'] },
+
+  // Face landmarks, from production rigs. Approximate by nature: a face rig
+  // names things by what they DO (a zipper, a corrugator) far more than by
+  // anatomy, so these match the few that are named anatomically and leave the
+  // rest to be placed by hand.
+  chin: { cores: ['chin', 'jawtip', 'jawend'] },
+  noseTip: { cores: ['nosetip', 'nose', 'noseend'] },
+  noseBridge: { cores: ['nosebridge', 'nasion', 'nosebase'] },
+  earL: { cores: ['ear', 'earbase'] },
+  earR: { cores: ['ear', 'earbase'] },
+  mouthCornerL: { cores: ['mouthcorner', 'lipcorner', 'cornerlip', 'lipzippercorner'] },
+  mouthCornerR: { cores: ['mouthcorner', 'lipcorner', 'cornerlip', 'lipzippercorner'] },
+  mouthCenter: { cores: ['mouthcenter', 'mouth', 'lipupper', 'lips'] },
 
   clavicleL: { cores: ['clavicle', 'shoulder', 'collar', 'scapula'] },
-  shoulderL: { cores: ['upperarm', 'armupper', 'shoulderjoint', 'arm'] },
+  // 'shoulder' is LAST on purpose. Conventions disagree about what the word
+  // means: Mixamo's `LeftShoulder` is the clavicle, while a rig carrying both
+  // `clavicle_l` and `shoulder_l` clearly means the upper-arm joint by it.
+  // Ranking it below `clavicle` on the clavicle guide and below `upperarm`
+  // here lets each rig's own vocabulary decide, rather than this file.
+  shoulderL: { cores: ['upperarm', 'armupper', 'shoulderjoint', 'arm', 'shoulder'] },
   elbowL: { cores: ['lowerarm', 'forearm', 'elbow', 'armlower'] },
   wristL: { cores: ['hand', 'wrist'] },
 
   clavicleR: { cores: ['clavicle', 'shoulder', 'collar', 'scapula'] },
-  shoulderR: { cores: ['upperarm', 'armupper', 'shoulderjoint', 'arm'] },
+  shoulderR: { cores: ['upperarm', 'armupper', 'shoulderjoint', 'arm', 'shoulder'] },
   elbowR: { cores: ['lowerarm', 'forearm', 'elbow', 'armlower'] },
   wristR: { cores: ['hand', 'wrist'] },
 
@@ -284,6 +385,12 @@ export function matchJointsToGuides(
     for (let jointIndex = 0; jointIndex < parsed.length; jointIndex++) {
       const joint = parsed[jointIndex] as ParsedJoint;
 
+      // Twist, bend and roll joints are refused outright. They sit BETWEEN the
+      // real joints, and their names contain the same anatomy words, so
+      // `arm_bend_1_l` would claim the shoulder guide and put a marker a third
+      // of the way down the bicep with full confidence.
+      if (joint.helper) continue;
+
       // A sided guide must match a joint on that side. Without this, "hand"
       // matches both hands and the left wrist lands on whichever came first.
       if (wantSide !== 'center' && joint.side !== wantSide) continue;
@@ -298,7 +405,10 @@ export function matchJointsToGuides(
         guideId,
         jointIndex,
         jointName: joint.raw,
-        rank,
+        // A skinning joint wins a tie against a driver at the same rank. The
+        // fraction keeps it strictly a tiebreak: it can never reorder two
+        // different aliases.
+        rank: rank + (joint.skinning ? 0 : 0.5),
         // Later aliases are the ambiguous ones, so confidence falls with rank.
         confidence: Math.max(0.5, 1 - rank * 0.1)
       });

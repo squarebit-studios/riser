@@ -316,11 +316,64 @@ def process_texture(source, out_dir, max_size):
 # USD post-process
 # --------------------------------------------------------------------------
 
-def postprocess(target, tex_dir_name, max_size, eye_looks, unit_scale):
+def postprocess(target, tex_dir_name, max_size, eye_looks, unit_scale,
+                helper_names, want_materials):
     """Localise textures, kill the black fallbacks, and write the eye look."""
     from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade, Vt
 
     stage = Usd.Stage.Open(target)
+
+    # 0. Drop the rig scaffolding meshes. Removing a Mesh prim leaves the
+    #    Skeleton and every other mesh's binding to it untouched.
+    pruned = 0
+    if helper_names:
+        # Paths first, then remove: dropping a prim expires the handles the
+        # traversal is still holding, including its siblings' children.
+        doomed = [prim.GetPath() for prim in stage.Traverse()
+                  if prim.GetTypeName() == "Mesh"
+                  and prim.GetName() in helper_names]
+        for path in doomed:
+            if stage.RemovePrim(path):
+                pruned += 1
+        print("  helper mesh prims pruned: %d" % pruned)
+
+    # 0b. And the rig's control hierarchy. Exporting the whole scene is what
+    #     gets the Skeleton written at the path the meshes bind to, but it also
+    #     writes every follicle, null and constraint space as an Xform - about
+    #     5,000 prims of pure animation scaffolding. three's USDComposer walks
+    #     into them and throws on the first xformOp:translate that carries no
+    #     default value, so this is not merely weight, it is a hard failure.
+    #
+    #     What survives is what an asset is: geometry, the skeleton that drives
+    #     it, and the materials. Anything holding none of those goes.
+    keep_types = {"Mesh", "Skeleton", "SkelAnimation", "Material", "Shader",
+                  "NodeGraph", "GeomSubset"}
+
+    def carries_content(prim):
+        if str(prim.GetTypeName()) in keep_types:
+            return True
+        for child in prim.GetChildren():
+            if carries_content(child):
+                return True
+        return False
+
+    scaffolding = []
+    for prim in stage.Traverse():
+        if str(prim.GetTypeName()) in keep_types:
+            continue
+        if not carries_content(prim):
+            scaffolding.append(prim.GetPath())
+    # Deepest last, so removing a parent does not strand a queued child path.
+    dropped = 0
+    for path in sorted(scaffolding, key=lambda p: len(str(p).split("/"))):
+        if stage.GetPrimAtPath(path) and stage.RemovePrim(path):
+            dropped += 1
+    print("  empty rig scaffolding prims pruned: %d" % dropped)
+
+    if not want_materials:
+        stage.GetRootLayer().Save()
+        return None
+
     out_dir = os.path.join(os.path.dirname(target), tex_dir_name)
     if os.path.isdir(out_dir):
         shutil.rmtree(out_dir)
@@ -457,9 +510,15 @@ def postprocess(target, tex_dir_name, max_size, eye_looks, unit_scale):
             if entry.get("projector"):
                 m = entry["projector"]
                 # Maya is column-major row-vector, same as Gf.Matrix4d rows.
-                rows = [m[0:4], m[4:8], m[8:12], m[12:16]]
-                rows[3] = [rows[3][0] * unit_scale, rows[3][1] * unit_scale,
-                           rows[3][2] * unit_scale, rows[3][3]]
+                # The whole linear part converts, not just the translation: the
+                # basis vectors' length IS the eye radius (SquarebitEye web
+                # README, "Scale = eye radius"), so leaving the 3x3 in
+                # centimetres while the position is in metres would put a 4.5
+                # metre eyeball on a 1.87 metre character.
+                rows = [[v * unit_scale for v in m[0:3]] + [m[3]],
+                        [v * unit_scale for v in m[4:7]] + [m[7]],
+                        [v * unit_scale for v in m[8:11]] + [m[11]],
+                        [v * unit_scale for v in m[12:15]] + [m[15]]]
                 prim.CreateAttribute("squarebitEye:projectorMatrix",
                                      Sdf.ValueTypeNames.Matrix4d,
                                      custom=True).Set(Gf.Matrix4d(*[
@@ -602,30 +661,31 @@ def main() -> int:
         eye_looks = capture_eye_looks(cmds, project_root)
         print("  squarebitEyeShader nodes: %d" % len(eye_looks))
 
-    # The character, not the rig scaffolding it is built on. Bind planes, the
-    # eye projection spheres and the PSD readout all live under .../rig and all
+    # The character, not the rig scaffolding it is built on: bind planes, the
+    # eye projection spheres, the PSD readout. All live under .../rig and all
     # export as untextured grey quads floating inside the character.
-    roots = []
+    #
+    # They cannot be dropped by exporting a selection, though, and that is the
+    # trap this walked into once: the skeleton lives under .../rig too. The 777
+    # bound joints are scattered across hundreds of follicle and offset chains,
+    # so the only Maya selection containing all of them also contains every
+    # bind plane. Exporting the model group alone wrote meshes whose
+    # skel:skeleton relationship pointed at a Skeleton prim that was not in the
+    # file, and three built 33 SkinnedMeshes with no Skeleton behind them.
+    #
+    # So: export the lot, and prune the helper meshes from the stage afterwards,
+    # where a Mesh can be removed without disturbing the skeleton at all.
+    helper_names = set()
     if not args.keep_rig_helpers:
-        keep, dropped = [], 0
         for mesh in meshes:
             full = (cmds.ls(mesh, long=True) or [mesh])[0]
             if HELPER_PARENT in full:
-                dropped += 1
-                continue
-            keep.append(full)
-        print("  rig helper meshes excluded: %d" % dropped)
-        # Export the model group rather than each mesh, so the hierarchy and
-        # the skeleton binding survive.
-        tops = set()
-        for full in keep:
-            parts = full.split("|")
-            if "model" in parts:
-                tops.add("|".join(parts[:parts.index("model") + 1]))
-        roots = sorted(tops) or keep
-        if roots:
-            cmds.select(roots, replace=True)
-            print("  exporting roots: %s" % ", ".join(roots))
+                parent = cmds.listRelatives(mesh, parent=True) or []
+                helper_names.add(re.sub(r"Shape$", "", mesh.split("|")[-1]))
+                if parent:
+                    helper_names.add(parent[0].split("|")[-1])
+        print("  rig helper meshes to prune: %d" % len(
+            [m for m in meshes if HELPER_PARENT in (cmds.ls(m, long=True) or [m])[0]]))
 
     options = {
         "file": target,
@@ -646,8 +706,6 @@ def main() -> int:
         # Without this the registry writes whatever native surface it can, and
         # three only understands UsdPreviewSurface.
         options["convertMaterialsTo"] = ["UsdPreviewSurface"]
-    if roots:
-        options["selection"] = True
     if joints:
         print("  exporting with UsdSkel")
 
@@ -658,16 +716,15 @@ def main() -> int:
         return 5
     print("Wrote %s (%.1f MB)" % (target, os.path.getsize(target) / 1e6))
 
-    if want_materials:
-        # Maya is in centimetres and the export writes metres; the eye
-        # projector matrix is captured in scene units, so it needs the same.
-        unit_scale = 0.01 if cmds.currentUnit(q=True, linear=True) == "cm" else 1.0
-        print("Post-process:")
-        postprocess(target, tex_dir_name, args.texture_size,
-                    eye_looks, unit_scale)
-        print("Wrote %s (%.1f MB)" % (target, os.path.getsize(target) / 1e6))
-        if args.usdz:
-            write_usdz(target, os.path.abspath(args.usdz))
+    # Maya is in centimetres and the export writes metres; the eye projector
+    # matrix is captured in scene units, so it needs the same conversion.
+    unit_scale = 0.01 if cmds.currentUnit(q=True, linear=True) == "cm" else 1.0
+    print("Post-process:")
+    postprocess(target, tex_dir_name, args.texture_size, eye_looks,
+                unit_scale, helper_names, want_materials)
+    print("Wrote %s (%.1f MB)" % (target, os.path.getsize(target) / 1e6))
+    if args.usdz:
+        write_usdz(target, os.path.abspath(args.usdz))
 
     return 0
 
