@@ -501,6 +501,34 @@ test.describe('curves are actually drawn', () => {
     await page.waitForTimeout(300);
   }
 
+  /**
+   * Fatten the curve lines, purely to make the measurement unambiguous.
+   *
+   * The subject is whether the line draws at all, and a 2.5px antialiased line
+   * a few dozen pixels long sits close enough to the noise floor that the
+   * count wandered between runs. Width is converted to pixels USING the
+   * resolution, so a stale resolution still produces nothing at any width -
+   * the property under test is untouched, the signal is just louder.
+   */
+  async function fattenLines(page: Page, width: number): Promise<void> {
+    await page.evaluate((width) => {
+      const app = window.__riser as unknown as {
+        viewport: { scene: { traverse(fn: (o: unknown) => void): void } };
+      };
+      app.viewport.scene.traverse((object) => {
+        const o = object as {
+          name?: string;
+          material?: { linewidth: number; needsUpdate: boolean };
+        };
+        if (o.name?.startsWith('Curve:') && o.material) {
+          o.material.linewidth = width;
+          o.material.needsUpdate = true;
+        }
+      });
+    }, width);
+    await page.waitForTimeout(300);
+  }
+
   /** Show or hide only the curve LINES, leaving their control vertices alone. */
   async function setLinesVisible(page: Page, visible: boolean): Promise<number> {
     return page.evaluate((visible) => {
@@ -527,6 +555,7 @@ test.describe('curves are actually drawn', () => {
 
     // Hiding ONLY the line materials isolates the line: the control vertices
     // stay drawn, so whatever changes is the line and nothing else.
+    await fattenLines(page, 20);
     const withLine = await grabFrame(page);
 
     const hidden = await setLinesVisible(page, false);
@@ -536,14 +565,13 @@ test.describe('curves are actually drawn', () => {
 
     await setLinesVisible(page, true);
 
-    // Calibrated, not guessed. A drawn line measures around 170 pixels here;
-    // with the resolution bug it measured 4. An order of magnitude above the
-    // failure mode discriminates without being sensitive to antialiasing.
+    // With a 20px line this is over a thousand pixels when it draws and a
+    // handful when it does not, so the threshold sits nowhere near either edge.
     const changed = countDifferences(withLine, withoutLine);
     expect(
       changed,
       `hiding the line changed only ${changed} pixels, so it was not drawn`
-    ).toBeGreaterThan(100);
+    ).toBeGreaterThan(400);
   });
 
   test('the line survives a window resize', async ({ page }) => {
@@ -565,17 +593,21 @@ test.describe('curves are actually drawn', () => {
     await page.setViewportSize({ width: 1700, height: 950 });
     await page.waitForTimeout(600);
 
+    await fattenLines(page, 20);
     const withLine = await grabFrame(page);
     await setLinesVisible(page, false);
     await page.waitForTimeout(250);
     const withoutLine = await grabFrame(page);
     await setLinesVisible(page, true);
 
+    // With a 20px line this is over a thousand pixels when the line draws and
+    // a handful when the resolution is stale, so the threshold is nowhere near
+    // either edge.
     const changed = countDifferences(withLine, withoutLine);
     expect(
       changed,
       `after resizing, hiding the line changed only ${changed} pixels`
-    ).toBeGreaterThan(100);
+    ).toBeGreaterThan(400);
   });
 });
 
@@ -653,5 +685,140 @@ test.describe('work survives a reload', () => {
     await page.waitForFunction(() => window.__riser !== undefined);
     await page.waitForTimeout(400);
     expect(await guides(page)).toHaveLength(0);
+  });
+});
+
+test.describe('view modes', () => {
+  /** Read the rendered frame back as raw pixels. */
+  async function frame(page: Page): Promise<number[]> {
+    return page.evaluate(() => {
+      const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+      const readback = document.createElement('canvas');
+      readback.width = canvas.width;
+      readback.height = canvas.height;
+      const ctx = readback.getContext('2d')!;
+      ctx.drawImage(canvas, 0, 0);
+      return Array.from(ctx.getImageData(0, 0, readback.width, readback.height).data);
+    });
+  }
+
+  function differences(a: number[], b: number[]): number {
+    let changed = 0;
+    for (let i = 0; i < a.length; i += 4) {
+      if (
+        Math.abs(a[i]! - b[i]!) > 6 ||
+        Math.abs(a[i + 1]! - b[i + 1]!) > 6 ||
+        Math.abs(a[i + 2]! - b[i + 2]!) > 6
+      ) {
+        changed++;
+      }
+    }
+    return changed;
+  }
+
+  async function setMode(page: Page, label: string): Promise<void> {
+    await page.getByRole('button', { name: label, exact: true }).click();
+    await page.waitForTimeout(400);
+  }
+
+  test('each mode renders differently from the others', async ({ page }) => {
+    await openApp(page);
+    await loadBiped(page);
+
+    // At subdivision level 0, where the polygons are large enough for the
+    // modes to be told apart. Flat shading a level-2 limit surface looks all
+    // but identical to smooth shading, because its facets are sub-pixel - that
+    // is the shading working correctly, not a difference worth asserting.
+    await page.locator('input[type="range"]').fill('0');
+    await page.waitForTimeout(600);
+
+    const lit = await frame(page);
+
+    await setMode(page, 'Flat');
+    const flat = await frame(page);
+
+    await setMode(page, 'Wire');
+    const wire = await frame(page);
+
+    await setMode(page, 'Lit wire');
+    const litWire = await frame(page);
+
+    // Every mode has to be visibly its own thing. Faceted shading changes the
+    // whole surface, so it differs substantially; wireframe removes the
+    // surface entirely, so it differs most of all.
+    expect(differences(lit, flat), 'flat looked identical to lit').toBeGreaterThan(2000);
+    expect(differences(lit, wire), 'wireframe looked identical to lit').toBeGreaterThan(
+      5000
+    );
+    expect(
+      differences(wire, litWire),
+      'lit wireframe looked identical to plain wireframe'
+    ).toBeGreaterThan(2000);
+    expect(
+      differences(lit, litWire),
+      'lit wireframe looked identical to lit'
+    ).toBeGreaterThan(500);
+  });
+
+  test('returns to exactly the lit render when switched back', async ({ page }) => {
+    // The asset's own materials have to survive being overridden, or "lit"
+    // stops meaning what the file described.
+    await openApp(page);
+    await loadBiped(page);
+    await page.waitForTimeout(500);
+
+    const before = await frame(page);
+    await setMode(page, 'Wire');
+    await setMode(page, 'Flat');
+    await setMode(page, 'Lit');
+    const after = await frame(page);
+
+    expect(differences(before, after), 'lit did not come back unchanged').toBeLessThan(
+      200
+    );
+  });
+
+  test('guides can still be placed while the surface is invisible', async ({ page }) => {
+    // Wireframe suppresses the surface with an invisible material. Picking
+    // must not care - being able to see through the mesh is exactly when you
+    // want to place an interior joint.
+    await openApp(page);
+    await loadBiped(page);
+    await clearGuides(page);
+    await setMode(page, 'Wire');
+
+    await page.getByTestId('guide-chest').click();
+    await clickViewport(page);
+    await page.waitForFunction(
+      () => window.__riser!.store.document.guides.length > 0
+    );
+
+    const placed = (await guides(page)).find((g) => g.id === 'chest');
+    expect(placed, 'no guide was placed in wireframe mode').toBeDefined();
+    expect(placed!.binding, 'the guide bound to nothing').not.toBeNull();
+  });
+
+  test('the mode survives a subdivision change', async ({ page }) => {
+    // Changing the level rebuilds the displayed mesh, and a fresh limit
+    // surface carries the material it was built with. Without a reapply the
+    // wireframe silently disappears.
+    await openApp(page);
+    await loadBiped(page);
+    await setMode(page, 'Wire');
+    const atDefault = await frame(page);
+
+    await page.locator('input[type="range"]').fill('0');
+    await page.waitForTimeout(600);
+    const atZero = await frame(page);
+
+    // Still a wireframe: nothing like the lit render, which would be mostly
+    // solid surface.
+    await setMode(page, 'Lit');
+    const litAtZero = await frame(page);
+    expect(
+      differences(atZero, litAtZero),
+      'the wireframe was lost when the subdivision level changed'
+    ).toBeGreaterThan(5000);
+    void atDefault;
   });
 });

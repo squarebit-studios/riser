@@ -16,6 +16,7 @@ import { CameraRig } from '../viewport/CameraRig';
 import { SurfacePicker, resolveBindingWorld } from '../viewport/Picker';
 import { Overlays } from '../viewport/Overlays';
 import { SubdivSet } from '../viewport/SubdivSurface';
+import { ViewModeController } from '../viewport/ViewModes';
 import { documentToWorld, documentToWorldDirection } from '../viewport/space';
 import { CharacterModel } from '../io/CharacterModel';
 import {
@@ -71,6 +72,7 @@ export class RiserApp {
 
   private character: CharacterModel | null = null;
   private subdivs: SubdivSet | null = null;
+  private viewModes: ViewModeController | null = null;
   private unsubscribeDoc: () => void;
   private unsubscribeUi: (() => void) | null = null;
   private unsubscribeFrame: (() => void) | null = null;
@@ -109,6 +111,13 @@ export class RiserApp {
   mount(container: HTMLElement): void {
     this.viewport.attach(container);
     const canvas = this.viewport.renderer.domElement;
+
+    // Follows what is DISPLAYED, which is the cage at subdivision level 0 and
+    // the limit surface above it - not the character's mesh list, which is
+    // always the cages.
+    this.viewModes = new ViewModeController(() =>
+      this.subdivs?.displayedMeshes() ?? this.character?.meshes ?? []
+    );
 
     this.cameraRig = new CameraRig(this.viewport.camera, canvas);
     this.overlays = new Overlays(this.viewport.overlayRoot);
@@ -163,6 +172,8 @@ export class RiserApp {
   unmount(): void {
     if (this.autosaveTimer) clearTimeout(this.autosaveTimer);
     this.autosaveTimer = null;
+    this.viewModes?.dispose();
+    this.viewModes = null;
     this.subdivs?.dispose();
     this.subdivs = null;
     this.unsubscribeFrame?.();
@@ -206,6 +217,8 @@ export class RiserApp {
   }
 
   private setCharacter(model: CharacterModel): void {
+    // Put the old character's materials back before its meshes are discarded.
+    this.viewModes?.dispose();
     this.subdivs?.dispose();
     this.subdivs = null;
     this.viewport.clearCharacter();
@@ -218,6 +231,10 @@ export class RiserApp {
     this.subdivs = new SubdivSet(model.meshes);
     this.subdivs.setLevel(ui0.subdivLevel);
     ui0.setSubdivClamped(this.subdivs.clamped);
+    // A freshly built limit surface carries the material it was constructed
+    // with and knows nothing about view modes, so the mode has to be reapplied
+    // after every rebuild.
+    this.viewModes?.setMode(ui0.viewMode);
 
     const bounds = model.bounds;
     this.overlays?.fitTo(bounds);
@@ -681,9 +698,15 @@ export class RiserApp {
     if (state.symmetry !== previous.symmetry) {
       this.overlays?.setSymmetryVisible(state.symmetry);
     }
+    if (state.viewMode !== previous.viewMode) {
+      this.viewModes?.setMode(state.viewMode);
+    }
     if (state.subdivLevel !== previous.subdivLevel && this.subdivs) {
       this.subdivs.setLevel(state.subdivLevel);
       useUiStore.getState().setSubdivClamped(this.subdivs.clamped);
+      // Changing the level rebuilds the displayed meshes, so the shading has
+      // to be put back on the new ones.
+      this.viewModes?.refresh();
       // Markers deliberately do NOT move. Their offsets were measured against
       // the surface the user clicked, and re-deriving them on a level change
       // would relocate work the user already did.

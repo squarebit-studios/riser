@@ -19,6 +19,7 @@ import type { ToolId } from '../tools/types';
 import type { ControlVertexRef } from '../tools/curve/CurveLayer';
 import { DEFAULT_TEMPLATE_ID } from '../templates';
 import { DEFAULT_SUBDIV_LEVEL } from '../viewport/SubdivSurface';
+import { DEFAULT_VIEW_MODE, type ViewMode } from '../viewport/ViewModes';
 
 export interface UiState {
   templateId: string;
@@ -40,6 +41,8 @@ export interface UiState {
   subdivLevel: number;
   /** Set when a mesh was too dense for the requested level. */
   subdivClamped: boolean;
+  /** How the character is shaded: lit, flat, wireframe, or lit with wires. */
+  viewMode: ViewMode;
   showGrid: boolean;
   showMarkers: boolean;
   showCurves: boolean;
@@ -64,6 +67,7 @@ export interface UiState {
   toggleSymmetry: () => void;
   toggleXray: () => void;
   setSubdivLevel: (level: number) => void;
+  setViewMode: (mode: ViewMode) => void;
   setSubdivClamped: (clamped: boolean) => void;
   toggleGrid: () => void;
   toggleMarkers: () => void;
@@ -89,6 +93,7 @@ export const useUiStore = create<UiState>((set) => ({
   xray: true,
   subdivLevel: DEFAULT_SUBDIV_LEVEL,
   subdivClamped: false,
+  viewMode: DEFAULT_VIEW_MODE,
   showGrid: true,
   showMarkers: true,
   showCurves: true,
@@ -122,6 +127,7 @@ export const useUiStore = create<UiState>((set) => ({
   toggleSymmetry: () => set((s) => ({ symmetry: !s.symmetry })),
   toggleXray: () => set((s) => ({ xray: !s.xray })),
   setSubdivLevel: (subdivLevel) => set({ subdivLevel }),
+  setViewMode: (viewMode) => set({ viewMode }),
   setSubdivClamped: (subdivClamped) => set({ subdivClamped }),
   toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
   toggleMarkers: () => set((s) => ({ showMarkers: !s.showMarkers })),

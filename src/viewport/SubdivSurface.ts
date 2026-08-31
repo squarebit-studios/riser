@@ -286,6 +286,17 @@ export class SubdivSet {
     return this.surfaces.some((s) => s.isSubdivided);
   }
 
+  /**
+   * The meshes the camera is currently drawing.
+   *
+   * The cage at level 0, the limit surface above it. View modes and anything
+   * else that shades what the user sees has to follow this rather than the
+   * character's mesh list, which is always the cages.
+   */
+  displayedMeshes(): THREE.Mesh[] {
+    return this.surfaces.map((s) => s.displayed);
+  }
+
   get totals(): { cageFaces: number; limitFaces: number } {
     return this.surfaces.reduce(
       (acc, s) => {

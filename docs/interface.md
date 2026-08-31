@@ -25,12 +25,27 @@ Left to right.
 | **Markers** / **Curves** | Switches the active tool. Also `1` and `2`. |
 | **Symmetry** | Mirrors placements across the character's centre line, and shows the symmetry plane in the viewport. On by default. Also `S`. |
 | **X-ray** | Draws markers and curves through the mesh. On by default. Also `X`. |
+| **Lit** / **Flat** / **Wire** / **Lit wire** | How the character is shaded. See below. |
 | **Subdiv** | Catmull-Clark preview level, 0 to 3. Display only: it never moves a marker you have placed. The number turns amber when the level had to be reduced for a dense mesh. |
 | **Auto-place** | Fills in guides automatically: from the character's own skeleton when it has one, otherwise by measuring its shape. Disabled until a character is loaded. Never overwrites anything you placed. |
 | **Undo** / **Redo** | Steps the document history. The tooltip names the step, for example *Undo Place Chest*. |
 | **Frame** | Frames the whole character. |
 | **Open** | Loads a Riser document back in. Accepts `.usda` and `.usd`. |
 | **Export USD** | Downloads the document as a `.usda` layer. A bullet after the label means there are unexported changes. |
+
+### Shading
+
+Four ways to draw the character. Each answers a question the others cannot.
+
+| Mode | What it is for |
+|---|---|
+| **Lit** | The character as its own materials describe it. The default. |
+| **Flat** | Faceted shading, so every polygon's own plane is visible. Smooth shading hides topology. Most useful at Subdiv 0, since a subdivided surface has facets too small to see. |
+| **Wire** | Edges only, seen through. The clearest way to judge whether a guide meant for a joint centre is really inside the limb rather than stuck to the near side of it. |
+| **Lit wire** | Lit surface with its edges drawn over, for placing on a dense mesh where the silhouette alone does not show where an edge loop runs. |
+
+Shading is display only. It never moves a guide, and you can place and drag
+markers in any mode, including through an invisible surface in **Wire**.
 
 ## Checklist
 

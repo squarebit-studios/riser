@@ -12,6 +12,7 @@ import { STOCK_CHARACTERS } from '../stock';
 import { downloadUsda, readUsdaFile } from '../../doc/storage';
 import { SUPPORTED_EXTENSIONS } from '../../io/loadCharacter';
 import { MAX_SUBDIV_LEVEL, MIN_SUBDIV_LEVEL } from '../../viewport/SubdivSurface';
+import { VIEW_MODES } from '../../viewport/ViewModes';
 
 export function Toolbar(): JSX.Element {
   const app = useApp();
@@ -24,6 +25,7 @@ export function Toolbar(): JSX.Element {
   const xray = useUiStore((s) => s.xray);
   const hasSkeleton = useUiStore((s) => s.characterHasSkeleton);
   const characterName = useUiStore((s) => s.characterName);
+  const viewMode = useUiStore((s) => s.viewMode);
   const subdivLevel = useUiStore((s) => s.subdivLevel);
   const subdivClamped = useUiStore((s) => s.subdivClamped);
   const dirty = useUiStore((s) => s.dirty);
@@ -122,6 +124,22 @@ export function Toolbar(): JSX.Element {
       >
         X-ray
       </ToggleButton>
+
+      <Divider />
+
+      {/* Shading. Wireframe is not decoration: it is the only way to see
+          whether a guide meant for a joint centre is actually inside the limb
+          rather than stuck to the near side of it. */}
+      {VIEW_MODES.map((entry) => (
+        <ToggleButton
+          key={entry.id}
+          active={viewMode === entry.id}
+          onClick={() => useUiStore.getState().setViewMode(entry.id)}
+          title={entry.hint}
+        >
+          {entry.label}
+        </ToggleButton>
+      ))}
 
       <Divider />
 
