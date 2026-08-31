@@ -40,7 +40,7 @@ declare global {
       autoPlaceFromSkeleton(options?: { announce?: boolean }): number;
       autoPlaceFromProportions(options?: { announce?: boolean }): number;
       clearGuides(): void;
-      surfaceDepth(guideId: string): number;
+      placementDepth(guideId: string): number;
       saveSessionNow(): boolean;
       forgetSession(): void;
       saveDocument(name?: string): Promise<unknown>;
@@ -323,9 +323,8 @@ test.describe('choosing where a click lands', () => {
     );
 
     const chest = (await guides(page)).find((g) => g.id === 'chest')!;
-    // On the skin means the binding resolves to the position with no
-    // displacement of its own.
-    const depth = await page.evaluate(() => window.__riser!.surfaceDepth('chest'));
+    // On the skin means no inward displacement at all.
+    const depth = await page.evaluate(() => window.__riser!.placementDepth('chest'));
     expect(Math.abs(depth)).toBeLessThan(0.005);
     expect(chest.binding).not.toBeNull();
   });
@@ -344,9 +343,19 @@ test.describe('choosing where a click lands', () => {
       () => window.__riser!.store.document.guides.length > 0
     );
 
-    const depth = await page.evaluate(() => window.__riser!.surfaceDepth('chest'));
-    // Well inside, and measured rather than a token nudge.
-    expect(depth).toBeGreaterThan(0.02);
+    const depth = await page.evaluate(() => window.__riser!.placementDepth('chest'));
+
+    // The threshold has to be well clear of the ESTIMATE this falls back to
+    // when the volume cannot be measured, which is 1.2% of the character's
+    // height - about 0.022 on this biped. An earlier version of this test
+    // asserted > 0.02 and passed on the fallback for weeks: the exit face was
+    // never being found at all, because three culls back faces when
+    // raycasting a front-facing material, and the test could not tell the
+    // difference between a measurement and a guess.
+    //
+    // Measured, the chest of this biped is 0.22 thick, so a real centre
+    // placement is 0.11 deep - five times the fallback.
+    expect(depth).toBeGreaterThan(0.06);
   });
 
   test('centre goes deeper than surface at the same spot', async ({ page }) => {
@@ -361,12 +370,32 @@ test.describe('choosing where a click lands', () => {
       await page.waitForFunction(
         () => window.__riser!.store.document.guides.length > 0
       );
-      return page.evaluate(() => window.__riser!.surfaceDepth('chest'));
+      return page.evaluate(() => window.__riser!.placementDepth('chest'));
     };
 
     const onSurface = await place('surface');
     const inCentre = await place('center');
-    expect(inCentre).toBeGreaterThan(onSurface + 0.02);
+    expect(inCentre).toBeGreaterThan(onSurface + 0.06);
+  });
+
+  test('auto puts a joint inside and a surface guide on the skin', async ({
+    page
+  }) => {
+    // Auto is the default, so this is what almost every user actually gets.
+    await openApp(page);
+    await loadBiped(page);
+    await clearGuides(page);
+    await setPlacement(page, 'auto');
+
+    await page.getByTestId('guide-chest').click();
+    await clickViewport(page);
+    await page.waitForFunction(
+      () => window.__riser!.store.document.guides.length > 0
+    );
+
+    // Chest is marked interior in the biped template, so auto measures it.
+    const depth = await page.evaluate(() => window.__riser!.placementDepth('chest'));
+    expect(depth).toBeGreaterThan(0.06);
   });
 
   test('the chosen mode survives a reload', async ({ page }) => {

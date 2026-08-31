@@ -37,7 +37,7 @@ import { LAYER_OVERLAY, type Viewport } from '../../viewport/Viewport';
 import { worldToDocument } from '../../viewport/space';
 import { curveDef } from '../../templates';
 import { mirrorPick } from '../mirror';
-import { resolvePlacement, type PlacementMode } from '../placement';
+import { needsVolume, resolvePlacement, type PlacementMode } from '../placement';
 import type { Tool, ToolPointerEvent } from '../types';
 import { insertionIndex } from './geometry';
 import type { ControlVertexRef, CurveLayer } from './CurveLayer';
@@ -106,7 +106,7 @@ export class CurveTool implements Tool {
     if (!pick) return true; // Off the mesh - hold rather than snap away.
 
     const { curveId, index } = this.dragging;
-    const point = this.curvePointFromPick(pick, this.pickThrough(event.x, event.y));
+    const point = this.curvePointFromPick(pick, this.volumeThrough(event.x, event.y));
     this.deps.store.apply(
       (d) => M.moveCurvePoint(d, curveId, index, point),
       `Move ${this.curveLabel(curveId)} point`,
@@ -180,7 +180,7 @@ export class CurveTool implements Tool {
 
     const doc = this.deps.store.document;
     const existing = doc.curves.find((c) => c.id === activeId);
-    const point = this.curvePointFromPick(pick, this.pickThrough(event.x, event.y));
+    const point = this.curvePointFromPick(pick, this.volumeThrough(event.x, event.y));
 
     // Mirrored curves are built alongside, so both sides stay in step and one
     // undo removes both points.
@@ -271,6 +271,14 @@ export class CurveTool implements Tool {
 
   private placementMode(): PlacementMode {
     return this.deps.getPlacementMode?.() ?? 'auto';
+  }
+
+  /** The through-pick, but only when the current mode will actually use it. */
+  private volumeThrough(x: number, y: number): PickResult[] | undefined {
+    // Curve points carry no interior flag of their own, so only an explicit
+    // centre placement needs the volume measured.
+    if (!needsVolume(this.placementMode(), false)) return undefined;
+    return this.pickThrough(x, y);
   }
 
   /** Every surface the click ray crosses, near to far. */

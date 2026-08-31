@@ -77,6 +77,17 @@ export const PLACEMENT_MODES: readonly {
  */
 const FALLBACK_DEPTH_FRACTION = 0.012;
 
+/**
+ * Whether this placement needs the volume measured.
+ *
+ * Worth asking before raycasting: the through-pick has to force materials
+ * double-sided, and a curve drag fires it every frame. Surface and free modes
+ * never look at the result, so they should not pay for it.
+ */
+export function needsVolume(mode: PlacementMode, interior: boolean): boolean {
+  return mode === 'center' || (mode === 'auto' && interior);
+}
+
 export interface PlacementResult {
   /** Cage-local offset from the bound triangle to the final position. */
   offset: Vec3;
@@ -103,8 +114,7 @@ export function resolvePlacement(
     characterHeight: number;
   }
 ): PlacementResult {
-  const wantsInside =
-    mode === 'center' || (mode === 'auto' && options.interior);
+  const wantsInside = needsVolume(mode, options.interior);
 
   // Free and surface both keep the point the user clicked. They differ in what
   // happens NEXT - a free marker drags off the surface - not in where the

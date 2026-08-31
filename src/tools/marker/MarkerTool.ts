@@ -40,6 +40,7 @@ import { LAYER_OVERLAY, type Viewport } from '../../viewport/Viewport';
 import { documentToWorld, worldToDocument } from '../../viewport/space';
 import { mirrorPick } from '../mirror';
 import {
+  needsVolume,
   pointOnCameraPlane,
   resolvePlacement,
   type PlacementMode
@@ -184,7 +185,9 @@ export class MarkerTool implements Tool {
     // Every crossing of the click ray, so a centre placement can be measured
     // rather than assumed. Gathered once and reused by the mirrored guide,
     // which shoots its own ray.
-    const through = this.pickThrough(event.x, event.y);
+    const through = needsVolume(this.placementMode(), !!def.interior)
+      ? this.pickThrough(event.x, event.y)
+      : undefined;
 
     const guides: Guide[] = [
       this.guideFromPick(activeId, def.group, pick, !!def.interior, through)

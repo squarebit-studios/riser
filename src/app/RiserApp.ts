@@ -19,7 +19,6 @@ import { SubdivSet } from '../viewport/SubdivSurface';
 import { ViewModeController } from '../viewport/ViewModes';
 import { SkeletonView } from '../viewport/SkeletonView';
 import { documentToWorld, documentToWorldDirection } from '../viewport/space';
-import { nearestPointOnMeshes } from '../viewport/nearest';
 import { CharacterModel } from '../io/CharacterModel';
 import {
   loadCharacterFromFile,
@@ -876,20 +875,29 @@ export class RiserApp {
   }
 
   /**
-   * How far a guide sits from the character's surface, in document units.
+   * How far below its own surface a guide was placed, in document units.
    *
-   * Exposed for the end-to-end tests, which need to assert on the difference
-   * between placement modes. Asserting on the OUTCOME - this marker is inside
-   * the body - rather than on the offset arithmetic is what makes the test
-   * survive a change in how the offset is composed.
+   * Exposed for the end-to-end tests, which assert on the difference between
+   * placement modes. This is the inward component of the binding offset along
+   * the guide normal - precisely the quantity a placement mode sets - and is
+   * zero on the surface, half a limb thick at the centre, and the fallback
+   * fraction when the volume could not be measured.
+   *
+   * NOT the distance to the nearest surface, which was the first thing tried
+   * and is a different number: from inside a chest the nearest surface is
+   * sideways, not back along the click, so a correct 0.11 deep placement
+   * reported 0.047 and the test could not say what it meant to say.
    */
-  surfaceDepth(guideId: string): number {
+  placementDepth(guideId: string): number {
     const guide = this.store.document.guides.find((g) => g.id === guideId);
-    if (!guide || !this.character) return 0;
+    const offset = guide?.binding?.offset;
+    if (!guide || !offset) return 0;
 
-    const world = documentToWorld(this.documentRoot, guide.position);
-    const nearest = nearestPointOnMeshes(this.character.meshes, world);
-    return nearest ? nearest.worldPoint.distanceTo(world) : 0;
+    return -(
+      offset[0] * guide.normal[0] +
+      offset[1] * guide.normal[1] +
+      offset[2] * guide.normal[2]
+    );
   }
 
   clearGuides(): void {

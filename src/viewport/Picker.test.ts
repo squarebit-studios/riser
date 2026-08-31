@@ -4,7 +4,8 @@ import {
   faceVertexIndices,
   barycentricAt,
   evaluateBinding,
-  evaluateBindingNormal
+  evaluateBindingNormal,
+  Picker
 } from './Picker';
 import type { Vec3 } from '../doc/types';
 
@@ -166,5 +167,98 @@ describe('evaluateBindingNormal', () => {
     );
     const n = evaluateBindingNormal(g, 0, [1 / 3, 1 / 3, 1 / 3]);
     expectVec(n, [0, 0, 1]);
+  });
+});
+
+describe('measuring through a volume', () => {
+  /** A unit box with an ordinary front-facing material, as characters have. */
+  function boxMesh(): THREE.Mesh {
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial()
+    );
+    mesh.updateMatrixWorld(true);
+    return mesh;
+  }
+
+  function cameraLookingDownZ(): THREE.PerspectiveCamera {
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+    camera.position.set(0, 0, 5);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld(true);
+    return camera;
+  }
+
+  it('finds the far side of a front-facing mesh', () => {
+    // THE bug this guards. three honours material.side when raycasting, and a
+    // character is front-facing because that is what you want to RENDER. A
+    // plain ray therefore reports the entry face and nothing else, the
+    // thickness silently measures as nothing, and every centre placement
+    // quietly falls back to a guess - on every character, every time.
+    const mesh = boxMesh();
+    expect((mesh.material as THREE.Material).side).toBe(THREE.FrontSide);
+
+    // Deliberately off dead centre: a ray through the exact middle of a quad
+    // face rides the diagonal shared by its two triangles and is reported as
+    // two hits on the SAME face, which has nothing to do with thickness.
+    const picker = new Picker(cameraLookingDownZ());
+    const hits = picker.pickThrough(55, 45, 100, 100, [mesh]);
+
+    expect(hits.length).toBeGreaterThanOrEqual(2);
+    expect(hits[0]!.point.z).toBeCloseTo(0.5, 5);
+    expect(hits[1]!.point.z).toBeCloseTo(-0.5, 5);
+  });
+
+  it('puts the materials back exactly as it found them', () => {
+    // It forces double-sided to see the exit face. Leaving them that way would
+    // change how the character renders as a side effect of a click.
+    const mesh = boxMesh();
+    const material = mesh.material as THREE.Material;
+    material.side = THREE.FrontSide;
+
+    new Picker(cameraLookingDownZ()).pickThrough(55, 45, 100, 100, [mesh]);
+    expect(material.side).toBe(THREE.FrontSide);
+  });
+
+  it('restores a material that was already double-sided', () => {
+    const mesh = boxMesh();
+    const material = mesh.material as THREE.Material;
+    material.side = THREE.DoubleSide;
+
+    new Picker(cameraLookingDownZ()).pickThrough(55, 45, 100, 100, [mesh]);
+    expect(material.side).toBe(THREE.DoubleSide);
+  });
+
+  it('handles one material shared across many meshes', () => {
+    // A character with no shading of its own gets a single clay material
+    // across all thirty-odd of its pieces.
+    const shared = new THREE.MeshStandardMaterial();
+    const group = new THREE.Group();
+    for (let i = 0; i < 3; i++) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), shared);
+      mesh.position.z = -i * 3;
+      group.add(mesh);
+    }
+    group.updateMatrixWorld(true);
+
+    const hits = new Picker(cameraLookingDownZ()).pickThrough(55, 45, 100, 100, [group]);
+    expect(hits.length).toBeGreaterThanOrEqual(6);
+    expect(shared.side).toBe(THREE.FrontSide);
+  });
+
+  it('returns hits in distance order', () => {
+    const mesh = boxMesh();
+    const hits = new Picker(cameraLookingDownZ()).pickThrough(55, 45, 100, 100, [mesh]);
+    for (let i = 1; i < hits.length; i++) {
+      expect(hits[i]!.distance).toBeGreaterThanOrEqual(hits[i - 1]!.distance);
+    }
+  });
+
+  it('returns nothing when the ray misses', () => {
+    const mesh = boxMesh();
+    mesh.position.set(50, 0, 0);
+    mesh.updateMatrixWorld(true);
+    const hits = new Picker(cameraLookingDownZ()).pickThrough(55, 45, 100, 100, [mesh]);
+    expect(hits).toEqual([]);
   });
 });

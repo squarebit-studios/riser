@@ -238,6 +238,13 @@ export class Picker {
    *
    * Returns hits in distance order, so [0] is what the user sees and [1] is
    * the far side of the same piece of geometry.
+   *
+   * TESTED DOUBLE-SIDED, which is the whole reason this cannot be an ordinary
+   * raycast. three's `Mesh.raycast` honours `material.side`, and characters
+   * arrive with front-facing materials because that is what you want to RENDER
+   * - so a plain ray reports only the entry face and the exit is culled. The
+   * measurement then quietly finds nothing to measure, every time, on every
+   * character. Materials are restored before this returns.
    */
   pickThrough(
     x: number,
@@ -251,11 +258,13 @@ export class Picker {
     this.raycaster.setFromCamera(this.ndc, this.camera);
 
     const results: PickResult[] = [];
-    for (const hit of this.raycaster.intersectObjects(targets, true)) {
-      const result = this.resultFromHit(hit);
-      if (result) results.push(result);
-      if (results.length >= limit) break;
-    }
+    withDoubleSided(targets, () => {
+      for (const hit of this.raycaster.intersectObjects(targets, true)) {
+        const result = this.resultFromHit(hit);
+        if (result) results.push(result);
+        if (results.length >= limit) break;
+      }
+    });
     return results;
   }
 
@@ -314,6 +323,40 @@ export class Picker {
       barycentric,
       distance: hit.distance
     };
+  }
+}
+
+/**
+ * Run `body` with every material under `targets` temporarily double-sided.
+ *
+ * Synchronous and restored in a `finally`, so nothing renders in between and
+ * an exception cannot leave the character inside out.
+ *
+ * Keyed by material rather than by mesh because materials are shared - a
+ * character with no shading of its own gets ONE clay material across all
+ * thirty-odd of its pieces, and restoring per mesh would write the same
+ * material back thirty times while recording it thirty times.
+ */
+export function withDoubleSided(targets: THREE.Object3D[], body: () => void): void {
+  const saved = new Map<THREE.Material, THREE.Side>();
+
+  for (const target of targets) {
+    target.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.material) return;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const material of materials) {
+        if (saved.has(material)) continue;
+        saved.set(material, material.side);
+        material.side = THREE.DoubleSide;
+      }
+    });
+  }
+
+  try {
+    body();
+  } finally {
+    for (const [material, side] of saved) material.side = side;
   }
 }
 
