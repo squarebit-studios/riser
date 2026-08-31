@@ -60,3 +60,9 @@ public/docs/
 
 # Vite's dependency pre-bundling cache. Machine-local build output.
 .vite/
+
+# Throwaway verification scripts written at the repo root. Real tests live in
+# src/**/*.test.ts and tests/e2e/.
+/check-*.ts
+/_*.ts
+/_*.mjs
