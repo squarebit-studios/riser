@@ -66,6 +66,7 @@ declare global {
         posed: boolean;
         clips: { name: string; duration: number }[];
         select(name: string | null): boolean;
+        seek(time: number): void;
       };
     };
   }
@@ -1827,9 +1828,35 @@ test.describe('animation playback', () => {
     await expect(page.getByTestId('clip-time')).not.toHaveText('0:00.00');
 
     // And the character actually moved, rather than the number alone.
-    expect(angleBetween(before, await boneQuaternion(page, 'ThighL'))).toBeGreaterThan(
-      0.05
-    );
+    //
+    // WAITED FOR, not sampled once. A walk cycle returns to its start twice a
+    // stride, so a single read taken at whatever instant the playhead wait
+    // happened to end can find the thigh back near rest and call a playing
+    // clip a failure. Polling asks the question this test means - "does the
+    // bone leave rest while the clip runs" - instead of asking whether it
+    // happened to be away from rest at one arbitrary moment.
+    await page
+      .waitForFunction(
+        (start) => {
+          const app = window.__riser as unknown as {
+            characterModel: { root: { getObjectByName(n: string): unknown } } | null;
+          };
+          const bone = app.characterModel?.root.getObjectByName('ThighL') as
+            | { quaternion: { toArray(): number[] } }
+            | undefined;
+          if (!bone) return false;
+          const q = bone.quaternion.toArray();
+          const dot = Math.abs(
+            start[0]! * q[0]! + start[1]! * q[1]! + start[2]! * q[2]! + start[3]! * q[3]!
+          );
+          return 2 * Math.acos(Math.min(1, dot)) > 0.05;
+        },
+        before,
+        { timeout: 10_000 }
+      )
+      .catch(() => {
+        throw new Error('the clip played but ThighL never left its rest rotation');
+      });
 
     await page.getByTestId('play-pause').click();
     const paused = await page.evaluate(() => window.__riser!.animation.time);
@@ -1873,12 +1900,25 @@ test.describe('animation playback', () => {
 
     // Uploading finds clips; playing one is still an act.
     await page.getByTestId('clip-Walk').click();
-    await page.getByTestId('play-pause').click();
-    await page.waitForFunction(() => window.__riser!.animation.time > 0.2);
-    // The USD character's own bones, driven by a glTF clip.
-    expect(
-      angleBetween([0, 0, 0, 1], await boneQuaternion(page, 'ThighL'))
-    ).toBeGreaterThan(0.05);
+
+    // Sampled by SEEKING to fixed times, not by playing and reading the bone
+    // whenever the wait happened to end.
+    //
+    // A walk cycle passes THROUGH the rest pose twice a stride, so a single
+    // sample at an arbitrary moment can legitimately find the thigh near
+    // neutral and call a working clip a failure. It did exactly that on CI
+    // while passing here every time. What this test actually means is "the
+    // glTF clip drives the USD character's own bones", and that is true if the
+    // bone leaves rest at any point in the cycle.
+    let furthest = 0;
+    for (const t of [0.1, 0.25, 0.4, 0.55, 0.7, 0.85]) {
+      await page.evaluate((time) => window.__riser!.animation.seek(time), t);
+      furthest = Math.max(
+        furthest,
+        angleBetween([0, 0, 0, 1], await boneQuaternion(page, 'ThighL'))
+      );
+    }
+    expect(furthest).toBeGreaterThan(0.05);
   });
 
   test('picking stops using the rest-pose BVH while a clip poses the rig', async ({
