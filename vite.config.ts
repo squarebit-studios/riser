@@ -1,10 +1,20 @@
 /// <reference types="vitest" />
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
 
 // riser.squarebitstudios.com serves from the domain root (see CNAME), so base is '/'.
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+
 export default defineConfig({
+  // The version, baked in at build time. package.json is the single source of
+  // truth; anything that shows a version reads this rather than keeping its
+  // own copy, which is how the old version.json managed to drift two releases
+  // behind without anyone noticing.
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version)
+  },
   base: '/',
   plugins: [react()],
   resolve: {

@@ -79,6 +79,7 @@ export function StatusBar(): JSX.Element {
         {dirty && <span aria-hidden="true">•</span>}
         {dirty ? 'Unsaved' : 'Saved'}
       </span>
+
     </footer>
   );
 }

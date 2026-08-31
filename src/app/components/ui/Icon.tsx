@@ -31,6 +31,7 @@ export type IconName =
   | 'bone'
   | 'grid'
   | 'shading'
+  | 'sun'
   | 'search'
   | 'chevronDown'
   | 'chevronRight'
@@ -148,6 +149,12 @@ const PATHS: Record<IconName, JSX.Element> = {
     <>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor" stroke="none" />
+    </>
+  ),
+  sun: (
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4 17 7M7 17l-1.6 1.6" />
     </>
   ),
   search: (

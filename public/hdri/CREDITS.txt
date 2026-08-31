@@ -1,0 +1,22 @@
+Squarebit Eye widget - environment reflection maps
+==================================================
+
+All four HDRIs are licensed CC0 (public domain). They were created by
+Greg Zaal and published on Poly Haven (https://polyhaven.com), and are
+redistributed with Blender, which is where these copies came from
+(Blender 5.1, datafiles/studiolights/world/, license.txt: "All HDRIs are
+licensed as CC0").
+
+  hdri-studio.exr   studio.exr      https://polyhaven.com/a/studio_small_01
+  hdri-day.exr      courtyard.exr   https://polyhaven.com/a/courtyard
+  hdri-sunset.exr   sunset.exr      https://polyhaven.com/a/venice_sunset
+  hdri-night.exr    night.exr       https://polyhaven.com/a/moonless_golf
+
+1K resolution, DWAB-compressed float EXR, as prepared by the Blender
+project:
+
+  oiiotool input.exr --ch R,G,B -d float --compression dwab:300 \
+    --clamp:min=0.0:max=32000.0 -o output.exr
+
+CC0 imposes no attribution requirement. This file exists so the
+provenance of a binary asset in the tree is answerable without guessing.

@@ -26,6 +26,7 @@ import { downloadUsda, readUsdaFile, type DocumentSummary } from '../../doc/stor
 import { SUPPORTED_EXTENSIONS } from '../../io/loadCharacter';
 import { VIEW_MODES } from '../../viewport/ViewModes';
 import { PLACEMENT_MODES } from '../../tools/placement';
+import { ENVIRONMENTS } from '../../viewport/environments';
 import {
   MenuBar as Bar,
   MenuBarMenu,
@@ -34,6 +35,8 @@ import {
   MenuSeparator
 } from './ui/Menu';
 import { Icon } from './ui/Icon';
+import { ChangelogDialog } from './ChangelogDialog';
+import { APP_VERSION } from '../version';
 
 export function MenuBar(): JSX.Element {
   const app = useApp();
@@ -41,12 +44,15 @@ export function MenuBar(): JSX.Element {
   const layerInput = useRef<HTMLInputElement>(null);
 
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
+  const [showChangelog, setShowChangelog] = useState(false);
   const dirty = useUiStore((s) => s.dirty);
   const characterName = useUiStore((s) => s.characterName);
   const hasSkeleton = useUiStore((s) => s.characterHasSkeleton);
   const templateId = useUiStore((s) => s.templateId);
   const viewMode = useUiStore((s) => s.viewMode);
   const placementMode = useUiStore((s) => s.placementMode);
+  const environment = useUiStore((s) => s.environment);
+  const useHdri = useUiStore((s) => s.useHdri);
   const guided = useUiStore((s) => s.guided);
   const ui = useUiStore();
   useUiStore((s) => s.docRevision);
@@ -76,10 +82,24 @@ export function MenuBar(): JSX.Element {
 
   return (
     <div className="flex h-9 shrink-0 items-center gap-2 bg-panel px-2">
-      <span className="flex select-none items-center gap-1.5 pl-1 pr-2 text-[13px] font-semibold tracking-tight text-ink">
+      <span className="flex select-none items-center gap-1.5 pl-1 text-[13px] font-semibold tracking-tight text-ink">
         <Icon name="layers" size={16} className="text-accent" />
         Riser
       </span>
+
+      {/* The version, as a pill beside the name. It answers "which build am I
+          looking at" without a menu, and opens what changed - which is the
+          next thing anyone wants after reading a version number. */}
+      <button
+        type="button"
+        onClick={() => setShowChangelog(true)}
+        title={`Riser ${APP_VERSION} - see what's new`}
+        aria-label={`Riser version ${APP_VERSION}. See what's new`}
+        data-testid="version-pill"
+        className="mr-1 rounded-full bg-panel-lighter px-2 py-0.5 font-mono text-[11px] text-ink-dim transition-colors hover:bg-accent-soft hover:text-accent"
+      >
+        v{APP_VERSION}
+      </button>
 
       <Bar>
         {/* ---------------------------------------------------------- File */}
@@ -253,6 +273,24 @@ export function MenuBar(): JSX.Element {
           ))}
 
           <MenuSeparator />
+          <MenuLabel>Lighting</MenuLabel>
+          {ENVIRONMENTS.map((preset) => (
+            <MenuItem
+              key={preset.id}
+              label={preset.label}
+              checked={environment === preset.id}
+              description={preset.hint}
+              onSelect={() => useUiStore.getState().setEnvironment(preset.id)}
+            />
+          ))}
+          <MenuItem
+            label="Photographed lighting"
+            checked={useHdri}
+            description="Off uses a generated sky - cleaner, and needs no download"
+            onSelect={() => useUiStore.getState().toggleHdri()}
+          />
+
+          <MenuSeparator />
           <MenuLabel>Show</MenuLabel>
           <MenuItem
             label="Character"
@@ -337,7 +375,16 @@ export function MenuBar(): JSX.Element {
           <MenuItem
             label="Getting started"
             icon="help"
-            onSelect={() => window.open('https://github.com/squarebit/riser#readme', '_blank')}
+            onSelect={() =>
+              window.open('https://github.com/squarebit-studios/riser#readme', '_blank')
+            }
+          />
+          <MenuItem
+            label="What's new"
+            icon="document"
+            description={`Riser ${APP_VERSION}`}
+            data-testid="open-changelog"
+            onSelect={() => setShowChangelog(true)}
           />
           <MenuSeparator />
           <MenuLabel>Keyboard</MenuLabel>
@@ -357,6 +404,8 @@ export function MenuBar(): JSX.Element {
         {characterName ?? 'No character'}
         {dirty && <span className="ml-1 text-accent">•</span>}
       </span>
+
+      {showChangelog && <ChangelogDialog onClose={() => setShowChangelog(false)} />}
 
       {/* Hidden file pickers ------------------------------------------- */}
       <input

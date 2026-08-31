@@ -15,6 +15,10 @@
 
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import {
+  EnvironmentController,
+  type EnvironmentId
+} from './environments';
 import { VIEWPORT_COLORS } from './palette';
 
 /** Render layer for the character and anything pickable. */
@@ -57,6 +61,7 @@ export class Viewport {
   private readonly clock = new THREE.Clock();
   private readonly frameCallbacks = new Set<FrameCallback>();
   private pmrem: THREE.PMREMGenerator | null = null;
+  private environments: EnvironmentController | null = null;
   private envTexture: THREE.Texture | null = null;
   private dark: boolean;
   private disposed = false;
@@ -94,7 +99,6 @@ export class Viewport {
     this.scene.add(this.characterRoot, this.overlayRoot);
 
     this.setupEnvironment();
-    this.setupLights();
     this.applyTheme();
   }
 
@@ -148,6 +152,8 @@ export class Viewport {
     this.detach();
     this.disposed = true;
     this.frameCallbacks.clear();
+    this.environments?.dispose();
+    this.environments = null;
     this.envTexture?.dispose();
     this.pmrem?.dispose();
     disposeSubtree(this.scene);
@@ -205,8 +211,22 @@ export class Viewport {
   }
 
   private applyTheme(): void {
+    this.applyBackground();
+  }
+
+  /**
+   * The background the current environment wants, or the theme's own.
+   *
+   * A sunset that leaves the viewport charcoal reads as a lighting bug rather
+   * than a choice - the character warms up and the world behind it does not.
+   * Studio keeps the app's background, because a neutral environment has no
+   * opinion about it.
+   */
+  private applyBackground(): void {
+    const fromEnvironment = this.environments?.backgroundFor(this.environmentId) ?? null;
     this.scene.background = new THREE.Color(
-      this.dark ? VIEWPORT_COLORS.background : VIEWPORT_COLORS.backgroundLight
+      fromEnvironment ??
+        (this.dark ? VIEWPORT_COLORS.background : VIEWPORT_COLORS.backgroundLight)
     );
   }
 
@@ -215,28 +235,28 @@ export class Viewport {
   // -----------------------------------------------------------------------
 
   private setupEnvironment(): void {
-    // RoomEnvironment gives materials something plausible to reflect without
-    // shipping an HDRI. The store's Eye widget uses the same one, so a
-    // character looks consistent across our sites.
+    // RoomEnvironment, immediately, so the first frame is lit without waiting
+    // on a download. EnvironmentController replaces it as soon as the chosen
+    // HDRI arrives - which matters because that first frame is what someone
+    // sees while the app is still starting.
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
     const env = new RoomEnvironment();
     this.envTexture = this.pmrem.fromScene(env, 0.04).texture;
     this.scene.environment = this.envTexture;
     env.dispose();
+
+    this.environments = new EnvironmentController(this.renderer, this.scene);
   }
 
-  private setupLights(): void {
-    // A soft key/fill pair on top of the IBL. Enough to read surface form on a
-    // flat-shaded grey character, which is what most uploads will be.
-    const key = new THREE.DirectionalLight(0xffffff, 1.6);
-    key.position.set(2, 3, 2.5);
-    const fill = new THREE.DirectionalLight(0xffffff, 0.5);
-    fill.position.set(-2.5, 1, -2);
-    const ambient = new THREE.AmbientLight(0xffffff, 0.25);
-    key.layers.enableAll();
-    fill.layers.enableAll();
-    ambient.layers.enableAll();
-    this.scene.add(key, fill, ambient);
+  /** Switch lighting environment. Resolves when its map is in place. */
+  async setEnvironment(id: EnvironmentId, useHdri: boolean): Promise<void> {
+    await this.environments?.apply(id, useHdri);
+    this.applyBackground();
+  }
+
+  /** The lighting environment currently applied. */
+  get environmentId(): EnvironmentId {
+    return this.environments?.activeId ?? 'studio';
   }
 
   /** Remove and dispose whatever character is currently loaded. */

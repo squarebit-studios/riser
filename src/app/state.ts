@@ -21,6 +21,11 @@ import { DEFAULT_TEMPLATE_ID } from '../templates';
 import { DEFAULT_SUBDIV_LEVEL } from '../viewport/SubdivSurface';
 import { DEFAULT_VIEW_MODE, type ViewMode } from '../viewport/ViewModes';
 import { DEFAULT_PLACEMENT_MODE, type PlacementMode } from '../tools/placement';
+import {
+  DEFAULT_ENVIRONMENT,
+  DEFAULT_USE_HDRI,
+  type EnvironmentId
+} from '../viewport/environments';
 
 /**
  * Which guides the template list is showing.
@@ -50,6 +55,9 @@ interface PersistedUi {
   viewMode: ViewMode;
   subdivLevel: number;
   placementMode: PlacementMode;
+  /** Which lighting environment the viewport uses. */
+  environment: EnvironmentId;
+  useHdri: boolean;
 }
 
 const LAYOUT_KEY = 'riser.ui.v1';
@@ -107,6 +115,15 @@ function loadLayout(): Partial<PersistedUi> {
     ) {
       out.placementMode = parsed.placementMode;
     }
+    if (
+      parsed.environment === 'studio' ||
+      parsed.environment === 'day' ||
+      parsed.environment === 'sunset' ||
+      parsed.environment === 'night'
+    ) {
+      out.environment = parsed.environment;
+    }
+    if (typeof parsed.useHdri === 'boolean') out.useHdri = parsed.useHdri;
     return out;
   } catch {
     // A private window, cleared site data, or a browser that refuses storage.
@@ -142,6 +159,10 @@ export interface UiState {
    * under it, or a free point in space.
    */
   placementMode: PlacementMode;
+  /** Which lighting environment the viewport uses. */
+  environment: EnvironmentId;
+  /** Photographed lighting, or the procedural sky. */
+  useHdri: boolean;
   showGrid: boolean;
   showMarkers: boolean;
   showCurves: boolean;
@@ -192,6 +213,8 @@ export interface UiState {
   setSubdivLevel: (level: number) => void;
   setViewMode: (mode: ViewMode) => void;
   setPlacementMode: (mode: PlacementMode) => void;
+  setEnvironment: (id: EnvironmentId) => void;
+  toggleHdri: () => void;
   setSubdivClamped: (clamped: boolean) => void;
   toggleGrid: () => void;
   toggleMarkers: () => void;
@@ -229,6 +252,8 @@ export const useUiStore = create<UiState>((set) => ({
   subdivClamped: false,
   viewMode: DEFAULT_VIEW_MODE,
   placementMode: DEFAULT_PLACEMENT_MODE,
+  environment: DEFAULT_ENVIRONMENT,
+  useHdri: DEFAULT_USE_HDRI,
   showGrid: true,
   showMarkers: true,
   showCurves: true,
@@ -274,6 +299,8 @@ export const useUiStore = create<UiState>((set) => ({
   setSubdivLevel: (subdivLevel) => set({ subdivLevel }),
   setViewMode: (viewMode) => set({ viewMode }),
   setPlacementMode: (placementMode) => set({ placementMode }),
+  setEnvironment: (environment) => set({ environment }),
+  toggleHdri: () => set((s) => ({ useHdri: !s.useHdri })),
   setSubdivClamped: (subdivClamped) => set({ subdivClamped }),
   toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
   toggleMarkers: () => set((s) => ({ showMarkers: !s.showMarkers })),
@@ -322,7 +349,9 @@ useUiStore.subscribe((state, previous) => {
     state.showGrid !== previous.showGrid ||
     state.viewMode !== previous.viewMode ||
     state.subdivLevel !== previous.subdivLevel ||
-    state.placementMode !== previous.placementMode;
+    state.placementMode !== previous.placementMode ||
+    state.environment !== previous.environment ||
+    state.useHdri !== previous.useHdri;
   if (!changed) return;
 
   const persisted: PersistedUi = {
@@ -334,7 +363,9 @@ useUiStore.subscribe((state, previous) => {
     showGrid: state.showGrid,
     viewMode: state.viewMode,
     subdivLevel: state.subdivLevel,
-    placementMode: state.placementMode
+    placementMode: state.placementMode,
+    environment: state.environment,
+    useHdri: state.useHdri
   };
   try {
     localStorage.setItem(LAYOUT_KEY, JSON.stringify(persisted));

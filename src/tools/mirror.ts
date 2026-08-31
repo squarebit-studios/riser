@@ -16,7 +16,7 @@
 // ==========================================================================
 
 import * as THREE from 'three';
-import type { SurfacePick, SurfacePicker } from '../viewport/Picker';
+import type { PickResult, SurfacePick, SurfacePicker } from '../viewport/Picker';
 import {
   documentToWorld,
   documentToWorldDirection,
@@ -55,13 +55,62 @@ export function mirrorPick(pick: SurfacePick, ctx: MirrorContext): SurfacePick |
     localNormal[2]
   ]);
 
-  // Back off along the normal so the ray starts outside the mesh and hits the
-  // near face, then search twice that far to be sure of crossing the surface.
-  const reach = Math.max(characterHeight * 0.5, 1e-3);
-  const origin = reflected.clone().addScaledVector(reflectedNormal, reach);
-  const direction = reflectedNormal.clone().negate();
-
+  const { origin, direction, reach } = mirrorRay(
+    reflected,
+    reflectedNormal,
+    characterHeight
+  );
   return picker.pickAlongRay(origin, direction, meshes, reach * 2);
+}
+
+/**
+ * Everything the mirrored ray crosses, so the far side can place at the same
+ * depth as the near one.
+ *
+ * Without this the mirrored guide was placed with no volume measurement at
+ * all: it fell back to an estimated depth while its partner used a measured
+ * one, so a symmetric pair came out at different depths. Symmetry that is
+ * symmetric in two axes and not the third is worse than none, because it looks
+ * right from the front.
+ */
+export function mirrorThrough(
+  pick: SurfacePick,
+  ctx: MirrorContext
+): PickResult[] {
+  const { picker, characterRoot, meshes, characterHeight } = ctx;
+  if (meshes.length === 0) return [];
+
+  const local = worldToDocument(characterRoot, pick.worldPoint.clone());
+  const localNormal = worldToDocumentDirection(characterRoot, pick.normal.clone());
+
+  const reflected = documentToWorld(characterRoot, [-local[0], local[1], local[2]]);
+  const reflectedNormal = documentToWorldDirection(characterRoot, [
+    -localNormal[0],
+    localNormal[1],
+    localNormal[2]
+  ]);
+
+  const { origin, direction } = mirrorRay(reflected, reflectedNormal, characterHeight);
+  // No `far` limit: the reflected ray has to cross the whole limb to find its
+  // far side, and the near-surface reach that mirrorPick uses would stop short.
+  return picker.pickThroughRay(origin, direction, meshes);
+}
+
+/**
+ * The reflected ray, backed off along the normal so it starts outside the mesh
+ * and hits the near face rather than beginning inside it.
+ */
+function mirrorRay(
+  reflected: THREE.Vector3,
+  reflectedNormal: THREE.Vector3,
+  characterHeight: number
+): { origin: THREE.Vector3; direction: THREE.Vector3; reach: number } {
+  const reach = Math.max(characterHeight * 0.5, 1e-3);
+  return {
+    origin: reflected.clone().addScaledVector(reflectedNormal, reach),
+    direction: reflectedNormal.clone().negate(),
+    reach
+  };
 }
 
 /** Reflect a document-space position across the symmetry plane. */

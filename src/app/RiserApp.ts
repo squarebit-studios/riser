@@ -1062,6 +1062,12 @@ export class RiserApp {
     if (state.symmetry !== previous.symmetry) {
       this.overlays?.setSymmetryVisible(state.symmetry);
     }
+    if (
+      state.environment !== previous.environment ||
+      state.useHdri !== previous.useHdri
+    ) {
+      void this.viewport.setEnvironment(state.environment, state.useHdri);
+    }
     if (state.viewMode !== previous.viewMode) {
       this.viewModes?.setMode(state.viewMode);
     }
@@ -1146,6 +1152,7 @@ export class RiserApp {
   private applyUiState(): void {
     const ui = useUiStore.getState();
     this.viewport.setTheme(ui.dark);
+    void this.viewport.setEnvironment(ui.environment, ui.useHdri);
     this.overlays?.setGridVisible(ui.showGrid);
     this.overlays?.setSymmetryVisible(ui.symmetry);
     this.markerLayer.setXray(ui.xray);

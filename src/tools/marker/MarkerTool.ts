@@ -38,12 +38,13 @@ import {
 } from '../../viewport/Picker';
 import { LAYER_OVERLAY, type Viewport } from '../../viewport/Viewport';
 import { documentToWorld, worldToDocument } from '../../viewport/space';
-import { mirrorPick } from '../mirror';
+import { mirrorPick, mirrorPosition } from '../mirror';
 import {
   localUnitsPerWorldUnit,
   needsVolume,
   pointOnCameraPlane,
   resolvePlacement,
+  volumeCentreFor,
   type PlacementMode
 } from '../placement';
 import { nearestPointOnMeshes, offsetToTarget } from '../../viewport/nearest';
@@ -199,8 +200,20 @@ export class MarkerTool implements Tool {
       const mirrorDef = guideDef(template, def.mirror);
       const mirrored = this.mirrorPick(pick);
       if (mirrored && mirrorDef) {
+        // The near side's placement, REFLECTED - not an independent
+        // measurement of the other arm. Measuring both meant two rays with
+        // different directions cutting different chords through the limb, and
+        // a symmetric pair landing centimetres apart in depth.
+        const nearCentre = volumeCentreFor(through, this.characterHeight());
         guides.push(
-          this.guideFromPick(def.mirror, mirrorDef.group, mirrored, !!mirrorDef.interior)
+          this.guideFromPick(
+            def.mirror,
+            mirrorDef.group,
+            mirrored,
+            !!mirrorDef.interior,
+            undefined,
+            nearCentre ? this.reflectWorld(nearCentre) : null
+          )
         );
       } else if (mirrorDef) {
         this.deps.onNotice?.(
@@ -220,7 +233,8 @@ export class MarkerTool implements Tool {
     group: string,
     surface: SurfacePick,
     interior: boolean,
-    through?: readonly PickResult[]
+    through?: readonly PickResult[],
+    worldTarget?: THREE.Vector3 | null
   ): Guide {
     // The placement mode decides what the click meant; the result is a single
     // cage-local offset that composes the two displacements at play:
@@ -232,6 +246,7 @@ export class MarkerTool implements Tool {
     const placement = resolvePlacement(this.placementMode(), surface, {
       interior,
       through,
+      worldTarget,
       characterHeight: this.characterHeight(),
       localPerWorld: localUnitsPerWorldUnit(surface.pick.object)
     });
@@ -454,6 +469,13 @@ export class MarkerTool implements Tool {
    * a real surface pick. Delegates to the shared helper so the marker and
    * curve tools mirror identically.
    */
+  /** Reflect a world point across the character's symmetry plane. */
+  private reflectWorld(world: THREE.Vector3): THREE.Vector3 {
+    const root = this.deps.getDocumentRoot();
+    const local = worldToDocument(root, world.clone());
+    return documentToWorld(root, mirrorPosition(local));
+  }
+
   private mirrorPick(pick: SurfacePick): SurfacePick | null {
     const character = this.deps.getCharacter();
     if (!character) return null;

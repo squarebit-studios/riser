@@ -270,6 +270,29 @@ export class Picker {
     return results;
   }
 
+  /** `pickThrough`, along an explicit ray rather than through the camera. */
+  pickThroughRay(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    targets: THREE.Object3D[],
+    far = Infinity,
+    limit = 64
+  ): PickResult[] {
+    this.raycaster.set(origin, direction.clone().normalize());
+    this.raycaster.far = far;
+
+    const results: PickResult[] = [];
+    withDoubleSided(targets, () => {
+      for (const hit of this.raycaster.intersectObjects(targets, true)) {
+        const result = this.resultFromHit(hit);
+        if (result) results.push(result);
+        if (results.length >= limit) break;
+      }
+    });
+    this.raycaster.far = Infinity;
+    return results;
+  }
+
   /** Build a `PickResult` from whatever ray the raycaster currently holds. */
   private pickWithCurrentRay(targets: THREE.Object3D[]): PickResult | null {
     const hits = this.raycaster.intersectObjects(targets, true);
@@ -494,6 +517,20 @@ export class SurfacePicker {
     targets: THREE.Object3D[]
   ): PickResult[] {
     return this.displayed.pickThrough(x, y, width, height, targets);
+  }
+
+  /**
+   * Every displayed surface an explicit ray crosses. The mirrored counterpart
+   * of `pickThrough`, for placements that come from a reflected ray rather
+   * than a screen position.
+   */
+  pickThroughRay(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    targets: THREE.Object3D[],
+    far = Infinity
+  ): PickResult[] {
+    return this.displayed.pickThroughRay(origin, direction, targets, far);
   }
 
   /**

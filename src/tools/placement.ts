@@ -125,6 +125,16 @@ export function resolvePlacement(
     /** Character height, in WORLD units, for the fallback depth. */
     characterHeight: number;
     /**
+     * An explicit world point to place at, instead of measuring.
+     *
+     * Used by mirroring. A reflected placement must be the SAME placement,
+     * reflected - not an independent measurement of the other limb. The two
+     * rays differ in direction, so they cut different chords through the arm
+     * and produced depths several centimetres apart: a symmetry feature that
+     * was not symmetric.
+     */
+    worldTarget?: THREE.Vector3 | null;
+    /**
      * Cage-local units per world unit, from the bound mesh's world matrix.
      *
      * Not optional decoration. Depths here are measured by raycasting, which
@@ -160,10 +170,9 @@ export function resolvePlacement(
   // such failure mode, and needs no unit conversion either, because the
   // conversion falls out of the matrix that takes the world point into cage
   // space.
-  const centre = volumeCentre(
-    options.through,
-    options.characterHeight * MIN_SOLID_FRACTION
-  );
+  const centre =
+    options.worldTarget ??
+    volumeCentre(options.through, options.characterHeight * MIN_SOLID_FRACTION);
   if (centre) {
     return { offset: offsetToWorldPoint(surface, centre), measured: true };
   }
@@ -178,6 +187,14 @@ export function resolvePlacement(
     ),
     measured: false
   };
+}
+
+/** The centre for this character, with the thin-shell threshold applied. */
+export function volumeCentreFor(
+  through: readonly PickResult[] | undefined,
+  characterHeight: number
+): THREE.Vector3 | null {
+  return volumeCentre(through, characterHeight * MIN_SOLID_FRACTION);
 }
 
 /**

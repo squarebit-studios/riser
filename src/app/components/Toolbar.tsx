@@ -31,6 +31,7 @@ import { useUiStore } from '../state';
 import { MAX_SUBDIV_LEVEL, MIN_SUBDIV_LEVEL } from '../../viewport/SubdivSurface';
 import { VIEW_MODES } from '../../viewport/ViewModes';
 import { PLACEMENT_MODES } from '../../tools/placement';
+import { ENVIRONMENTS } from '../../viewport/environments';
 import { Button, IconButton, SegmentedControl } from './ui/Button';
 import { Slider } from './ui/Controls';
 import { DropdownMenu, MenuItem, MenuLabel, MenuSeparator } from './ui/Menu';
@@ -45,6 +46,8 @@ export function Toolbar(): JSX.Element {
   const characterName = useUiStore((s) => s.characterName);
   const viewMode = useUiStore((s) => s.viewMode);
   const placementMode = useUiStore((s) => s.placementMode);
+  const environment = useUiStore((s) => s.environment);
+  const useHdri = useUiStore((s) => s.useHdri);
   const subdivLevel = useUiStore((s) => s.subdivLevel);
   const subdivClamped = useUiStore((s) => s.subdivClamped);
   const showGeometry = useUiStore((s) => s.showGeometry);
@@ -59,6 +62,8 @@ export function Toolbar(): JSX.Element {
   const currentMode = VIEW_MODES.find((m) => m.id === viewMode) ?? VIEW_MODES[0]!;
   const currentPlacement =
     PLACEMENT_MODES.find((m) => m.id === placementMode) ?? PLACEMENT_MODES[0]!;
+  const currentEnvironment =
+    ENVIRONMENTS.find((e) => e.id === environment) ?? ENVIRONMENTS[0]!;
   // Anything hidden is worth saying out loud - "why can't I see my markers" is
   // otherwise a genuinely hard question to answer from the viewport alone.
   const hiddenCount = [!showGeometry, !showMarkers, !showCurves].filter(Boolean).length;
@@ -159,6 +164,49 @@ export function Toolbar(): JSX.Element {
             onSelect={() => useUiStore.getState().setViewMode(mode.id)}
           />
         ))}
+      </DropdownMenu>
+
+      {/* Lighting. Beside shading, because both answer "how does this look"
+          and nobody hunts for one in the menu having just used the other. */}
+      <DropdownMenu
+        label="Lighting"
+        trigger={(props) => (
+          <Button
+            {...props}
+            ref={props.ref}
+            icon="sun"
+            trailingIcon="chevronDown"
+            title="Lighting environment"
+            data-testid="environment-menu"
+          >
+            {currentEnvironment.label}
+          </Button>
+        )}
+      >
+        <MenuLabel>Lighting</MenuLabel>
+        {ENVIRONMENTS.map((preset) => (
+          <MenuItem
+            key={preset.id}
+            label={preset.label}
+            checked={environment === preset.id}
+            description={preset.hint}
+            data-testid={'environment-' + preset.id}
+            onSelect={() => useUiStore.getState().setEnvironment(preset.id)}
+          />
+        ))}
+
+        <MenuSeparator />
+        <MenuItem
+          label="Photographed lighting"
+          checked={useHdri}
+          description={
+            useHdri
+              ? 'Real HDR images - more incidental bounce, and a colour cast'
+              : 'Using a generated sky - cleaner and more neutral'
+          }
+          data-testid="toggle-hdri"
+          onSelect={() => useUiStore.getState().toggleHdri()}
+        />
       </DropdownMenu>
 
       {/* Visibility ------------------------------------------------------ */}

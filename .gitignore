@@ -51,3 +51,8 @@ __pycache__/
 # application, not a library - the lockfile is what makes a build reproducible,
 # and three.js is pinned exactly because its USD parser behaviour is something
 # we test against.
+
+# Generated from package.json and CHANGELOG.md by tools/write-version.mjs.
+# Committing them is how the two drifted apart in the first place.
+public/version.json
+public/CHANGELOG.md
