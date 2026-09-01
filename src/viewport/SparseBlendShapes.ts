@@ -40,6 +40,18 @@ interface MeshShapes {
   /** The geometry's own positions, before any shape is applied. */
   rest: Float32Array;
   /**
+   * The file's own points, at rest and as currently posed.
+   *
+   * Kept alongside the render vertices because subdivision works from these,
+   * not from those. The stencil table indexes the CAGE, which since the cage
+   * started coming from the file means the file's 25,490 points rather than
+   * the renderer's 152,928 vertices. Without moving these, a shape moves the
+   * cage and the refined surface stays exactly where it was, which is how it
+   * behaved with smoothing on: fire a shape, watch nothing happen.
+   */
+  restPoints: Float32Array;
+  points: Float32Array;
+  /**
    * Render vertices per authored point, flattened.
    *
    * Held as CSR rather than an array of arrays: one point can own a dozen
@@ -54,10 +66,21 @@ interface MeshShapes {
  * Sparse blend shapes for a character, applied straight to its geometry.
  */
 export class SparseBlendShapes {
+  /**
+   * Told when a mesh's control points have moved.
+   *
+   * Set by whoever owns the subdivision, so a limit surface can be
+   * re-evaluated from the moved cage. One sparse matrix product, which is what
+   * the stencil table has existed for since before anything deformed a cage.
+   */
+  onPointsMoved: ((mesh: THREE.Mesh, points: Float32Array) => void) | null = null;
+
   private readonly meshes: MeshShapes[] = [];
   private readonly weights = new Map<string, number>();
   /** Vertices moved by the last application, to put back before the next. */
   private dirty = new Map<MeshShapes, Set<number>>();
+  /** Authored points moved by the last application. */
+  private dirtyPoints = new Map<MeshShapes, Set<number>>();
 
   /**
    * Build the appliers for whichever meshes carry shapes.
@@ -102,6 +125,8 @@ export class SparseBlendShapes {
       this.meshes.push({
         mesh,
         rest: new Float32Array(position.array as ArrayLike<number>),
+        restPoints: new Float32Array(cage.positions),
+        points: new Float32Array(cage.positions),
         vertexStart: map.start,
         vertexOf: map.vertices,
         byName
@@ -155,6 +180,7 @@ export class SparseBlendShapes {
     this.meshes.length = 0;
     this.weights.clear();
     this.dirty = new Map();
+    this.dirtyPoints = new Map();
   }
 
   // -----------------------------------------------------------------------
@@ -189,6 +215,17 @@ export class SparseBlendShapes {
       }
       if (!previous && active.length === 0) continue;
 
+      // The authored points, reset the same way and for the same reason.
+      const movedPoints = this.dirtyPoints.get(entry);
+      if (movedPoints) {
+        for (const point of movedPoints) {
+          entry.points[point * 3] = entry.restPoints[point * 3]!;
+          entry.points[point * 3 + 1] = entry.restPoints[point * 3 + 1]!;
+          entry.points[point * 3 + 2] = entry.restPoints[point * 3 + 2]!;
+        }
+      }
+      const touchedPoints = new Set<number>();
+
       for (const [name, weight] of active) {
         const shape = entry.byName.get(name)!;
         for (let i = 0; i < shape.pointIndices.length; i++) {
@@ -196,6 +233,16 @@ export class SparseBlendShapes {
           const dx = shape.offsets[i * 3]! * weight;
           const dy = shape.offsets[i * 3 + 1]! * weight;
           const dz = shape.offsets[i * 3 + 2]! * weight;
+
+          if (!touchedPoints.has(point)) {
+            entry.points[point * 3] = entry.restPoints[point * 3]!;
+            entry.points[point * 3 + 1] = entry.restPoints[point * 3 + 1]!;
+            entry.points[point * 3 + 2] = entry.restPoints[point * 3 + 2]!;
+            touchedPoints.add(point);
+          }
+          entry.points[point * 3] = (entry.points[point * 3] ?? 0) + dx;
+          entry.points[point * 3 + 1] = (entry.points[point * 3 + 1] ?? 0) + dy;
+          entry.points[point * 3 + 2] = (entry.points[point * 3 + 2] ?? 0) + dz;
 
           const from = entry.vertexStart[point]!;
           const to = entry.vertexStart[point + 1]!;
@@ -216,11 +263,15 @@ export class SparseBlendShapes {
       }
 
       this.dirty.set(entry, touched);
+      this.dirtyPoints.set(entry, touchedPoints);
       position.needsUpdate = true;
       // Shading has to follow the surface, or a shape moves the silhouette and
       // leaves the light where it was.
       entry.mesh.geometry.computeVertexNormals();
       entry.mesh.geometry.computeBoundingSphere();
+
+      // And the surface built from those points, if one is on screen.
+      this.onPointsMoved?.(entry.mesh, entry.points);
     }
   }
 
@@ -231,6 +282,8 @@ export class SparseBlendShapes {
       (position.array as Float32Array).set(entry.rest);
       position.needsUpdate = true;
       entry.mesh.geometry.computeVertexNormals();
+      entry.points.set(entry.restPoints);
+      this.onPointsMoved?.(entry.mesh, entry.points);
     }
   }
 }

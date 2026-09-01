@@ -461,7 +461,15 @@ export class RiserApp {
       // because they are applied through the authored points it attaches.
       try {
         const shapes = readBlendShapes(source);
-        if (shapes.size > 0) this.blendShapes.setCharacter(model.meshes, shapes);
+        if (shapes.size > 0) {
+          this.blendShapes.setCharacter(model.meshes, shapes);
+          // A shape moves the cage; the surface on screen is refined FROM the
+          // cage and does not follow on its own. Without this a shape fires
+          // and nothing visible happens whenever smoothing is on.
+          this.blendShapes.onPointsMoved = (mesh, points) => {
+            this.subdivs?.refreshFrom(mesh, points);
+          };
+        }
       } catch {
         // A character whose shapes cannot be read still loads.
       }

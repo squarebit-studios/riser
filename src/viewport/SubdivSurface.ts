@@ -424,15 +424,30 @@ export class SubdivSurface {
    * reason the stencil table exists, and it is one sparse matrix product
    * rather than a re-refine.
    */
-  refresh(): void {
+  refresh(cagePositions?: Float32Array): void {
     const active = this.active;
     if (!active) return;
-    const positions = this.cage.geometry.getAttribute('position');
-    if (!positions) return;
+
+    // WHICH positions, and it is not a detail.
+    //
+    // The stencil table indexes the CAGE's vertices, and since the cage began
+    // coming from the file's own topology those are the file's points: 25,490
+    // of them on this character's body, against the 152,928 the renderer
+    // splits them into. Handing this the geometry's array would index a table
+    // built for one thing with the layout of another.
+    //
+    // So a caller that moved the authored points passes them. A caller that
+    // moved the geometry, which is what happens when the cage came from
+    // `fromBufferGeometry` and is welded to match, passes nothing.
+    const source =
+      cagePositions ??
+      (this.cage.geometry.getAttribute('position')?.array as Float32Array | undefined);
+    if (!source) return;
+    if (source.length !== active.refined.table.controlVertexCount * 3) return;
 
     applyStencils(
       active.refined.table,
-      positions.array as Float32Array,
+      source,
       active.refined.mesh.positions
     );
     computeVertexNormals(active.refined.mesh, active.normals);
@@ -559,6 +574,18 @@ export class SubdivSet {
   /** True when every surface already has this level built. */
   hasCached(level: number): boolean {
     return this.surfaces.every((s) => s.hasCached(level));
+  }
+
+  /**
+   * Re-evaluate one mesh's limit surface from moved control points.
+   *
+   * What blend shapes need. Moving the cage without this leaves the refined
+   * surface exactly where it was, so a shape fires and nothing visible
+   * happens, which is precisely how it behaved with smoothing on.
+   */
+  refreshFrom(cage: THREE.Mesh, cagePositions: Float32Array): void {
+    const surface = this.surfaces.find((s) => s.cage === cage);
+    surface?.refresh(cagePositions);
   }
 
   /**

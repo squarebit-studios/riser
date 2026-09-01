@@ -2,6 +2,11 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.10.1] - 2026-08-31
+
+### Fixed
+- A blend shape did nothing visible while smoothing was on. The shape moved the control cage and the smoothed surface is built FROM that cage, so it stayed exactly where it was. The surface is now re-evaluated from the moved points, which is one sparse matrix product rather than a rebuild
+
 ## [0.10.0] - 2026-08-31
 
 ### Added
