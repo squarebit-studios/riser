@@ -452,7 +452,6 @@ describe('moving the cage under a wireframe', () => {
     const sample = [...first.slice(0, 9)];
 
     // Move every control point, the way a shape does.
-    const surface = set.surfacesForTest?.()[0];
     const cage = set.displayedMeshes()[0]!;
     const moved = Float32Array.from(
       cage.geometry.getAttribute('position').array as Float32Array
@@ -463,6 +462,5 @@ describe('moving the cage under a wireframe', () => {
     const after = set.quadWireframe(cage);
     const second = after!.getAttribute('position').array as Float32Array;
     expect([...second.slice(0, 9)]).not.toEqual(sample);
-    void surface;
   });
 });
