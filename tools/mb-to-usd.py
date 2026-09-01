@@ -252,6 +252,104 @@ def capture_eye_looks(cmds, project_root):
 # Images
 # --------------------------------------------------------------------------
 
+# Maya indexes an inputTargetItem by 5000 + 1000 * weight, so the shape at
+# full strength lives at 6000 and anything below it is an in-between.
+FULL_WEIGHT_ITEM = 6000
+
+
+def expand_components(entries):
+    """Turn Maya's component list into point indices.
+
+    `inputComponentsTarget` reads back as ['vtx[0]', 'vtx[4:9]'], which is the
+    sparse half of a Maya blend shape: the deltas beside it apply to these
+    points in this order.
+    """
+    indices = []
+    for entry in entries or []:
+        match = re.search(r"\[(\d+)(?::(\d+))?\]", str(entry))
+        if not match:
+            continue
+        start = int(match.group(1))
+        end = int(match.group(2)) if match.group(2) else start
+        indices.extend(range(start, end + 1))
+    return indices
+
+
+def read_blend_shapes(cmds, meshes):
+    """Read every blendShape target as the sparse deltas Maya already holds.
+
+    Maya stores a target as `inputPointsTarget` (the offsets) beside
+    `inputComponentsTarget` (the points they apply to). That is the same shape
+    UsdSkel wants, so this is a transcription rather than a computation, and
+    two things follow from reading it rather than deriving it.
+
+    IT DOES NOT TOUCH THE RIG. The obvious alternative is to set each weight to
+    one and diff the result, and it does not work here: every one of this
+    character's 26 blendShape nodes has rig-driven weights, so setting one
+    throws and all 26 came back empty. Reading the authored deltas asks nothing
+    of the rig.
+
+    IT SURVIVES DELETED TARGETS. A published rig usually has its target meshes
+    deleted once they are connected, with the deltas living on in the node.
+    That is exactly why asking mayaUSDExport for blend shapes produced 878
+    dangling relationships and no shapes: it looks for target geometry that is
+    no longer there.
+    """
+    nodes = cmds.ls(type="blendShape") or []
+    if not nodes:
+        return {}
+
+    known = {re.sub(r"Shape$", "", m.split("|")[-1]) for m in meshes}
+    read = {}
+    empty = 0
+
+    for node in nodes:
+        geometries = cmds.blendShape(node, q=True, geometry=True) or []
+        aliases = cmds.aliasAttr(node, q=True) or []
+
+        # Alias names are what a person calls a target; `weight[n]` is what the
+        # attribute is called, and n is also the inputTargetGroup index.
+        targets = []
+        for i in range(0, len(aliases) - 1, 2):
+            match = re.search(r"\[(\d+)\]", aliases[i + 1])
+            if match:
+                targets.append((aliases[i], int(match.group(1))))
+
+        for g, geometry in enumerate(geometries):
+            leaf = re.sub(r"Shape$", "", geometry.split("|")[-1])
+            if leaf not in known:
+                continue
+
+            for name, weight_index in targets:
+                base = "%s.inputTarget[%d].inputTargetGroup[%d]" % (
+                    node, g, weight_index)
+                item = "%s.inputTargetItem[%d]" % (base, FULL_WEIGHT_ITEM)
+                try:
+                    points = cmds.getAttr("%s.inputPointsTarget" % item)
+                    components = cmds.getAttr("%s.inputComponentsTarget" % item)
+                except Exception:  # noqa: BLE001
+                    continue
+                if not points or not components:
+                    empty += 1
+                    continue
+
+                indices = expand_components(components)
+                if len(indices) != len(points):
+                    # The two halves have to describe the same points. A
+                    # mismatch means this is not the layout it looks like, and
+                    # a guess would put a shape on the wrong part of the face.
+                    empty += 1
+                    continue
+
+                offsets = [(p[0], p[1], p[2]) for p in points]
+                read.setdefault(leaf, []).append(
+                    {"name": name, "indices": indices, "offsets": offsets})
+
+    if empty:
+        print("  targets with no usable delta: %d" % empty)
+    return read
+
+
 def process_texture(source, out_dir, max_size):
     """Resize a texture for the web and report its mean colour.
 
@@ -316,12 +414,61 @@ def process_texture(source, out_dir, max_size):
 # USD post-process
 # --------------------------------------------------------------------------
 
+def author_blend_shapes(stage, shapes):
+    """Write the sparse deltas as real UsdSkel BlendShape prims.
+
+    Whatever the exporter left behind is replaced outright: it authored target
+    relationships pointing at prims that were never created, and a dangling
+    relationship is worse than no relationship, because it claims the shapes
+    are there.
+
+    Names are written PLAIN - `cheek_puff_l_out`, not
+    `_body_geo_blendShape_cheek_puff_l_out`. The same shape lives on several
+    meshes, 462 of this character's 932 names on more than one, because a jaw
+    shape has to move the gums and the teeth along with the face. A consumer
+    that wants one control driving all of them has to be able to see they are
+    the same shape, and a per-mesh prefix hides exactly that.
+    """
+    from pxr import Tf, UsdSkel, Vt
+
+    written = 0
+    for prim in stage.Traverse():
+        mine = shapes.get(prim.GetName())
+        if not mine:
+            continue
+
+        names, paths = [], []
+        for shape in mine:
+            # A target name is a Maya alias and can carry characters a prim
+            # name cannot. Tf is where the sanitiser lives; Sdf.Path has an
+            # IsValid check but no maker.
+            child = prim.GetPath().AppendChild(
+                Tf.MakeValidIdentifier(shape["name"]))
+            blend = UsdSkel.BlendShape.Define(stage, child)
+            blend.CreateOffsetsAttr(Vt.Vec3fArray(
+                [tuple(o) for o in shape["offsets"]]))
+            blend.CreatePointIndicesAttr(Vt.IntArray(shape["indices"]))
+            names.append(shape["name"])
+            paths.append(child)
+            written += 1
+
+        binding = UsdSkel.BindingAPI.Apply(prim)
+        binding.CreateBlendShapesAttr(Vt.TokenArray(names))
+        binding.CreateBlendShapeTargetsRel().SetTargets(paths)
+
+    return written
+
+
 def postprocess(target, tex_dir_name, max_size, eye_looks, unit_scale,
-                helper_names, want_materials):
+                helper_names, want_materials, blend_shapes=None):
     """Localise textures, kill the black fallbacks, and write the eye look."""
     from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade, Vt
 
     stage = Usd.Stage.Open(target)
+
+    if blend_shapes:
+        print("  blend shape targets authored: %d" % author_blend_shapes(
+            stage, blend_shapes))
 
     # 0. Drop the rig scaffolding meshes. Removing a Mesh prim leaves the
     #    Skeleton and every other mesh's binding to it untouched.
@@ -347,7 +494,13 @@ def postprocess(target, tex_dir_name, max_size, eye_looks, unit_scale,
     #     What survives is what an asset is: geometry, the skeleton that drives
     #     it, and the materials. Anything holding none of those goes.
     keep_types = {"Mesh", "Skeleton", "SkelAnimation", "Material", "Shader",
-                  "NodeGraph", "GeomSubset"}
+                  "NodeGraph", "GeomSubset",
+                  # BlendShape belongs here for a reason worth stating: this
+                  # pass removes any prim that is not a keeper and has no
+                  # keeper beneath it, and a BlendShape is a leaf. Leaving it
+                  # out deleted all 1,884 of them immediately after they were
+                  # authored, while the authoring step reported success.
+                  "BlendShape"}
 
     def carries_content(prim):
         if str(prim.GetTypeName()) in keep_types:
@@ -654,6 +807,14 @@ def main() -> int:
         print("Nothing to export - no meshes in the scene.", file=sys.stderr)
         return 4
 
+    blend_shape_data = {}
+    if args.blend_shapes:
+        print("Blend shapes:")
+        blend_shape_data = read_blend_shapes(cmds, meshes)
+        print("  meshes with targets: %d" % len(blend_shape_data))
+        print("  targets read: %d" % sum(
+            len(v) for v in blend_shape_data.values()))
+
     eye_looks = {}
     if want_materials:
         print("Materials:")
@@ -697,7 +858,11 @@ def main() -> int:
         # guides exactly, so an export that drops them loses the best tier.
         "exportSkels": "auto",
         "exportSkin": "auto",
-        "exportBlendShapes": bool(args.blend_shapes),
+        # Left OFF even when blend shapes are wanted. Asking for them here
+        # writes names and target relationships and no shapes at all, because
+        # it reads target GEOMETRY and a published rig has none. The sparse
+        # deltas are read off the node and authored in postprocess instead.
+        "exportBlendShapes": False,
         "mergeTransformAndShape": True,
         "stripNamespaces": True,
         "shadingMode": "useRegistry" if want_materials else "none",
@@ -721,7 +886,7 @@ def main() -> int:
     unit_scale = 0.01 if cmds.currentUnit(q=True, linear=True) == "cm" else 1.0
     print("Post-process:")
     postprocess(target, tex_dir_name, args.texture_size, eye_looks,
-                unit_scale, helper_names, want_materials)
+                unit_scale, helper_names, want_materials, blend_shape_data)
     print("Wrote %s (%.1f MB)" % (target, os.path.getsize(target) / 1e6))
     if args.usdz:
         write_usdz(target, os.path.abspath(args.usdz))

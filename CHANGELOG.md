@@ -2,6 +2,15 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.9.2] - 2026-08-31
+
+### Fixed
+- Blend shapes now survive the trip out of Maya. Asking mayaUSDExport for them wrote the names and the target relationships and no shapes at all: 878 of 878 targets on the body pointed at prims that were never created, and nothing reported it. The converter reads the sparse deltas Maya already holds and authors them itself
+
+### Added
+- Riser reads UsdSkel blend shapes, which three's USD loader does not. They stay sparse the whole way, because the body's 878 shapes as dense per-vertex deltas would be about 1.6GB for one mesh
+- A shape name shared by several meshes is read as one shape, so one control can drive the face, the gums and the teeth together, which is what the name means
+
 ## [0.9.1] - 2026-08-31
 
 ### Added
