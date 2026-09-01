@@ -2,6 +2,12 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.14.1] - 2026-09-01
+
+### Fixed
+- Curves drew wrongly, scattering while they were being drawn and reloading as a tangle. Each sample searches for the surface along a normal, and the samples and the normals were built by two different parameterisations. They agreed while the curve was a cubic and stopped agreeing the moment it became a quadratic, because the two spread their control values differently, so every sample was searching along a normal taken from somewhere else on the curve. Around an eye or a lip, where the surface turns fast and another surface sits just behind it, a slightly wrong direction finds a different piece of the character and the sample snaps there
+- Directions are now built by the same resampler as the positions, so sample and direction are the same point on the curve whatever degree it is drawn at
+
 ## [0.14.0] - 2026-09-01
 
 ### Added
