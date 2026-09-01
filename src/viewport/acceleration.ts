@@ -129,6 +129,27 @@ export function accelerate(root: THREE.Object3D): number {
 }
 
 /**
+ * A raycaster that stops at the closest hit instead of collecting every one.
+ *
+ * three-mesh-bvh only descends to the nearest triangle and stops when
+ * `firstHitOnly` is set. Without it the accelerated raycast still walks every
+ * branch the ray touches, gathers every intersection along its whole length
+ * and sorts them, which on a character means every layer of clothing, the body
+ * under it, and the far wall of both.
+ *
+ * For a caller that reads `[0]` and discards the rest, all of that work is
+ * thrown away, and the answer is identical either way: the closest hit is the
+ * closest hit whether or not the ones behind it were collected. The flag is
+ * off by default because a caller that genuinely wants every hit needs it off,
+ * which is why this is a separate constructor rather than a global change.
+ */
+export function firstHitRaycaster(): THREE.Raycaster {
+  const raycaster = new THREE.Raycaster();
+  (raycaster as THREE.Raycaster & { firstHitOnly?: boolean }).firstHitOnly = true;
+  return raycaster;
+}
+
+/**
  * Say whether the character is currently posed away from its bind pose.
  *
  * A BVH indexes rest geometry. While the skeleton sits at bind pose that is

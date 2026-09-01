@@ -32,6 +32,56 @@ export const SEARCH_FRACTION = 0.03;
 const _origin = new THREE.Vector3();
 const _direction = new THREE.Vector3();
 const _sample = new THREE.Vector3();
+const _reach = new THREE.Box3();
+const _meshBox = new THREE.Box3();
+
+/**
+ * The meshes a curve could possibly touch, out of everything handed in.
+ *
+ * A curve is a local thing. A brow sits in a few centimetres of face, and the
+ * search either side of it is a few centimetres more, so it cannot reach the
+ * boots, the belt, or the far side of the head. The cast does not know that:
+ * `intersectObjects` walks every mesh for every sample, and transforms the ray
+ * into each one's local space to find out it was nowhere near. On a character
+ * of thirty pieces, each carrying its subdivided self, that is around sixty
+ * of those per sample and several hundred samples per curve, and it was most
+ * of the cost of drawing.
+ *
+ * Rejecting them once, against a box, replaces all of it. The filter is
+ * deliberately generous: it takes anything whose world bounds come within
+ * `reach` of the curve, so a mesh that could hold a hit is never dropped and
+ * the result is the same set of hits the unfiltered cast would have found.
+ * Being wrong here would be invisible and serious, because a curve that misses
+ * the surface still draws, just in the wrong place.
+ */
+function meshesNear(
+  targets: readonly THREE.Object3D[],
+  samples: readonly Vec3[],
+  reach: number
+): THREE.Object3D[] {
+  _reach.makeEmpty();
+  for (const sample of samples)
+    _reach.expandByPoint(_sample.set(sample[0], sample[1], sample[2]));
+  // Everything the ray can see from anywhere on the curve, and a little more:
+  // the rays start `reach` out along the normal and run twice that far.
+  _reach.expandByScalar(reach * 2 + 1e-6);
+
+  const near: THREE.Object3D[] = [];
+  for (const target of targets) {
+    target.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh || mesh.visible === false) return;
+      const geometry = mesh.geometry;
+      if (!geometry) return;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      const box = geometry.boundingBox;
+      if (!box) return;
+      _meshBox.copy(box).applyMatrix4(mesh.matrixWorld);
+      if (_meshBox.intersectsBox(_reach)) near.push(mesh);
+    });
+  }
+  return near;
+}
 
 export interface ProjectOptions {
   /** Search distance in world units. */
@@ -64,7 +114,10 @@ export function projectSamplesToSurface(
   }
 
   const out: Vec3[] = new Array(samples.length);
-  const targets = meshes as THREE.Object3D[];
+  // Narrowed once for the whole curve rather than reconsidered per sample.
+  // Already flat, so the cast does not need to recurse either.
+  const targets = meshesNear(meshes, samples, searchDistance);
+  if (targets.length === 0) return samples.slice();
 
   for (let i = 0; i < samples.length; i++) {
     const sample = samples[i] as Vec3;
@@ -90,7 +143,7 @@ export function projectSamplesToSurface(
     raycaster.far = searchDistance * 2;
     raycaster.near = 0;
 
-    const hit = raycaster.intersectObjects(targets, true)[0];
+    const hit = raycaster.intersectObjects(targets, false)[0];
     out[i] = hit ? [hit.point.x, hit.point.y, hit.point.z] : sample;
   }
 

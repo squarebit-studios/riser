@@ -2,6 +2,12 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.13.2] - 2026-09-01
+
+### Fixed
+- Drawing a curve got slower with every curve already on the character. Any change to the document re-projected all of them onto the surface, so moving one control vertex paid to re-cast every sample of every other curve as well. Only curves that actually moved are projected now, and a curve is projected again when the skin under it moves, which is what changing subdivision level or firing a blend shape does
+- Projecting a curve considered every piece of the character for every sample. A curve is local, so it now tests only the pieces close enough to reach: measured at 2.2x faster for a five point curve and 2.7x for a twenty one point one, returning the same points to the last bit
+
 ## [0.13.1] - 2026-09-01
 
 ### Fixed
