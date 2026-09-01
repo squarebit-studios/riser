@@ -325,6 +325,17 @@ export class SubdivSurface {
     // cage, which is exactly what replacing the cage requires.
     this.teardownLimit();
     this.authored = false;
+
+    // And forget which level was showing, which is the part that bit.
+    //
+    // `setLevel` returns early when the level asked for is the level already
+    // set. Tearing the surface down without clearing that leaves the object
+    // claiming to be at level 1 with nothing built, so the rebuild that comes
+    // straight afterwards is a no-op: the cage stays on screen, the interface
+    // still reports level 1, and only toggling to another level and back
+    // forces a real transition. That is exactly what a character loaded with
+    // smoothing already on used to do.
+    this.level = 0;
   }
 
   /** True when the cage came from the file rather than from recovered quads. */

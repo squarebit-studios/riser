@@ -2,6 +2,11 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.12.2] - 2026-09-01
+
+### Fixed
+- A character loaded with smoothing already on came up unsmoothed and stayed that way until the control was toggled off and on. The interface reported the level it was meant to be at while the surface was still the unsmoothed cage, so the two disagreed with nothing to say which was right
+
 ## [0.12.1] - 2026-08-31
 
 ### Fixed

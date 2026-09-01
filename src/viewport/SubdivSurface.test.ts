@@ -397,3 +397,40 @@ describe('wireframe that follows the quads', () => {
     expect(set.quadWireframe(gridMesh(4))).toBeNull();
   });
 });
+
+describe('replacing the cage', () => {
+  it('rebuilds at the level that was showing, rather than going quiet', () => {
+    // The bug this exists for. `setLevel` returns early when asked for the
+    // level it already holds, so tearing the surface down without forgetting
+    // that level left the object claiming to be subdivided with nothing built.
+    // The rebuild afterwards was a no-op, the cage stayed on screen, and the
+    // interface reported a level the surface did not have.
+    //
+    // A character loaded with smoothing already on did exactly this: it came
+    // up unsmoothed and stayed that way until the control was toggled off and
+    // on, which forced a real transition.
+    const set = new SubdivSet([gridMesh(8)]);
+    set.setLevel(1);
+    const subdivided = set.displayedMeshes()[0]!;
+    expect(subdivided.name).toContain('limit');
+
+    // What happens when the file's own topology arrives after the character.
+    set.resetCages();
+    set.setLevel(1);
+
+    const after = set.displayedMeshes()[0]!;
+    expect(after.name, 'the surface should be rebuilt, not left as the cage').toContain(
+      'limit'
+    );
+    expect(set.currentLevel).toBe(1);
+  });
+
+  it('leaves the cage showing when the level really is 0', () => {
+    const set = new SubdivSet([gridMesh(8)]);
+    set.setLevel(1);
+    set.resetCages();
+    set.setLevel(0);
+    expect(set.displayedMeshes()[0]!.name).not.toContain('limit');
+    expect(set.currentLevel).toBe(0);
+  });
+});
