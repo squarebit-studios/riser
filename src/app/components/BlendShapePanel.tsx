@@ -33,6 +33,10 @@ import { Chip, SearchField } from './ui/Controls';
 export function BlendShapePanel(): JSX.Element | null {
   const app = useApp();
   const characterName = useUiStore((s) => s.characterName);
+  // Blend shapes arrive after the character does, because reading them means
+  // fetching its file back. Without this the list is built from an empty set
+  // and never rebuilt, so a character full of shapes shows no panel at all.
+  const blendShapeCount = useUiStore((s) => s.blendShapeCount);
   const [search, setSearch] = useState('');
   // Weights live on the three.js meshes, not in React. This is bumped to
   // redraw the sliders after a change; keeping the values themselves in React
@@ -76,7 +80,8 @@ export function BlendShapePanel(): JSX.Element | null {
 
     return rows.sort((a, b) => a.name.localeCompare(b.name));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [characterName, app.characterModel]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [characterName, app.characterModel, blendShapeCount]);
 
   // A new character means the previous one's shapes are gone; drop the filter
   // so the list is not mysteriously empty.

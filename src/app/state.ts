@@ -226,6 +226,15 @@ export interface UiState {
   dirty: boolean;
 
   characterName: string | null;
+  /**
+   * How many blend shapes the loaded character has.
+   *
+   * Here so the panel can learn they arrived. Reading them means fetching the
+   * character file back, so they land well after the character does, and a
+   * panel keyed on the character alone builds its list from an empty set and
+   * never looks again.
+   */
+  blendShapeCount: number;
   characterHasSkeleton: boolean;
   loading: string | null;
   /** How far a character load has got, or null when nothing is loading. */
@@ -265,6 +274,7 @@ export interface UiState {
   resetLayout: () => void;
   bumpDoc: (dirty: boolean) => void;
   setCharacter: (name: string | null, hasSkeleton: boolean) => void;
+  setBlendShapeCount: (count: number) => void;
   setLoading: (message: string | null) => void;
   setLoadProgress: (progress: LoadStatus | null) => void;
   setError: (message: string | null) => void;
@@ -308,6 +318,7 @@ export const useUiStore = create<UiState>((set) => ({
   dirty: false,
 
   characterName: null,
+  blendShapeCount: 0,
   characterHasSkeleton: false,
   loading: null,
   loadProgress: null,
@@ -380,7 +391,9 @@ export const useUiStore = create<UiState>((set) => ({
 
   bumpDoc: (dirty) => set((s) => ({ docRevision: s.docRevision + 1, dirty })),
   setCharacter: (characterName, characterHasSkeleton) =>
-    set({ characterName, characterHasSkeleton }),
+    // A new character has none until its file has been read again.
+    set({ characterName, characterHasSkeleton, blendShapeCount: 0 }),
+  setBlendShapeCount: (blendShapeCount) => set({ blendShapeCount }),
   setLoading: (loading) =>
     // Clearing the message clears the progress with it, so a finished load
     // cannot leave a stale bar behind.

@@ -475,6 +475,11 @@ export class RiserApp {
           this.blendShapes.onPointsMoved = (mesh, points) => {
             this.subdivs?.refreshFrom(mesh, points);
           };
+          // Tell the panel they exist. It is built before this finishes, so
+          // without a signal it lists an empty set and never looks again.
+          useUiStore
+            .getState()
+            .setBlendShapeCount(this.blendShapes.shapeCount);
         }
       } catch {
         // A character whose shapes cannot be read still loads.

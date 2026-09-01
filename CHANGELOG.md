@@ -2,6 +2,11 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.12.1] - 2026-08-31
+
+### Fixed
+- The blend shape panel did not appear at all on a character that had them. Reading shapes means fetching the character file back, so they arrive after the character does, and the panel built its list before that and never looked again
+
 ## [0.12.0] - 2026-08-31
 
 ### Added
