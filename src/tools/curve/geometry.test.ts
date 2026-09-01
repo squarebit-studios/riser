@@ -48,16 +48,22 @@ describe('buildCurve', () => {
 });
 
 describe('resampleCurve', () => {
-  it('passes through every control vertex', () => {
+  it('passes through every control vertex at degree three', () => {
     // The property that justifies Catmull-Rom over a b-spline: a control
     // vertex the user placed on a feature stays on that feature.
+    //
+    // Asked for explicitly rather than taken from the default, because the
+    // default is now the quadratic, which approaches its middle control
+    // vertices instead of touching them. That is the trade it makes, so
+    // testing the cubic's property against it would only be testing that the
+    // default had not changed.
     const points: Vec3[] = [
       [0, 0, 0],
       [1, 1, 0],
       [2, 0, 0],
       [3, 1, 0]
     ];
-    const samples = resampleCurve(points, false, 12);
+    const samples = resampleCurve(points, false, 12, 3);
     for (const cv of points) {
       const nearest = Math.min(
         ...samples.map((s) =>

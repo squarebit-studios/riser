@@ -2,6 +2,24 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.13.3] - 2026-09-01
+
+### Changed
+- Curves are drawn as degree two by default. A cubic is steered by two control vertices past each end of the span it is drawing, so a point placed slightly off pulls the curve around spans it is not next to, and the curve can swing wider than the points that made it. That is invisible on a jawline and it is the wobble you get on an eyelid, where the points are close together and the surface turns hard. A quadratic span sees three consecutive points and stays inside them, so it cannot swing wide
+- An open curve still starts and finishes exactly on its first and last control vertex. The middle ones are approached rather than touched, which is what the quadratic trades for staying contained
+
+## [0.13.2] - 2026-09-01
+
+### Fixed
+- Drawing a curve got slower with every curve already on the character. Any change to the document re-projected all of them onto the surface, so moving one control vertex paid to re-cast every sample of every other curve as well. Only curves that actually moved are projected now, and a curve is projected again when the skin under it moves, which is what changing subdivision level or firing a blend shape does
+- Projecting a curve considered every piece of the character for every sample. A curve is local, so it now tests only the pieces close enough to reach: measured at 2.2x faster for a five point curve and 2.7x for a twenty one point one, returning the same points to the last bit
+
+## [0.13.1] - 2026-09-01
+
+### Fixed
+- The Maya exporter shipped geometry the character does not have. It decided what to leave out by naming the scaffolding it knew about, which meant anything it did not recognise was kept without anyone being told: four hidden proxy meshes sitting on top of the real brows and lashes, and an entire second character under a root no rule had heard of, carrying a body heavier than the real one. It now keeps what is in the model group and visible in Maya, and drops the rest, along with any material left with nothing to shade
+- Hidden geometry is removed rather than exported and marked invisible. USD records visibility faithfully and three's USD composer ignores it, so a hidden mesh was drawn anyway by anything reading the file in a browser
+
 ## [0.13.0] - 2026-09-01
 
 ### Fixed

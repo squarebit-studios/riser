@@ -21,7 +21,12 @@ import { SkeletonView } from '../viewport/SkeletonView';
 import { documentToWorld, documentToWorldDirection } from '../viewport/space';
 import { nearestPointOnMeshes } from '../viewport/nearest';
 import { withDoubleSided } from '../viewport/Picker';
-import { accelerate, releaseAcceleration, setPosed } from '../viewport/acceleration';
+import {
+  accelerate,
+  firstHitRaycaster,
+  releaseAcceleration,
+  setPosed
+} from '../viewport/acceleration';
 import { EyeMaterials } from '../viewport/EyeMaterials';
 import { readAuthoredTopology } from '../io/authoredTopology';
 import { inspectUsd, type UsdPrim } from '../io/usdInspect';
@@ -57,7 +62,11 @@ import { MarkerLayer } from '../tools/marker/MarkerLayer';
 import { MarkerTool } from '../tools/marker/MarkerTool';
 import { CurveLayer } from '../tools/curve/CurveLayer';
 import { CurveTool } from '../tools/curve/CurveTool';
-import { resampleCurve, DEFAULT_SAMPLES_PER_SEGMENT } from '../tools/curve/geometry';
+import {
+  resampleCurve,
+  DEFAULT_CURVE_DEGREE,
+  DEFAULT_SAMPLES_PER_SEGMENT
+} from '../tools/curve/geometry';
 import {
   controlVertexSampleIndices,
   interpolateNormals,
@@ -90,6 +99,35 @@ const AUTOSAVE_DELAY_MS = 700;
  * level makes it worse.
  */
 const HEAVY_LIMIT_FACES = 600_000;
+
+
+/**
+ * Whether two lists of points are the same to within float noise.
+ *
+ * Compared rather than hashed because this runs on every document change and
+ * the answer is almost always "yes, identical": a bail on the first differing
+ * number costs less than building a key out of numbers that did not change.
+ *
+ * The tolerance exists because these positions are re-derived from bindings
+ * each time rather than carried over, and evaluating the same binding against
+ * the same triangle can land on the last bit differently. Far below anything
+ * that could move a projection, and far above that noise.
+ */
+function samePointList(a: readonly Vec3[], b: readonly Vec3[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i] as Vec3;
+    const q = b[i] as Vec3;
+    if (
+      Math.abs(p[0] - q[0]) > 1e-9 ||
+      Math.abs(p[1] - q[1]) > 1e-9 ||
+      Math.abs(p[2] - q[2]) > 1e-9
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export class RiserApp {
   readonly viewport: Viewport;
@@ -131,7 +169,15 @@ export class RiserApp {
   private unsubscribeFrame: (() => void) | null = null;
 
   /** Raycaster used for re-seating curve samples onto the surface. */
-  private readonly projectionRaycaster = new THREE.Raycaster();
+  /**
+   * Casts for pulling curve samples onto the surface.
+   *
+   * Stops at the closest hit, because that is the only one this reads. On a
+   * dressed character a ray fired at the chest passes through the suit, the
+   * body and the far side of both, and collecting and sorting all of that to
+   * use the first was most of the cost of drawing a curve.
+   */
+  private readonly projectionRaycaster = firstHitRaycaster();
 
   /**
    * Set while a restored session is loading its character, so the automatic
@@ -409,6 +455,7 @@ export class RiserApp {
       this.subdivs.resetCages();
       const ui = useUiStore.getState();
       this.subdivs.setLevel(ui.smoothing ? ui.subdivLevel : 0);
+      this.surfaceRevision++;
       ui.setSubdivClamped(this.subdivs.clamped);
       this.viewModes?.refresh();
       this.adoptEyeMaterials();
@@ -475,6 +522,8 @@ export class RiserApp {
           // and nothing visible happens whenever smoothing is on.
           this.blendShapes.onPointsMoved = (mesh, points) => {
             this.subdivs?.refreshFrom(mesh, points);
+            // The skin has moved, so every curve lying on it is stale.
+            this.surfaceRevision++;
           };
           // The wireframe is its own geometry, built from the surface as it
           // was. Without this a shape moves the character and leaves its
@@ -678,6 +727,7 @@ export class RiserApp {
     // Index the geometry before anything picks against it. Paid once, against
     // every raycast for the life of this character - see acceleration.ts.
     accelerate(model.root);
+    this.surfaceRevision++;
 
     this.usdPrims = null;
     void this.shadeEyes(model);
@@ -688,6 +738,7 @@ export class RiserApp {
     const ui0 = useUiStore.getState();
     this.subdivs = new SubdivSet(model.meshes);
     this.subdivs.setLevel(effectiveSubdivLevel(ui0));
+    this.surfaceRevision++;
     ui0.setSubdivClamped(this.subdivs.clamped);
     // A freshly built limit surface carries the material it was constructed
     // with and knows nothing about view modes, so the mode has to be reapplied
@@ -1146,26 +1197,66 @@ export class RiserApp {
       }))
     );
 
+    // Curves are re-projected only when they have actually moved.
+    //
+    // This runs on every document change, and projection is the most
+    // expensive thing in the app: ten raycasts per segment, each against the
+    // whole character. Without the memo, nudging one control vertex re-cast
+    // every sample of every OTHER curve on the character as well, so drawing
+    // got slower with each curve added and a long session ground to a halt.
+    //
+    // Keyed on the surface too, not just the points. A curve that has not been
+    // touched is still wrong if the thing it is lying on has moved, which is
+    // what `surfaceRevision` tracks: changing subdivision level or firing a
+    // blend shape moves the skin out from under every curve at once.
+    const seen = new Set<string>();
     this.curveLayer.setCurves(
       doc.curves.map((curve) => {
         const points = curve.points.map((p) =>
           vec3(this.resolveWorld(p.position, p.binding))
         );
-        return {
-          id: curve.id,
-          points,
-          polyline: hugsSurface(curve, this.characterHeight)
+        seen.add(curve.id);
+
+        const cached = this.curveProjections.get(curve.id);
+        let polyline: Vec3[] | undefined;
+        if (
+          cached &&
+          cached.revision === this.surfaceRevision &&
+          cached.closed === curve.closed &&
+          samePointList(cached.points, points)
+        ) {
+          polyline = cached.polyline;
+        } else {
+          polyline = hugsSurface(curve, this.characterHeight)
             ? this.projectCurve(
                 points,
                 curve.points.map((p) => p.normal),
                 curve.closed
               )
-            : undefined,
+            : undefined;
+          this.curveProjections.set(curve.id, {
+            revision: this.surfaceRevision,
+            closed: curve.closed,
+            points: points.map((p) => [p[0], p[1], p[2]] as Vec3),
+            polyline
+          });
+        }
+
+        return {
+          id: curve.id,
+          points,
+          polyline,
           closed: curve.closed,
           active: curve.id === ui.activeCurveId
         };
       })
     );
+
+    // A deleted curve must not keep its projection alive for the session.
+    if (this.curveProjections.size > seen.size) {
+      for (const id of Array.from(this.curveProjections.keys()))
+        if (!seen.has(id)) this.curveProjections.delete(id);
+    }
 
   }
 
@@ -1190,7 +1281,12 @@ export class RiserApp {
   ): Vec3[] | undefined {
     if (!this.character || worldPoints.length < 2) return undefined;
 
-    const samples = resampleCurve(worldPoints, closed, DEFAULT_SAMPLES_PER_SEGMENT);
+    const samples = resampleCurve(
+      worldPoints,
+      closed,
+      DEFAULT_SAMPLES_PER_SEGMENT,
+      DEFAULT_CURVE_DEGREE
+    );
     if (samples.length < 2) return undefined;
 
     const worldNormals = normals.map((n) =>
@@ -1205,13 +1301,22 @@ export class RiserApp {
       this.projectionRaycaster,
       {
         searchDistance: Math.max(height * SEARCH_FRACTION, 1e-4),
-        // Control vertices are already bound to a triangle; moving them would
-        // contradict the binding the server evaluates.
-        pinned: controlVertexSampleIndices(
-          worldPoints.length,
-          DEFAULT_SAMPLES_PER_SEGMENT,
-          closed
-        )
+        // Control vertices are already bound to a triangle, so holding them
+        // still is what keeps the drawn curve honest about its bindings.
+        //
+        // Only meaningful for the interpolating cubic, though. At degree two
+        // the curve approaches its middle control vertices rather than passing
+        // through them, so there is no sample sitting on one: pinning by index
+        // would freeze whichever arbitrary sample happened to land there and
+        // put a flat spot in the curve.
+        pinned:
+          DEFAULT_CURVE_DEGREE === 3
+            ? controlVertexSampleIndices(
+                worldPoints.length,
+                DEFAULT_SAMPLES_PER_SEGMENT,
+                closed
+              )
+            : undefined
       }
     );
   }
@@ -1357,6 +1462,31 @@ export class RiserApp {
    */
   private readonly depthCache = new Map<string, { revision: number; depth: number }>();
   private depthRevision = 0;
+
+  /**
+   * Cached surface projections, one per curve.
+   *
+   * Invalidated by the curve's own points changing, and by `surfaceRevision`
+   * when the character's skin moves underneath it.
+   */
+  private readonly curveProjections = new Map<
+    string,
+    {
+      revision: number;
+      closed: boolean;
+      points: Vec3[];
+      polyline: Vec3[] | undefined;
+    }
+  >();
+
+  /**
+   * Bumped whenever the surface curves are projected onto has moved.
+   *
+   * Changing subdivision level rebuilds the limit surface, and a blend shape
+   * moves the points it is built from, so a projection taken before either is
+   * describing a shape that is no longer there.
+   */
+  private surfaceRevision = 0;
 
   /**
    * Whether a world point lies inside the character.
@@ -1536,6 +1666,7 @@ export class RiserApp {
       this.subdivs
     ) {
       this.subdivs.setLevel(effectiveSubdivLevel(state));
+      this.surfaceRevision++;
       // A rebuilt limit surface is new geometry with no BVH of its own.
       if (this.character) accelerate(this.character.root);
       const ui = useUiStore.getState();
