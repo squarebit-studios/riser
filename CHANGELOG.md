@@ -2,6 +2,12 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.13.1] - 2026-09-01
+
+### Fixed
+- The Maya exporter shipped geometry the character does not have. It decided what to leave out by naming the scaffolding it knew about, which meant anything it did not recognise was kept without anyone being told: four hidden proxy meshes sitting on top of the real brows and lashes, and an entire second character under a root no rule had heard of, carrying a body heavier than the real one. It now keeps what is in the model group and visible in Maya, and drops the rest, along with any material left with nothing to shade
+- Hidden geometry is removed rather than exported and marked invisible. USD records visibility faithfully and three's USD composer ignores it, so a hidden mesh was drawn anyway by anything reading the file in a browser
+
 ## [0.13.0] - 2026-09-01
 
 ### Fixed

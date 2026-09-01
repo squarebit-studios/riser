@@ -49,15 +49,66 @@ import re
 import shutil
 import sys
 
-# The character is what lives under `model`. Everything else in a rig scene is
-# scaffolding: bind planes the face rig drives, eye projection spheres, the PSD
-# readout, and whatever else a rigger needed.
+# Rig scaffolding: bind planes the face rig drives, eye projection spheres, the
+# PSD readout. All of it lives under `rig`, and none of it is the character.
 #
-# Stated as what to KEEP rather than what to drop, which is the safer way
-# round. Naming the scaffolding means every new kind of helper ships until
-# somebody notices it; naming the character means a new helper is excluded by
-# default and only a real change to the model can let one through.
+# What the character IS, rather than a list of the things it is not.
+#
+# This has been both ways round. Naming the scaffolding (everything under
+# `rig`) was chosen once because the character's spacesuit sat at the top level
+# of a shot sculpt and an allow rule dropped it. That premise is gone: the suit
+# now lives in `model` with the rest of him.
+#
+# The deeper problem with naming the scaffolding is that a deny rule can only
+# remove what it already knows to call by name, so anything unfamiliar is kept
+# by default and nobody finds out. That is exactly how it failed here. It
+# correctly pruned all thirty bind planes, and then let through four hidden
+# proxy meshes sitting on top of the real brows and lashes, and an entire
+# second character under an unrelated root that no rule had ever heard of, with
+# a body heavier than the real one. The export reported success.
+#
+# An allow rule fails the other way: something new and unrecognised is left out
+# and looks missing, which is a bug somebody reports in the first minute rather
+# than a slow accumulation of geometry nobody asked for. There is a guard below
+# for the one case that would be silent, a `model` group that matches nothing.
 MODEL_PARENT = "|model|"
+
+
+def is_visible(node, cmds):
+    """Whether Maya actually draws this node.
+
+    Visibility is inherited and it is not one attribute: a mesh disappears if
+    it, or anything it hangs from, is switched off, has lodVisibility off, or
+    sits on a hidden display layer. Asking only about the mesh itself reports
+    a hidden proxy as visible, because what is switched off is its parent.
+
+    This has to be answered here, in Maya, and answered by REMOVING geometry
+    rather than by writing `visibility = invisible` into the stage. USD honours
+    that attribute; three's USD composer ignores it completely and draws the
+    prim anyway. So an export that faithfully records what is hidden still
+    shows every hidden thing in the widget, which is the bug this is fixing.
+    """
+    parts = node.split("|")
+    for i in range(2, len(parts) + 1):
+        ancestor = "|".join(parts[:i])
+        if not cmds.objExists(ancestor):
+            continue
+        for attr in ("visibility", "lodVisibility"):
+            if cmds.attributeQuery(attr, node=ancestor, exists=True):
+                try:
+                    if not cmds.getAttr(ancestor + "." + attr):
+                        return False
+                except Exception:
+                    # An attribute that cannot be read is not evidence that the
+                    # mesh is hidden, so it is not treated as such.
+                    pass
+        for layer in (cmds.listConnections(ancestor, type="displayLayer") or []):
+            try:
+                if not cmds.getAttr(layer + ".visibility"):
+                    return False
+            except Exception:
+                pass
+    return True
 
 # The Squarebit Eye look, read off the scene's squarebitEyeShader nodes and
 # written back as the canonical squarebitEye:* custom attributes that the web
@@ -439,7 +490,7 @@ def process_texture(source, out_dir, max_size):
 # USD post-process
 # --------------------------------------------------------------------------
 
-def write_blend_shape_layer(stage, shapes, out_path, source, skip=None):
+def write_blend_shape_layer(stage, shapes, out_path, source, keep=None):
     """Write the blend shapes to a layer of their own, beside the character.
 
     WHY A SEPARATE FILE. The shapes are three times the size of the character
@@ -472,7 +523,7 @@ def write_blend_shape_layer(stage, shapes, out_path, source, skip=None):
         # Helper meshes are pruned from the character, so shapes for them
         # describe a mesh that is not there: bytes nobody can use, carrying a
         # stamp that can never match anything.
-        if skip and prim.GetName() in skip:
+        if keep and prim.GetName() not in keep:
             continue
 
         points = prim.GetAttribute("points").Get() if prim.HasAttribute("points") else None
@@ -558,7 +609,7 @@ def author_blend_shapes(stage, shapes):
 
 
 def postprocess(target, tex_dir_name, max_size, eye_looks, unit_scale,
-                helper_names, want_materials, blend_shapes=None,
+                keep_names, want_materials, blend_shapes=None,
                 blend_shape_layer=None, sidecar_shapes=None, source=None):
     """Localise textures, kill the black fallbacks, and write the eye look."""
     from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade, Vt
@@ -574,24 +625,56 @@ def postprocess(target, tex_dir_name, max_size, eye_looks, unit_scale,
         # BEFORE the scaffolding prune so the meshes are all still here.
         written = write_blend_shape_layer(
             stage, sidecar_shapes, blend_shape_layer, source or target,
-            helper_names)
+            keep_names)
         size = os.path.getsize(blend_shape_layer) / 1e6
         print("  blend shape layer: %d targets, %.1f MB -> %s" % (
             written, size, blend_shape_layer))
 
-    # 0. Drop the rig scaffolding meshes. Removing a Mesh prim leaves the
-    #    Skeleton and every other mesh's binding to it untouched.
+    # 0. Keep the character's meshes and drop everything else. Removing a Mesh
+    #    prim leaves the Skeleton and every other mesh's binding to it alone.
+    #
+    #    Stated as "not in the keep set" rather than "in the helper set" so it
+    #    also removes what no rule anticipated. That is not hypothetical: this
+    #    stage arrived carrying a whole second character under its own root,
+    #    hidden, with a body heavier than the real one, and a deny rule walked
+    #    straight past it.
     pruned = 0
-    if helper_names:
+    if keep_names:
         # Paths first, then remove: dropping a prim expires the handles the
         # traversal is still holding, including its siblings' children.
         doomed = [prim.GetPath() for prim in stage.Traverse()
                   if prim.GetTypeName() == "Mesh"
-                  and prim.GetName() in helper_names]
+                  and prim.GetName() not in keep_names]
         for path in doomed:
             if stage.RemovePrim(path):
                 pruned += 1
-        print("  helper mesh prims pruned: %d" % pruned)
+        print("  mesh prims pruned: %d, kept: %d" % (
+            pruned, sum(1 for x in stage.Traverse()
+                        if x.GetTypeName() == "Mesh")))
+
+    # 0a. And the materials nothing is left to wear.
+    #
+    #     Worth doing rather than leaving as dead weight, because the texture
+    #     pass below walks every shader in the stage and copies the image it
+    #     points at into the package. An unbound material is not a few spare
+    #     prims, it is megabytes of texture for geometry that is gone.
+    if keep_names:
+        bound = set()
+        for prim in stage.Traverse():
+            if prim.GetTypeName() not in ("Mesh", "GeomSubset"):
+                continue
+            material, _ = UsdShade.MaterialBindingAPI(
+                prim).ComputeBoundMaterial()
+            if material:
+                bound.add(material.GetPrim().GetPath())
+        orphans = [prim.GetPath() for prim in stage.Traverse()
+                   if prim.GetTypeName() == "Material"
+                   and prim.GetPath() not in bound]
+        gone = 0
+        for path in orphans:
+            if stage.GetPrimAtPath(path) and stage.RemovePrim(path):
+                gone += 1
+        print("  unbound materials pruned: %d" % gone)
 
     # 0b. And the rig's control hierarchy. Exporting the whole scene is what
     #     gets the Skeleton written at the path the meshes bind to, but it also
@@ -954,29 +1037,38 @@ def main() -> int:
     # skel:skeleton relationship pointed at a Skeleton prim that was not in the
     # file, and three built 33 SkinnedMeshes with no Skeleton behind them.
     #
-    # So: export the lot, and prune the helper meshes from the stage afterwards,
+    # So: export the lot, and keep only the character's own meshes afterwards,
     # where a Mesh can be removed without disturbing the skeleton at all.
-    helper_names = set()
+    #
+    # The set is named positively and applied by name, which matters: the stage
+    # can hold meshes that were never in this list to begin with, and a rule
+    # written as "everything except the ones I recognise" cannot see those.
+    keep_names = set()
     if not args.keep_rig_helpers:
+        hidden = 0
         outside = 0
         for mesh in meshes:
             full = (cmds.ls(mesh, long=True) or [mesh])[0]
-            if MODEL_PARENT in full:
+            if MODEL_PARENT not in full:
+                outside += 1
                 continue
-            outside += 1
+            if not is_visible(full, cmds):
+                hidden += 1
+                continue
             parent = cmds.listRelatives(mesh, parent=True) or []
-            helper_names.add(re.sub(r"Shape$", "", mesh.split("|")[-1]))
+            keep_names.add(re.sub(r"Shape$", "", mesh.split("|")[-1]))
             if parent:
-                helper_names.add(parent[0].split("|")[-1])
-        print("  meshes outside model, to prune: %d of %d"
-              % (outside, len(meshes)))
-        if outside == len(meshes):
-            # Every mesh outside `model` means there is no `model` group, not
-            # that the character is empty. Pruning the lot would write a stage
-            # with no geometry in it and report success.
-            print("  no 'model' group found, so nothing is pruned",
-                  file=sys.stderr)
-            helper_names = set()
+                keep_names.add(parent[0].split("|")[-1])
+        print("  meshes: %d in the scene, %d outside %s, %d hidden, %d kept"
+              % (len(meshes), outside, MODEL_PARENT.strip("|"), hidden,
+                 len(meshes) - outside - hidden))
+        if not keep_names:
+            # No `model` group at all, rather than a character with nothing in
+            # it. Pruning to the empty set would write a stage with no geometry
+            # and report success, which is the one way an allow rule can fail
+            # as quietly as the deny rule it replaced.
+            print("  nothing lives under %s, so nothing is pruned"
+                  % MODEL_PARENT.strip("|"), file=sys.stderr)
 
     options = {
         "file": target,
@@ -1018,7 +1110,7 @@ def main() -> int:
     unit_scale = 0.01 if cmds.currentUnit(q=True, linear=True) == "cm" else 1.0
     print("Post-process:")
     postprocess(target, tex_dir_name, args.texture_size, eye_looks,
-                unit_scale, helper_names, want_materials,
+                unit_scale, keep_names, want_materials,
                 None if args.blend_shape_layer else blend_shape_data,
                 args.blend_shape_layer, blend_shape_data, source)
     print("Wrote %s (%.1f MB)" % (target, os.path.getsize(target) / 1e6))
