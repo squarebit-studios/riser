@@ -97,10 +97,20 @@ def derive_project_root(source):
     conversion runs in a plain shell and still finds the textures.
     """
     normalized = source.replace("\\", "/")
-    marker = "/asset/"
-    index = normalized.lower().rfind(marker)
-    if index > 0:
-        return normalized[:index]
+
+    # An asset file sits under `<root>/asset/`, and a shot file under
+    # `<root>/sequence/`. Both are inside the project, so both name the root,
+    # and a scene from a shot references the same asset textures a scene from
+    # the asset does.
+    #
+    # Worth handling rather than leaving to the flag: with no root, every
+    # `$PROJECT_ROOT` token expands to nothing, the textures are quietly not
+    # found, and what comes out is a character with no materials and a usdz
+    # smaller than the crate inside it. Which is exactly what happened.
+    for marker in ("/asset/", "/sequence/"):
+        index = normalized.lower().rfind(marker)
+        if index > 0:
+            return normalized[:index]
     return os.environ.get("PROJECT_ROOT") or ""
 
 
@@ -862,6 +872,10 @@ def main() -> int:
                              "shapes triple the download for everyone who "
                              "never opens them. A character somebody loads off "
                              "their own disk should stay one file.")
+    parser.add_argument("--no-skeleton", action="store_true",
+                        help="Export geometry and materials only. For an asset "
+                             "that is going to be looked at rather than posed, "
+                             "where a rig is weight nobody downloads for.")
     parser.add_argument("--keep-rig-helpers", action="store_true",
                         help="Keep bind planes and projection spheres")
     args = parser.parse_args()
@@ -972,8 +986,10 @@ def main() -> int:
         "exportColorSets": True,
         # Skeletons and skin weights are the point: Riser reads a rig to place
         # guides exactly, so an export that drops them loses the best tier.
-        "exportSkels": "auto",
-        "exportSkin": "auto",
+        # A character being LOOKED at needs no rig, and a rig is not free:
+        # joints, bind transforms and a weight per vertex per influence.
+        "exportSkels": "none" if args.no_skeleton else "auto",
+        "exportSkin": "none" if args.no_skeleton else "auto",
         # Left OFF even when blend shapes are wanted. Asking for them here
         # writes names and target relationships and no shapes at all, because
         # it reads target GEOMETRY and a published rig has none. The sparse
