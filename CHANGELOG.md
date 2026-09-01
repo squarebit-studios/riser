@@ -2,6 +2,15 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.12.3] - 2026-09-01
+
+### Fixed
+- Meshes a USD marks invisible are now hidden on load. Gary authors four proxy meshes invisible because they are coincident duplicates of the brows and lashes, and drawing them anyway made those flicker against their own copies
+- Visibility is inherited, so a mesh under a prim the file switches off is hidden too, which is how a rig turns whole groups off in one place
+
+### Changed
+- What the file hides is the starting state of the Scene tab rather than a rule: the pieces are listed as hidden and can be turned back on, so you can still see what a character was keeping out of the way
+
 ## [0.12.2] - 2026-09-01
 
 ### Fixed

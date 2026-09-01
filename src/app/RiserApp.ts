@@ -26,6 +26,7 @@ import { EyeMaterials } from '../viewport/EyeMaterials';
 import { readAuthoredTopology } from '../io/authoredTopology';
 import { inspectUsd, type UsdPrim } from '../io/usdInspect';
 import { readBlendShapes } from '../io/blendShapeData';
+import { readHiddenMeshes } from '../io/usdVisibility';
 import { SparseBlendShapes } from '../viewport/SparseBlendShapes';
 import { AUTHORED_CAGE } from '../viewport/SubdivSurface';
 import { SceneSelection } from '../viewport/SceneSelection';
@@ -483,6 +484,23 @@ export class RiserApp {
         }
       } catch {
         // A character whose shapes cannot be read still loads.
+      }
+
+      // Meshes the file says not to draw. This character authors four proxy
+      // meshes invisible, and three's composer draws them anyway, so the real
+      // brows and lashes z-fight with their own duplicates.
+      try {
+        const hidden = readHiddenMeshes(source);
+        for (const mesh of model.meshes) {
+          const leaf = ((mesh.userData.primPath as string) ?? '').split('/').pop();
+          if (!leaf || !hidden.has(leaf)) continue;
+          // Through the scene selection rather than by setting `visible`
+          // directly, so the Scene tab shows them as hidden and anyone who
+          // wants to see what the file was hiding can turn them back on.
+          this.scene.setVisible((mesh.userData.primPath as string) ?? '', false);
+        }
+      } catch {
+        // A file whose visibility cannot be read still loads, drawn in full.
       }
 
       // And the same bytes are what the USD tab shows.

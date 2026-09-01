@@ -1,6 +1,6 @@
 {
   "name": "riser",
-  "version": "0.12.2",
+  "version": "0.12.3",
   "private": true,
   "type": "module",
   "description": "Riser - USD character setup. Place guide markers and curves on a character in the browser.",
