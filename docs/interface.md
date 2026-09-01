@@ -48,7 +48,7 @@ Left to right.
 
 | Control | What it does |
 |---|---|
-| **Markers** / **Curves** | Switches the active tool. Also `1` and `2`. |
+| **Select** / **Markers** / **Curves** | Switches the active tool. Also `1`, `2` and `3`. **Select** moves what is already placed and never adds anything, so a click that misses is safe. |
 | **Mirror** | Mirrors placements across the character's centre line, and shows the symmetry plane in the viewport. On by default. Also `S`. |
 | **Placement** | Where a click lands: on the surface, inside the volume, or free. See below. |
 | **Auto-place** | Fills in markers automatically: from the character's own skeleton when it has one, otherwise by measuring its shape. Disabled until a character is loaded. Never overwrites anything you placed. |
@@ -343,6 +343,24 @@ What Riser read from the file you loaded.
 | **Up axis** | `Y` or `Z`. |
 | **Skeleton** | `present` or `none`. With a skeleton, Auto-place reads exact joint positions; without one it measures the shape instead, which is approximate. |
 | **Subdivision** | The preview level and the face counts, as *level 2 - 15,136 faces from ...* the cage count. Reads *off* with the cage count at level 0. |
+
+### Select mode
+
+The mode for adjusting what is already there. Press on a marker or a curve
+control vertex and it is selected and dragged, exactly as it would be in the
+tool that created it: the drag re-seats it on the surface and rewrites the
+binding, `alt` still lifts a marker off the skin, and mirroring still applies.
+
+The difference is what happens when you miss. In marker mode a click on the
+character places a marker, and in curve mode it extends a curve, so nudging
+something you can see means every stray click leaves a new thing behind. In
+Select a press that lands on nothing belongs to the camera, so you can orbit,
+frame and adjust without adding anything.
+
+Where a marker and a control vertex overlap on screen, which happens often
+around the eyes and mouth, the marker takes the drag.
+
+`Delete` removes whatever is selected, as it does in the owning tool.
 
 ### Selection, with the marker tool
 

@@ -59,6 +59,7 @@ import { placeGuidesFromProportions } from '../tools/autoplace/fromProportions';
 import { placeGuidesFromQuadruped } from '../tools/autoplace/fromQuadruped';
 import { ToolManager } from '../tools/ToolManager';
 import { MarkerLayer } from '../tools/marker/MarkerLayer';
+import { SelectTool } from '../tools/SelectTool';
 import { MarkerTool } from '../tools/marker/MarkerTool';
 import { CurveLayer } from '../tools/curve/CurveLayer';
 import { CurveTool } from '../tools/curve/CurveTool';
@@ -273,8 +274,20 @@ export class RiserApp {
     this.overlays = new Overlays(this.viewport.overlayRoot);
     this.toolManager = new ToolManager(canvas, this.cameraRig);
 
-    this.toolManager.register(new MarkerTool(this.markerToolDeps()));
-    this.toolManager.register(new CurveTool(this.curveToolDeps()));
+    const markerTool = new MarkerTool(this.markerToolDeps());
+    const curveTool = new CurveTool(this.curveToolDeps());
+    this.toolManager.register(markerTool);
+    this.toolManager.register(curveTool);
+    // Select borrows its dragging from the other two rather than owning any.
+    // Markers are offered the pointer first: where a marker and a control
+    // vertex sit on top of each other, which happens constantly on a face,
+    // the marker is the coarser thing and the likelier target.
+    this.toolManager.register(
+      new SelectTool({
+        viewport: this.viewport,
+        tools: () => [markerTool, curveTool]
+      })
+    );
     this.toolManager.setActive(useUiStore.getState().activeTool);
 
     this.unsubscribeFrame = this.viewport.onFrame((dt) => {

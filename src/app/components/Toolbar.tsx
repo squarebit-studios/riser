@@ -81,8 +81,14 @@ export function Toolbar(): JSX.Element {
         value={activeTool}
         onChange={(tool) => useUiStore.getState().setActiveTool(tool)}
         options={[
-          { value: 'marker', label: 'Markers', icon: 'marker', hint: 'Place markers (1)' },
-          { value: 'curve', label: 'Curves', icon: 'curve', hint: 'Draw curves (2)' }
+          {
+            value: 'select',
+            label: 'Select',
+            icon: 'select',
+            hint: 'Select and drag what is already placed, without adding anything (1)'
+          },
+          { value: 'marker', label: 'Markers', icon: 'marker', hint: 'Place markers (2)' },
+          { value: 'curve', label: 'Curves', icon: 'curve', hint: 'Draw curves (3)' }
         ]}
       />
 

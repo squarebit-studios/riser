@@ -22,6 +22,7 @@
 import type { SVGProps } from 'react';
 
 export type IconName =
+  | 'select'
   | 'marker'
   | 'curve'
   | 'sparkles'
@@ -95,6 +96,13 @@ export function Icon({ name, size = 16, ...rest }: IconProps): JSX.Element {
 }
 
 const PATHS: Record<IconName, JSX.Element> = {
+  // An arrow, because this is the mode that moves what is already there
+  // rather than adding to it.
+  select: (
+    <>
+      <path d="M5 3.5 18.5 12 12 13.2 9.4 19.4 5 3.5Z" />
+    </>
+  ),
   marker: (
     <>
       <path d="M12 21s7-5.686 7-11a7 7 0 1 0-14 0c0 5.314 7 11 7 11Z" />

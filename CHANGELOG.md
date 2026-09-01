@@ -2,6 +2,12 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.14.0] - 2026-09-01
+
+### Added
+- A Select tool, for moving what is already placed. Press on a marker or a curve control vertex and it is selected and dragged, with the same surface re-seating, binding rewrite, alt to lift and mirroring the creating tool gives it. What changes is the miss: a press that lands on nothing belongs to the camera, so adjusting something no longer means every stray click leaves a new marker or another curve point behind. It is `1`, and markers and curves move to `2` and `3`
+- The viewport says which mode it is in, in its top right corner, and says it as the consequence rather than the name: *click the character to place*. The toolbar already carried this and it was a small button at the top of the window, nowhere near where anyone is looking when they click. Placing modes are tinted to match what they create, and Select is quiet, because the point of it is that clicking is safe
+
 ## [0.13.3] - 2026-09-01
 
 ### Changed

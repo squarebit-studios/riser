@@ -29,6 +29,20 @@ On macOS, `Cmd` works in place of `Ctrl`.
 These belong to the active tool and only reach it while the viewport has
 keyboard focus. Clicking in the viewport gives it focus.
 
+### Choosing a tool
+
+| Key | Action |
+|---|---|
+| `1` | Select: drag what is already placed, add nothing |
+| `2` | Markers |
+| `3` | Curves |
+
+### Select tool
+
+| Key | Action |
+|---|---|
+| `Delete` or `Backspace` | Remove the selected marker or control vertex |
+
 ### Marker tool
 
 | Key | Action |
