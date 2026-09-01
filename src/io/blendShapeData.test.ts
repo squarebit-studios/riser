@@ -89,3 +89,46 @@ describe('reading blend shapes from USD', () => {
     expect(readBlendShapes(new ArrayBuffer(8)).size).toBe(0);
   });
 });
+
+describe('the shipped character', () => {
+  function gary(): ArrayBuffer {
+    const file = readFileSync(
+      join(process.cwd(), 'public', 'assets', 'gary.usdz')
+    );
+    return file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
+  }
+
+  it('carries its blend shapes', () => {
+    // A guard on the asset rather than on the code. Blend shapes are off by
+    // default in the converter and cost three times the download, so an export
+    // that forgets them is an easy mistake that removes a whole feature
+    // without breaking anything that would say so.
+    const shapes = readBlendShapes(gary());
+    expect(shapes.size).toBeGreaterThan(20);
+    expect(shapeNames(shapes).length).toBeGreaterThan(500);
+  });
+
+  it('shares shape names across meshes, which is what one control needs', () => {
+    const shapes = readBlendShapes(gary());
+    const counts = new Map<string, number>();
+    for (const list of shapes.values()) {
+      for (const shape of list) {
+        counts.set(shape.name, (counts.get(shape.name) ?? 0) + 1);
+      }
+    }
+    const shared = [...counts.values()].filter((n) => n > 1).length;
+    expect(shared).toBeGreaterThan(100);
+  });
+
+  it('keeps every shape sparse', () => {
+    // The whole reason this is affordable. If an exporter ever wrote dense
+    // shapes, the file would balloon and the applier would touch every vertex
+    // of the character for every shape.
+    const shapes = readBlendShapes(gary());
+    const body = shapes.get('body_geo');
+    expect(body).toBeDefined();
+    for (const shape of body!) {
+      expect(shape.pointIndices.length).toBeLessThan(25490 * 0.5);
+    }
+  });
+});

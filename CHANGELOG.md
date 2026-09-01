@@ -2,6 +2,15 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.12.0] - 2026-08-31
+
+### Added
+- Gary now ships with his blend shapes: 932 of them, 462 shared across more than one mesh so a single control moves the face, the gums and the teeth together
+- The bundled character carries only what is under its model group, so rig scaffolding no longer travels with it
+
+### Changed
+- That character is 21.8MB rather than 6.5MB, which is what carrying a face rig's worth of shapes costs. Loading shows how much has arrived and can be cancelled
+
 ## [0.11.0] - 2026-08-31
 
 ### Added

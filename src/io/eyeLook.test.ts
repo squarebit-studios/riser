@@ -177,9 +177,16 @@ describe('textures packed inside the usdz', () => {
   });
 
   it('matches a leading ./ against the name the archive stores', () => {
+    // The path is read from the look rather than written here. The converter
+    // names the texture folder after the output file, so hardcoding one made
+    // this fail on an asset that was perfectly correct, which is a test
+    // reporting on its own assumptions rather than on the code.
     const usdz = garyUsdz();
-    const bare = fileInsideUsdz(usdz, 'gary_tex/T_Sclera_D.jpg');
-    const dotted = fileInsideUsdz(usdz, './gary_tex/T_Sclera_D.jpg');
+    const authored = readEyeLooks(usdz)[0]!.params.scleraTexture as string;
+    expect(authored.startsWith('./')).toBe(true);
+
+    const dotted = fileInsideUsdz(usdz, authored);
+    const bare = fileInsideUsdz(usdz, authored.slice(2));
     expect(bare).not.toBeNull();
     expect(dotted!.byteLength).toBe(bare!.byteLength);
   });
