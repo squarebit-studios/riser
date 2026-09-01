@@ -62,6 +62,8 @@ export function Viewport3D(): JSX.Element {
     >
       <div ref={containerRef} className="h-full w-full" />
 
+      <ModeBanner />
+
       {dragOver && (
         <div className="pointer-events-none absolute inset-4 flex items-center justify-center rounded-lg border-2 border-dashed border-guide-placed/70 bg-guide-placed/5">
           <span className="text-sm text-ink">Drop a character to load it</span>
@@ -88,6 +90,67 @@ export function Viewport3D(): JSX.Element {
 }
 
 
+/**
+ * Which mode the next click is in, in the corner of the thing it acts on.
+ *
+ * The toolbar already says this, and it was not enough. A click on the
+ * character does something different and irreversible-looking in each mode -
+ * it drops a marker, it extends a curve, or it does nothing at all - and the
+ * evidence for which was a small highlighted button at the top of the window,
+ * nowhere near where the person is looking or clicking.
+ *
+ * So it is stated over the viewport, and it names the consequence rather than
+ * the mode: "click to place a marker" is the thing somebody needs to know, and
+ * "Markers" is only the name we happen to have given that. Placing modes are
+ * tinted to match the thing they create; Select is quiet, because the point of
+ * it is that clicking is safe.
+ */
+function ModeBanner(): JSX.Element | null {
+  const activeTool = useUiStore((s) => s.activeTool);
+  const loading = useUiStore((s) => s.loading);
+
+  // One banner at a time. The loading banner is the more urgent news and it
+  // is answering the same question: what is this window doing right now.
+  if (loading) return null;
+
+  const modes = {
+    select: {
+      label: 'Select',
+      hint: 'Drag a marker or a point',
+      tint: 'border-edge bg-panel-lighter/90 text-ink-faint'
+    },
+    marker: {
+      label: 'Marker mode',
+      hint: 'Click the character to place',
+      tint: 'border-guide-placed/50 bg-guide-placed/10 text-ink'
+    },
+    curve: {
+      label: 'Curve mode',
+      hint: 'Click along the character to draw',
+      tint: 'border-curve/50 bg-curve/10 text-ink'
+    }
+  } as const;
+
+  const mode = modes[activeTool];
+  if (!mode) return null;
+
+  return (
+    <div
+      className="pointer-events-none absolute right-3 top-3 select-none"
+      // Announced rather than silent: someone using a screen reader gets the
+      // same warning about what a click is about to do.
+      role="status"
+      aria-live="polite"
+    >
+      <div
+        className={`flex items-baseline gap-2 rounded-control border px-2.5 py-1.5 shadow-lg backdrop-blur-sm ${mode.tint}`}
+      >
+        <span className="text-xs font-semibold">{mode.label}</span>
+        <span className="text-[11px] text-ink-faint">{mode.hint}</span>
+      </div>
+    </div>
+  );
+}
 /**
  * What a character load is doing, and a way out of it.
  *

@@ -234,9 +234,12 @@ function useGlobalShortcuts(): void {
 
       switch (e.key) {
         case '1':
-          ui.setActiveTool('marker');
+          ui.setActiveTool('select');
           break;
         case '2':
+          ui.setActiveTool('marker');
+          break;
+        case '3':
           ui.setActiveTool('curve');
           break;
         case 'f':
