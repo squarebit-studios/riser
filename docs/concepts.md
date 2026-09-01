@@ -231,6 +231,15 @@ applied to your asset before you have seen it. Level 0 is also the surface your
 bindings are really written against, which makes it the honest thing to open
 with.
 
+**Textures stay where they were painted.** The UVs are subdivided along with
+the mesh, using the same rules the vertices get, so a refined point carries the
+UV of the place it actually moved to. Riser reads the UVs the file authored,
+per polygon corner, which is how the seams a texture artist set up survive: an
+island boundary stays exactly where it was authored, so the two sides of a seam
+cannot drift apart. This is the same behaviour as the Squarebit Subdivs plugin
+for Unreal, and as Maya's smooth preview with Preserve Map Borders set to
+Internal.
+
 Every level you visit is kept, so returning to one you have already used is
 instant rather than a fresh refinement.
 

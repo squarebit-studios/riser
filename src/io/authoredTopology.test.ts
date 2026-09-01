@@ -14,6 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { buildRefinedSurface, type SubdivMesh } from '@squarebit/subdivs-three';
 import { readAuthoredTopology } from './authoredTopology';
 
 function garyUsdz(): ArrayBuffer {
@@ -91,5 +92,97 @@ describe('the topology the file authored', () => {
   it('returns nothing for a file that carries no topology', () => {
     expect(readAuthoredTopology(new ArrayBuffer(8)).size).toBe(0);
     expect(readAuthoredTopology('#usda 1.0\n').size).toBe(0);
+  });
+});
+
+/**
+ * That the character's texture stays on the character once it is smoothed.
+ *
+ * Reading the authored UVs is only half of it. They then have to be REFINED
+ * along with the mesh: a refined vertex moves toward the limit surface, and if
+ * its UV does not move with it the texture slides, which is what "the UVs are
+ * stretching when subd happens on Gary" was.
+ *
+ * The check is the one the plugin's fvar-consistency commandlet makes, run
+ * against Gary's real body cage. Inside a UV island a vertex has exactly one
+ * UV, so the UV of a refined vertex is predictable: apply the vertex's own
+ * subdivision weights - the stencil row the surface already carries - to the
+ * cage's UVs. If the UV channel is refined with the same rules as the
+ * positions, the prediction is exact. Bilinear UVs miss it by 2.2e-3 in UV
+ * space on this cage, which is about nine texels of a 4K map.
+ */
+describe('the authored UVs survive subdivision', () => {
+  const authored = readAuthoredTopology(garyUsdz());
+
+  /** Worst distance, in UV units, between a refined UV and where the vertex went. */
+  function drift(cage: SubdivMesh, mode: 'smooth' | 'linear'): number {
+    const V = cage.positions.length / 3;
+
+    // The cage UV of each vertex, where every corner meeting there agrees.
+    // Seam vertices carry more than one and are not predictable this way, so
+    // anything refined from one is left out of the score.
+    const u = new Float32Array(V);
+    const v = new Float32Array(V);
+    const seen = new Uint8Array(V);
+    const seam = new Uint8Array(V);
+    for (let c = 0; c < cage.faceVertexIndices.length; c++) {
+      const at = cage.faceVertexIndices[c]!;
+      const cu = cage.uvs![c * 2]!;
+      const cv = cage.uvs![c * 2 + 1]!;
+      if (!seen[at]) {
+        seen[at] = 1;
+        u[at] = cu;
+        v[at] = cv;
+      } else if (u[at] !== cu || v[at] !== cv) {
+        seam[at] = 1;
+      }
+    }
+
+    const surface = buildRefinedSurface({ ...cage, uvInterpolation: mode }, 1);
+    const mesh = surface.mesh;
+    const table = surface.table;
+    let worst = 0;
+    for (let c = 0; c < mesh.faceVertexIndices.length; c++) {
+      const at = mesh.faceVertexIndices[c]!;
+      let pu = 0;
+      let pv = 0;
+      let scorable = true;
+      for (let o = table.offsets[at]!; o < table.offsets[at + 1]!; o++) {
+        const source = table.indices[o]!;
+        if (seam[source]) {
+          scorable = false;
+          break;
+        }
+        const weight = table.weights[o]!;
+        pu += u[source]! * weight;
+        pv += v[source]! * weight;
+      }
+      if (!scorable) continue;
+      const err = Math.hypot(mesh.uvs![c * 2]! - pu, mesh.uvs![c * 2 + 1]! - pv);
+      if (err > worst) worst = err;
+    }
+    return worst;
+  }
+
+  function bodyCage(): SubdivMesh {
+    const body = authored.get('body_geo')!;
+    return {
+      positions: body.positions,
+      faceVertexCounts: body.faceVertexCounts,
+      faceVertexIndices: body.faceVertexIndices,
+      uvs: body.uvs
+    };
+  }
+
+  it('leaves the texture exactly where it was painted on the body', () => {
+    // Float noise on 350k scored corners, against 2.2e-3 before the UVs were
+    // refined rather than split.
+    expect(drift(bodyCage(), 'smooth')).toBeLessThan(1e-5);
+  });
+
+  it('and would not, if the UVs were merely split per face', () => {
+    // The control. Without it the test above cannot tell "the UVs are refined"
+    // from "the measurement is looking at nothing".
+    expect(drift(bodyCage(), 'linear')).toBeGreaterThan(1e-3);
   });
 });

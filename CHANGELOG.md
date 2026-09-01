@@ -2,6 +2,15 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.9.4] - 2026-08-31
+
+### Fixed
+- Textures no longer stretch when smoothing is turned on. The UVs were being split flat across each original polygon while the vertices were being smoothed, so every refined point carried the UV of where it used to be rather than where it went. On Gary's body the texture sat up to 2.2e-3 out in UV space, about nine texels of a 4K map, and worst exactly where the polygons are irregular, which is the face. The UVs are now refined with the same rules as the mesh, and the measured error is float noise
+- UV seams stay put. An island boundary is kept exactly as authored, so the two sides of a seam cannot drift apart, which matches the Unreal plugin's default and Maya's Preserve Map Borders: Internal
+
+### Changed
+- Squarebit Subdivs 0.10.0, which is where the fix lives. Refining the UV channel as well as the positions roughly doubles the cost of building a level: Gary's body at level 2 went from 410ms to 773ms, paid once per level and then cached
+
 ## [0.9.3] - 2026-08-31
 
 ### Added
