@@ -462,7 +462,13 @@ export class RiserApp {
       try {
         const shapes = readBlendShapes(source);
         if (shapes.size > 0) {
-          this.blendShapes.setCharacter(model.meshes, shapes);
+          // The renderer decides whether the vertex-shader path is available
+          // at all, so it is asked rather than assumed.
+          this.blendShapes.setCharacter(
+            model.meshes,
+            shapes,
+            this.viewport.renderer
+          );
           // A shape moves the cage; the surface on screen is refined FROM the
           // cage and does not follow on its own. Without this a shape fires
           // and nothing visible happens whenever smoothing is on.

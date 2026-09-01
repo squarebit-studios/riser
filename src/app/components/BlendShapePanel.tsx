@@ -66,7 +66,11 @@ export function BlendShapePanel(): JSX.Element | null {
         name,
         meshes: app.blendShapes.meshCountFor(name),
         weight: () => app.blendShapes.weightOf(name),
-        set: (value: number) => app.blendShapes.setWeight(name, value)
+        // `live` while a slider is being dragged: the vertex shader shows it
+        // at once and the fuller pass follows when it stops moving, so a drag
+        // costs an upload rather than re-evaluating every moved vertex.
+        set: (value: number, live?: boolean) =>
+          app.blendShapes.setWeight(name, value, live)
       });
     }
 
@@ -150,7 +154,7 @@ interface ShapeRow {
   /** How many meshes this one name drives. */
   meshes: number;
   weight: () => number;
-  set: (weight: number) => void;
+  set: (weight: number, live?: boolean) => void;
 }
 
 function ShapeRowView({
@@ -163,8 +167,8 @@ function ShapeRowView({
   const weight = shape.weight();
   const on = weight > 0.001;
 
-  const apply = (value: number): void => {
-    shape.set(value);
+  const apply = (value: number, live = false): void => {
+    shape.set(value, live);
     onChange();
   };
 
@@ -192,7 +196,15 @@ function ShapeRowView({
         step={0.01}
         value={weight}
         aria-label={shape.name}
-        onChange={(event) => apply(Number(event.target.value))}
+        // Dragging is live; letting go is not. The distinction is what lets
+        // the vertex shader carry the drag and the fuller pass finish the job.
+        onChange={(event) => apply(Number(event.target.value), true)}
+        onPointerUp={(event) =>
+          apply(Number((event.target as HTMLInputElement).value))
+        }
+        onKeyUp={(event) =>
+          apply(Number((event.target as HTMLInputElement).value))
+        }
         className="h-1 w-20 shrink-0 cursor-pointer appearance-none rounded-full bg-panel-active accent-accent"
       />
       <span

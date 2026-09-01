@@ -2,6 +2,13 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.11.0] - 2026-08-31
+
+### Added
+- Blend shapes are evaluated in the vertex shader while a weight is moving, so dragging a slider costs one small upload rather than recomputing every moved vertex. Measured on a production body, twenty steps of a drag went from 218ms to 0ms
+- The processor takes over the moment the value stops moving, because a vertex shader cannot relight what it displaces and cannot feed the smoothed surface. So a drag is instant and what it settles into is fully correct, with normals and smoothing right
+- Falls back to the processor entirely where the graphics path is not available, and for any mesh it cannot accelerate
+
 ## [0.10.1] - 2026-08-31
 
 ### Fixed

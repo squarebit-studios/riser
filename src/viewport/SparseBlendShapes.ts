@@ -31,6 +31,18 @@ import * as THREE from 'three';
 import type { BlendShapeDelta } from '../io/blendShapeData';
 import type { AuthoredCage } from '../io/authoredTopology';
 import { AUTHORED_CAGE } from './SubdivSurface';
+import { BlendShapeGpu } from './BlendShapeGpu';
+
+/**
+ * How long a weight must sit still before the CPU pass runs.
+ *
+ * Long enough that a drag does not trigger one per frame, short enough that
+ * letting go feels like it settled rather than like it caught up later.
+ */
+const SETTLE_MS = 120;
+
+/** No weights at all, for putting one side of the pair back to rest. */
+const NO_WEIGHTS: ReadonlyMap<string, number> = new Map();
 
 /** Positions closer together than this are the same point. */
 const WELD = 1e-5;
@@ -59,6 +71,8 @@ interface MeshShapes {
    */
   vertexStart: Uint32Array;
   vertexOf: Uint32Array;
+  /** The authored point each render vertex was split from. */
+  pointOfVertex: Uint32Array;
   byName: Map<string, BlendShapeDelta>;
 }
 
@@ -76,6 +90,17 @@ export class SparseBlendShapes {
   onPointsMoved: ((mesh: THREE.Mesh, points: Float32Array) => void) | null = null;
 
   private readonly meshes: MeshShapes[] = [];
+  /**
+   * The vertex-shader path, when this character and this renderer allow it.
+   *
+   * It makes a weight change cost one small upload instead of recomputing
+   * every moved vertex. It cannot do everything the CPU pass does, so it does
+   * not replace it: see the note on `settle`.
+   */
+  private gpu: BlendShapeGpu | null = null;
+  private settleTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Set while the GPU is showing a pose the CPU has not caught up with. */
+  private gpuAhead = false;
   private readonly weights = new Map<string, number>();
   /** Vertices moved by the last application, to put back before the next. */
   private dirty = new Map<MeshShapes, Set<number>>();
@@ -91,7 +116,8 @@ export class SparseBlendShapes {
    */
   setCharacter(
     meshes: readonly THREE.Mesh[],
-    shapes: ReadonlyMap<string, readonly BlendShapeDelta[]>
+    shapes: ReadonlyMap<string, readonly BlendShapeDelta[]>,
+    renderer?: THREE.WebGLRenderer | null
   ): void {
     this.dispose();
     if (shapes.size === 0) return;
@@ -129,9 +155,40 @@ export class SparseBlendShapes {
         points: new Float32Array(cage.positions),
         vertexStart: map.start,
         vertexOf: map.vertices,
+        pointOfVertex: map.pointOfVertex,
         byName
       });
     }
+
+    this.attachGpu(renderer ?? null);
+  }
+
+  /**
+   * Put the shapes on the GPU, if everything about this case allows it.
+   *
+   * Any mesh that cannot be accelerated simply is not, and stays on the CPU
+   * path. A partial answer is fine here because the two produce the same pose;
+   * they differ in what else they keep up to date.
+   */
+  private attachGpu(renderer: THREE.WebGLRenderer | null): void {
+    if (!BlendShapeGpu.supported(renderer)) return;
+
+    const gpu = new BlendShapeGpu();
+    gpu.setShapeOrder(this.names());
+
+    let attached = 0;
+    for (const entry of this.meshes) {
+      const points = entry.restPoints.length / 3;
+      if (gpu.attach(entry.mesh, entry.pointOfVertex, points, entry.byName)) {
+        attached++;
+      }
+    }
+
+    if (attached === 0) {
+      gpu.dispose();
+      return;
+    }
+    this.gpu = gpu;
   }
 
   /** Every shape name on the character, in the order first seen. */
@@ -162,20 +219,99 @@ export class SparseBlendShapes {
       .map(([name]) => name);
   }
 
-  /** Drive a shape on every mesh that carries it. */
-  setWeight(name: string, weight: number): void {
+  /**
+   * Drive a shape on every mesh that carries it.
+   *
+   * `live` says a value is still moving, which is what a drag looks like. The
+   * GPU shows it at once and the CPU pass follows once it stops, so scrubbing
+   * costs an upload rather than a re-evaluation of every moved vertex, and the
+   * pose it settles into is the fully correct one.
+   */
+  setWeight(name: string, weight: number, live = false): void {
     const clamped = Math.min(1, Math.max(0, weight));
     if (clamped <= 0.0001) this.weights.delete(name);
     else this.weights.set(name, clamped);
-    this.applyAll();
+
+    if (this.gpu) {
+      // EXACTLY ONE SIDE DISPLACES AT A TIME.
+      //
+      // The shader adds its offsets to whatever the position attribute already
+      // holds. If the CPU pass has posed those vertices and the shader still
+      // has a weight, the shape is applied twice, and it looks like a shape
+      // that is simply too strong rather than like two things doing one job.
+      //
+      // So handing over means putting the other side back first: the CPU
+      // returns to rest before the shader takes the pose.
+      if (!this.gpuAhead) this.applyAll(NO_WEIGHTS);
+      this.gpu.setWeights(this.weights);
+      this.gpuAhead = true;
+      if (live) {
+        this.scheduleSettle();
+        return;
+      }
+    }
+    this.settleNow();
+  }
+
+  /** True when the vertex shader is doing the work. */
+  get onGpu(): boolean {
+    return this.gpu !== null;
+  }
+
+  /**
+   * True while the GPU is showing a pose the CPU has not caught up with.
+   *
+   * Which means the positions, the normals and any smoothed surface are one
+   * settle behind what is on screen. Worth being able to ask, because anything
+   * reading geometry - a raycast, an export, a measurement - wants the settled
+   * answer rather than the one the shader is drawing.
+   */
+  get settlePending(): boolean {
+    return this.gpuAhead;
+  }
+
+  private scheduleSettle(): void {
+    if (this.settleTimer) clearTimeout(this.settleTimer);
+    this.settleTimer = setTimeout(() => {
+      this.settleTimer = null;
+      this.settleNow();
+    }, SETTLE_MS);
+  }
+
+  /**
+   * Bring the CPU side up to the pose the GPU is already showing.
+   *
+   * Needed for two things the vertex shader cannot do. NORMALS: displacing a
+   * position in a shader does not relight it, so a strong shape moves the
+   * silhouette and leaves the shading behind. SUBDIVISION: a smoothed surface
+   * is evaluated from the cage by a stencil product on the CPU, which a vertex
+   * shader has no way to feed.
+   */
+  private settleNow(): void {
+    if (this.settleTimer) {
+      clearTimeout(this.settleTimer);
+      this.settleTimer = null;
+    }
+    // The shader stops contributing BEFORE the CPU takes the pose, for the
+    // same reason and in the same order.
+    this.gpu?.setWeights(NO_WEIGHTS);
+    this.applyAll(this.weights);
+    this.gpuAhead = false;
   }
 
   reset(): void {
     this.weights.clear();
-    this.applyAll();
+    this.settleNow();
   }
 
   dispose(): void {
+    if (this.settleTimer) {
+      clearTimeout(this.settleTimer);
+      this.settleTimer = null;
+    }
+    this.gpu?.dispose();
+    this.gpu = null;
+    this.gpuAhead = false;
     this.restoreAll();
     this.meshes.length = 0;
     this.weights.clear();
@@ -193,9 +329,9 @@ export class SparseBlendShapes {
    * shape touches are visited, which is what keeps this cheap: an expression
    * moves a few hundred points of twenty five thousand.
    */
-  private applyAll(): void {
+  private applyAll(weights: ReadonlyMap<string, number> = this.weights): void {
     for (const entry of this.meshes) {
-      const active = [...this.weights.entries()].filter(([name]) =>
+      const active = [...weights.entries()].filter(([name]) =>
         entry.byName.has(name)
       );
 
@@ -300,7 +436,11 @@ export class SparseBlendShapes {
 function mapPointsToVertices(
   points: Float32Array,
   position: THREE.BufferAttribute | THREE.InterleavedBufferAttribute
-): { start: Uint32Array; vertices: Uint32Array } | null {
+): {
+  start: Uint32Array;
+  vertices: Uint32Array;
+  pointOfVertex: Uint32Array;
+} | null {
   const pointCount = points.length / 3;
   const vertexCount = position.count;
   if (pointCount === 0 || vertexCount === 0) return null;
@@ -348,5 +488,8 @@ function mapPointsToVertices(
     cursor[point] = (cursor[point] ?? 0) + 1;
   }
 
-  return { start, vertices };
+  const pointOfVertex = new Uint32Array(vertexCount);
+  for (let v = 0; v < vertexCount; v++) pointOfVertex[v] = Math.max(0, owner[v] ?? 0);
+
+  return { start, vertices, pointOfVertex };
 }
