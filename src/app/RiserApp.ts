@@ -25,6 +25,8 @@ import { accelerate, releaseAcceleration, setPosed } from '../viewport/accelerat
 import { EyeMaterials } from '../viewport/EyeMaterials';
 import { readAuthoredTopology } from '../io/authoredTopology';
 import { inspectUsd, type UsdPrim } from '../io/usdInspect';
+import { readBlendShapes } from '../io/blendShapeData';
+import { SparseBlendShapes } from '../viewport/SparseBlendShapes';
 import { AUTHORED_CAGE } from '../viewport/SubdivSurface';
 import { SceneSelection } from '../viewport/SceneSelection';
 import { readEyeLooks } from '../io/eyeLook';
@@ -423,6 +425,16 @@ export class RiserApp {
    */
   usdPrims: UsdPrim[] | null = null;
 
+  /**
+   * The character's blend shapes, applied straight to its geometry.
+   *
+   * Three's USD loader does not read blend shapes at all, and a face rig's
+   * worth could not be morph targets anyway: 878 dense deltas on one mesh is
+   * about 1.6GB. Held sparse and driven by name, so one control moves the
+   * face, the gums and the teeth together.
+   */
+  readonly blendShapes = new SparseBlendShapes();
+
   private async shadeEyes(model: CharacterModel): Promise<void> {
     // Re-fetched rather than plumbed through the loader. The browser has the
     // file in cache from the load that just happened, so this is cheap, and it
@@ -444,6 +456,15 @@ export class RiserApp {
       // The same bytes carry the polygons the artist modelled, and reading
       // them here means one fetch and one parse rather than two.
       this.attachAuthoredTopology(model, source);
+
+      // Blend shapes, from the same bytes again. Read after the topology
+      // because they are applied through the authored points it attaches.
+      try {
+        const shapes = readBlendShapes(source);
+        if (shapes.size > 0) this.blendShapes.setCharacter(model.meshes, shapes);
+      } catch {
+        // A character whose shapes cannot be read still loads.
+      }
 
       // And the same bytes are what the USD tab shows.
       try {
@@ -605,6 +626,7 @@ export class RiserApp {
     if (this.character) releaseAcceleration(this.character.root);
     // The previous character's eye materials and their textures go with it.
     this.eyes.dispose();
+    this.blendShapes.dispose();
     this.scene.dispose();
     this.viewport.clearCharacter();
     this.character = model;

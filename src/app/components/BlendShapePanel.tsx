@@ -23,12 +23,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../AppContext';
 import { useUiStore } from '../state';
 import {
-  activeCount,
   findBlendShapes,
-  resetAll,
   setWeight,
-  weightOf,
-  type BlendShape
+  weightOf
 } from '../../viewport/blendShapes';
 import { Button } from './ui/Button';
 import { Chip, SearchField } from './ui/Controls';
@@ -43,11 +40,39 @@ export function BlendShapePanel(): JSX.Element | null {
   const [, setTick] = useState(0);
   const redraw = useCallback(() => setTick((n) => n + 1), []);
 
-  const shapes = useMemo(
-    () => findBlendShapes(app.characterModel?.meshes ?? []),
+  // TWO SOURCES, ONE LIST.
+  //
+  // A glTF or FBX arrives with three morph targets already built, and those
+  // are driven through `morphTargetInfluences`. A USD arrives with nothing:
+  // three's USD loader does not read blend shapes at all, and a face rig's
+  // worth could not be morph targets anyway, so Riser reads them itself and
+  // applies the sparse deltas by hand.
+  //
+  // Both end up here as the same row, because the difference is Riser's
+  // problem and not the reader's: a shape is a shape, and it should look and
+  // behave the same whichever file it came from.
+  const shapes = useMemo(() => {
+    const rows: ShapeRow[] = findBlendShapes(app.characterModel?.meshes ?? []).map(
+      (shape) => ({
+        name: shape.name,
+        meshes: shape.targets.length,
+        weight: () => weightOf(shape),
+        set: (value: number) => setWeight(shape, value)
+      })
+    );
+
+    for (const name of app.blendShapes.names()) {
+      rows.push({
+        name,
+        meshes: app.blendShapes.meshCountFor(name),
+        weight: () => app.blendShapes.weightOf(name),
+        set: (value: number) => app.blendShapes.setWeight(name, value)
+      });
+    }
+
+    return rows.sort((a, b) => a.name.localeCompare(b.name));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [characterName, app.characterModel]
-  );
+  }, [characterName, app.characterModel]);
 
   // A new character means the previous one's shapes are gone; drop the filter
   // so the list is not mysteriously empty.
@@ -59,7 +84,7 @@ export function BlendShapePanel(): JSX.Element | null {
   const shown = query
     ? shapes.filter((shape) => shape.name.toLowerCase().includes(query))
     : shapes;
-  const active = activeCount(shapes);
+  const active = shapes.filter((shape) => shape.weight() > 0.001).length;
 
   return (
     <section className="border-t border-edge px-3 py-3" data-testid="blend-shapes">
@@ -90,7 +115,7 @@ export function BlendShapePanel(): JSX.Element | null {
 
       <div className="max-h-64 space-y-0.5 overflow-y-auto pr-0.5">
         {shown.map((shape) => (
-          <ShapeRow key={shape.name} shape={shape} onChange={redraw} />
+          <ShapeRowView key={shape.name} shape={shape} onChange={redraw} />
         ))}
         {shown.length === 0 && (
           <p className="py-3 text-center text-ink-faint">No shape matches.</p>
@@ -103,7 +128,7 @@ export function BlendShapePanel(): JSX.Element | null {
         disabled={active === 0}
         data-testid="reset-blend-shapes"
         onClick={() => {
-          resetAll(shapes);
+          for (const shape of shapes) shape.set(0);
           redraw();
         }}
       >
@@ -113,18 +138,33 @@ export function BlendShapePanel(): JSX.Element | null {
   );
 }
 
-function ShapeRow({
+/**
+ * A shape as the panel needs it, whatever is driving it underneath.
+ *
+ * `weight` is a function rather than a value because the truth lives on the
+ * three.js side: a copy held in React is a second answer to the same question,
+ * and the two disagree the moment anything else moves a weight.
+ */
+interface ShapeRow {
+  name: string;
+  /** How many meshes this one name drives. */
+  meshes: number;
+  weight: () => number;
+  set: (weight: number) => void;
+}
+
+function ShapeRowView({
   shape,
   onChange
 }: {
-  shape: BlendShape;
+  shape: ShapeRow;
   onChange: () => void;
 }): JSX.Element {
-  const weight = weightOf(shape);
+  const weight = shape.weight();
   const on = weight > 0.001;
 
   const apply = (value: number): void => {
-    setWeight(shape, value);
+    shape.set(value);
     onChange();
   };
 

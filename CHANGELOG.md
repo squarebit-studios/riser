@@ -2,6 +2,13 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.10.0] - 2026-08-31
+
+### Added
+- Blend shapes on a USD character can be fired from the panel. Three's USD loader does not read them at all, so Riser reads them itself, and keeps them sparse: the character used for this carries 878 shapes on the body alone, which as ordinary morph targets would be about 1.6GB for that one mesh
+- A shape name shared by several meshes is one control that drives all of them. On this character 462 of 932 names are on more than one mesh, because a jaw shape has to move the gums and the teeth along with the face
+- The panel lists shapes from a USD and from a glTF or FBX the same way, because which file a shape came from is Riser's problem rather than yours
+
 ## [0.9.5] - 2026-08-31
 
 ### Fixed
