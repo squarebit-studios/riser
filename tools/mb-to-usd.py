@@ -49,9 +49,15 @@ import re
 import shutil
 import sys
 
-# Rig scaffolding that is not the character: bind planes the face rig drives,
-# the eye projection spheres, the PSD readout. All parented under .../rig.
-HELPER_PARENT = "|rig|"
+# The character is what lives under `model`. Everything else in a rig scene is
+# scaffolding: bind planes the face rig drives, eye projection spheres, the PSD
+# readout, and whatever else a rigger needed.
+#
+# Stated as what to KEEP rather than what to drop, which is the safer way
+# round. Naming the scaffolding means every new kind of helper ships until
+# somebody notices it; naming the character means a new helper is excluded by
+# default and only a real change to the model can let one through.
+MODEL_PARENT = "|model|"
 
 # The Squarebit Eye look, read off the scene's squarebitEyeShader nodes and
 # written back as the canonical squarebitEye:* custom attributes that the web
@@ -299,7 +305,16 @@ def read_blend_shapes(cmds, meshes):
     if not nodes:
         return {}
 
-    known = {re.sub(r"Shape$", "", m.split("|")[-1]) for m in meshes}
+    # Only the character's own meshes. A shape on a bind plane describes a
+    # mesh that will not be in the file, so reading it costs time and writes
+    # bytes nobody can use.
+    known = {
+        re.sub(r"Shape$", "", m.split("|")[-1])
+        for m in meshes
+        if MODEL_PARENT in (cmds.ls(m, long=True) or [m])[0]
+    }
+    if not known:
+        known = {re.sub(r"Shape$", "", m.split("|")[-1]) for m in meshes}
     read = {}
     empty = 0
 
@@ -929,15 +944,25 @@ def main() -> int:
     # where a Mesh can be removed without disturbing the skeleton at all.
     helper_names = set()
     if not args.keep_rig_helpers:
+        outside = 0
         for mesh in meshes:
             full = (cmds.ls(mesh, long=True) or [mesh])[0]
-            if HELPER_PARENT in full:
-                parent = cmds.listRelatives(mesh, parent=True) or []
-                helper_names.add(re.sub(r"Shape$", "", mesh.split("|")[-1]))
-                if parent:
-                    helper_names.add(parent[0].split("|")[-1])
-        print("  rig helper meshes to prune: %d" % len(
-            [m for m in meshes if HELPER_PARENT in (cmds.ls(m, long=True) or [m])[0]]))
+            if MODEL_PARENT in full:
+                continue
+            outside += 1
+            parent = cmds.listRelatives(mesh, parent=True) or []
+            helper_names.add(re.sub(r"Shape$", "", mesh.split("|")[-1]))
+            if parent:
+                helper_names.add(parent[0].split("|")[-1])
+        print("  meshes outside model, to prune: %d of %d"
+              % (outside, len(meshes)))
+        if outside == len(meshes):
+            # Every mesh outside `model` means there is no `model` group, not
+            # that the character is empty. Pruning the lot would write a stage
+            # with no geometry in it and report success.
+            print("  no 'model' group found, so nothing is pruned",
+                  file=sys.stderr)
+            helper_names = set()
 
     options = {
         "file": target,
