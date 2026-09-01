@@ -62,7 +62,11 @@ import { MarkerLayer } from '../tools/marker/MarkerLayer';
 import { MarkerTool } from '../tools/marker/MarkerTool';
 import { CurveLayer } from '../tools/curve/CurveLayer';
 import { CurveTool } from '../tools/curve/CurveTool';
-import { resampleCurve, DEFAULT_SAMPLES_PER_SEGMENT } from '../tools/curve/geometry';
+import {
+  resampleCurve,
+  DEFAULT_CURVE_DEGREE,
+  DEFAULT_SAMPLES_PER_SEGMENT
+} from '../tools/curve/geometry';
 import {
   controlVertexSampleIndices,
   interpolateNormals,
@@ -1277,7 +1281,12 @@ export class RiserApp {
   ): Vec3[] | undefined {
     if (!this.character || worldPoints.length < 2) return undefined;
 
-    const samples = resampleCurve(worldPoints, closed, DEFAULT_SAMPLES_PER_SEGMENT);
+    const samples = resampleCurve(
+      worldPoints,
+      closed,
+      DEFAULT_SAMPLES_PER_SEGMENT,
+      DEFAULT_CURVE_DEGREE
+    );
     if (samples.length < 2) return undefined;
 
     const worldNormals = normals.map((n) =>
@@ -1292,13 +1301,22 @@ export class RiserApp {
       this.projectionRaycaster,
       {
         searchDistance: Math.max(height * SEARCH_FRACTION, 1e-4),
-        // Control vertices are already bound to a triangle; moving them would
-        // contradict the binding the server evaluates.
-        pinned: controlVertexSampleIndices(
-          worldPoints.length,
-          DEFAULT_SAMPLES_PER_SEGMENT,
-          closed
-        )
+        // Control vertices are already bound to a triangle, so holding them
+        // still is what keeps the drawn curve honest about its bindings.
+        //
+        // Only meaningful for the interpolating cubic, though. At degree two
+        // the curve approaches its middle control vertices rather than passing
+        // through them, so there is no sample sitting on one: pinning by index
+        // would freeze whichever arbitrary sample happened to land there and
+        // put a flat spot in the curve.
+        pinned:
+          DEFAULT_CURVE_DEGREE === 3
+            ? controlVertexSampleIndices(
+                worldPoints.length,
+                DEFAULT_SAMPLES_PER_SEGMENT,
+                closed
+              )
+            : undefined
       }
     );
   }

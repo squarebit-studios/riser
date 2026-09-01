@@ -2,6 +2,12 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.13.3] - 2026-09-01
+
+### Changed
+- Curves are drawn as degree two by default. A cubic is steered by two control vertices past each end of the span it is drawing, so a point placed slightly off pulls the curve around spans it is not next to, and the curve can swing wider than the points that made it. That is invisible on a jawline and it is the wobble you get on an eyelid, where the points are close together and the surface turns hard. A quadratic span sees three consecutive points and stays inside them, so it cannot swing wide
+- An open curve still starts and finishes exactly on its first and last control vertex. The middle ones are approached rather than touched, which is what the quadratic trades for staying contained
+
 ## [0.13.2] - 2026-09-01
 
 ### Fixed

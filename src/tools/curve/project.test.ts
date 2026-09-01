@@ -17,13 +17,15 @@ const CVS: Vec3[] = [
 ];
 
 describe('controlVertexSampleIndices', () => {
+  // Degree three: this helper exists to hold the interpolating curve's
+  // control vertices still, and only that curve has samples sitting on them.
   it('names indices that really are the control vertices', () => {
     // The pinning logic in projectSamplesToSurface depends on this alignment
     // between resampleCurve's output and the control vertices. Asserting it
     // against actual output means a change to the resampler cannot quietly
     // break projection.
     const sps = DEFAULT_SAMPLES_PER_SEGMENT;
-    const samples = resampleCurve(CVS, false, sps);
+    const samples = resampleCurve(CVS, false, sps, 3);
     const indices = [...controlVertexSampleIndices(CVS.length, sps, false)].sort(
       (a, b) => a - b
     );
