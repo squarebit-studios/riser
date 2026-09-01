@@ -218,6 +218,32 @@ export class ViewModeController {
    * that hiding markers and curves does not also hide the wireframe - they are
    * different kinds of thing to the user.
    */
+  /**
+   * Rebuild the edges of whatever is already showing a wireframe.
+   *
+   * A wireframe is its own geometry, built from the surface as it was at the
+   * time. `setWireframe` deliberately reuses one it finds rather than
+   * rebuilding on every mode change, which is right until something deforms
+   * the surface underneath it: a blend shape moved the character and left its
+   * wireframe hanging in the pose the character used to be in.
+   *
+   * Rebuilds rather than refreshes the whole mode, because the materials and
+   * the visibility are already correct; only the lines are stale.
+   */
+  rebuildWireframes(): void {
+    for (const mesh of this.displayedMeshes()) {
+      const existing = mesh.getObjectByName(WIRE_NAME) as
+        | THREE.LineSegments
+        | undefined;
+      if (!existing) continue;
+
+      const geometry =
+        this.quadEdgesFor?.(mesh) ?? new THREE.WireframeGeometry(mesh.geometry);
+      existing.geometry.dispose();
+      existing.geometry = geometry;
+    }
+  }
+
   private setWireframe(mesh: THREE.Mesh, wanted: boolean): void {
     const existing = mesh.getObjectByName(WIRE_NAME) as THREE.LineSegments | undefined;
 

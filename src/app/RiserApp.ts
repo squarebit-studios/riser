@@ -476,6 +476,10 @@ export class RiserApp {
           this.blendShapes.onPointsMoved = (mesh, points) => {
             this.subdivs?.refreshFrom(mesh, points);
           };
+          // The wireframe is its own geometry, built from the surface as it
+          // was. Without this a shape moves the character and leaves its
+          // wireframe behind in the old pose.
+          this.blendShapes.onSettled = () => this.viewModes?.rebuildWireframes();
           // Tell the panel they exist. It is built before this finishes, so
           // without a signal it lists an empty set and never looks again.
           useUiStore

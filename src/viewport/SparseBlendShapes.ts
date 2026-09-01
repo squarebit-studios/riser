@@ -103,6 +103,16 @@ export class SparseBlendShapes {
    */
   onPointsMoved: ((mesh: THREE.Mesh, points: Float32Array) => void) | null = null;
 
+  /**
+   * Told once after the surface has finished moving.
+   *
+   * Anything DERIVED from the geometry has to be rebuilt, and the wireframe is
+   * the visible one: its lines are their own geometry, built from the surface
+   * at the moment it was drawn, so a shape moved the character and left its
+   * wireframe hanging in the pose the character used to be in.
+   */
+  onSettled: (() => void) | null = null;
+
   private readonly meshes: MeshShapes[] = [];
   /**
    * The vertex-shader path, when this character and this renderer allow it.
@@ -421,95 +431,51 @@ export class SparseBlendShapes {
       this.dirty.set(entry, touched);
       this.dirtyPoints.set(entry, touchedPoints);
       position.needsUpdate = true;
-      this.shadeAfterMoving(entry, active.length > 0);
+      this.shadeAfterMoving(entry);
       entry.mesh.geometry.computeBoundingSphere();
 
       // And the surface built from those points, if one is on screen.
       this.onPointsMoved?.(entry.mesh, entry.points);
     }
+
+    // Once, after every mesh has moved, rather than per mesh: whatever is
+    // rebuilt from the geometry should see the finished pose.
+    this.onSettled?.();
   }
 
   /**
-   * Put the shading back in step with the surface.
+   * Keep the shading the file shipped with.
    *
-   * At rest that means the file's own normals, restored exactly, because
-   * anything derived is a guess at what the artist shaded.
+   * Deliberately NOT recomputed. Three ways of deriving normals were tried on
+   * this character and each was worse than leaving them alone:
    *
-   * While a shape is applied it means normals computed over the AUTHORED
-   * faces: a normal is accumulated per point from the faces around it and then
-   * written to every render vertex split from that point. That is what makes
-   * the result smooth. Three's own `computeVertexNormals` cannot do it,
-   * because it averages across vertices and this geometry shares none: it
-   * yields one normal per triangle, which is how firing a single shape turned
-   * this character 80% faceted and made its triangulation visible.
+   * `computeVertexNormals` averages across VERTICES, and a renderer's geometry
+   * shares none of them, so it produced one normal per triangle and turned the
+   * character 80% faceted with its triangulation showing through.
+   *
+   * Accumulating per POINT over the authored faces fixes the faceting and
+   * introduces a subtler loss: a file gives split vertices DIFFERENT normals
+   * wherever it wants a hard edge, and averaging to one normal per point
+   * smooths every one of those away. Measured on this character at a weight
+   * small enough that the surface had not moved, 1% of its normals still
+   * turned more than ten degrees, and sixteen turned more than ninety. Those
+   * are its creases being erased.
+   *
+   * And Newell's sign follows winding order, which a file is under no
+   * obligation to match: computed normals sat 178 degrees from the authored
+   * ones here, lighting the mesh inside out.
+   *
+   * So the normals stay as authored. The cost is honest and small: on a strong
+   * shape the lighting does not follow the new silhouette, so a bulge is lit
+   * as though it had not bulged. The alternative is a surface that is lit
+   * wrongly in ways an artist would recognise instantly as not their model,
+   * and this panel exists for checking that markers still sit right on a face
+   * that moves, not for judging its lighting.
    */
-  private shadeAfterMoving(entry: MeshShapes, deformed: boolean): void {
+  private shadeAfterMoving(entry: MeshShapes): void {
     const normals = entry.mesh.geometry.getAttribute('normal');
-    if (!normals) return;
-    const out = normals.array as Float32Array;
-
-    if (!deformed) {
-      if (entry.restNormals) out.set(entry.restNormals);
-      normals.needsUpdate = true;
-      return;
-    }
-
-    const pointCount = entry.points.length / 3;
-    const accumulated = new Float32Array(pointCount * 3);
-    const counts = entry.faceVertexCounts;
-    const indices = entry.faceVertexIndices;
-    const points = entry.points;
-
-    // Newell's method, which is right for an n-gon and for a face that is not
-    // quite planar, and costs one pass over the faces rather than a pass over
-    // every render vertex.
-    let corner = 0;
-    for (let f = 0; f < counts.length; f++) {
-      const n = counts[f] ?? 0;
-      let nx = 0;
-      let ny = 0;
-      let nz = 0;
-      for (let i = 0; i < n; i++) {
-        const a = (indices[corner + i] ?? 0) * 3;
-        const b = (indices[corner + ((i + 1) % n)] ?? 0) * 3;
-        const ax = points[a] ?? 0;
-        const ay = points[a + 1] ?? 0;
-        const az = points[a + 2] ?? 0;
-        const bx = points[b] ?? 0;
-        const by = points[b + 1] ?? 0;
-        const bz = points[b + 2] ?? 0;
-        nx += (ay - by) * (az + bz);
-        ny += (az - bz) * (ax + bx);
-        nz += (ax - bx) * (ay + by);
-      }
-      for (let i = 0; i < n; i++) {
-        const at = (indices[corner + i] ?? 0) * 3;
-        accumulated[at] = (accumulated[at] ?? 0) + nx;
-        accumulated[at + 1] = (accumulated[at + 1] ?? 0) + ny;
-        accumulated[at + 2] = (accumulated[at + 2] ?? 0) + nz;
-      }
-      corner += n;
-    }
-
-    for (let point = 0; point < pointCount; point++) {
-      let x = accumulated[point * 3] ?? 0;
-      let y = accumulated[point * 3 + 1] ?? 0;
-      let z = accumulated[point * 3 + 2] ?? 0;
-      const length = Math.hypot(x, y, z);
-      if (length > 1e-12) {
-        x /= length;
-        y /= length;
-        z /= length;
-      }
-      const from = entry.vertexStart[point] ?? 0;
-      const to = entry.vertexStart[point + 1] ?? from;
-      for (let v = from; v < to; v++) {
-        const vertex = (entry.vertexOf[v] ?? 0) * 3;
-        out[vertex] = x;
-        out[vertex + 1] = y;
-        out[vertex + 2] = z;
-      }
-    }
+    if (!normals || !entry.restNormals) return;
+    (normals.array as Float32Array).set(entry.restNormals);
     normals.needsUpdate = true;
   }
 
@@ -519,7 +485,7 @@ export class SparseBlendShapes {
       if (!position) continue;
       (position.array as Float32Array).set(entry.rest);
       position.needsUpdate = true;
-      this.shadeAfterMoving(entry, false);
+      this.shadeAfterMoving(entry);
       entry.points.set(entry.restPoints);
       this.onPointsMoved?.(entry.mesh, entry.points);
     }

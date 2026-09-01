@@ -2,6 +2,12 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.12.5] - 2026-09-01
+
+### Fixed
+- Firing a blend shape no longer changes how the character is shaded at all. It keeps the normals the file shipped with, hard edges and all, rather than deriving new ones: every way of deriving them either faceted the mesh, erased the creases the artist authored, or lit the surface inside out
+- The wireframe follows a shape instead of being left behind in the pose the character used to be in. Its lines are their own geometry, built from the surface as it was, and nothing was rebuilding them when the surface moved
+
 ## [0.12.4] - 2026-09-01
 
 ### Fixed
