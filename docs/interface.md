@@ -165,6 +165,23 @@ Selection is driven from this list rather than by clicking the viewport,
 because a click there already means "place a marker" and that is the job the
 viewport is for.
 
+### USD
+
+What the character's source file contains, as the file describes itself:
+every prim, its type, and its attributes with their values. The Scene tab
+shows the actor, the character as the thing you place markers on; this shows
+the source it was built from. Both are true and they answer different
+questions.
+
+It is there for one recurring question: is the thing I am looking for actually
+in this file. Searching **blendShape** on a character whose blend shapes were
+never exported returns nothing, which is a different problem from a panel that
+is not working, and telling those apart used to mean guessing.
+
+Read-only by design. Riser writes a layer that references your character and
+never modifies it, and an editable panel here would promise otherwise. The
+view needs a USD to read, so it is empty for glTF, FBX and uploaded files.
+
 ### Blend shapes
 
 Shown only when the character has any. Click a shape's name to fire it, or drag

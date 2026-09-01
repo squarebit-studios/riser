@@ -24,6 +24,7 @@ import { withDoubleSided } from '../viewport/Picker';
 import { accelerate, releaseAcceleration, setPosed } from '../viewport/acceleration';
 import { EyeMaterials } from '../viewport/EyeMaterials';
 import { readAuthoredTopology } from '../io/authoredTopology';
+import { inspectUsd, type UsdPrim } from '../io/usdInspect';
 import { AUTHORED_CAGE } from '../viewport/SubdivSurface';
 import { SceneSelection } from '../viewport/SceneSelection';
 import { readEyeLooks } from '../io/eyeLook';
@@ -412,6 +413,16 @@ export class RiserApp {
     }
   }
 
+  /**
+   * The character's USD as the file describes itself, for the USD tab.
+   *
+   * Null until a character with a readable USD is loaded, and null for glTF,
+   * FBX and uploads, which have no crate to read. Values are summarised rather
+   * than kept, so this costs a list of names and types rather than a second
+   * copy of the character.
+   */
+  usdPrims: UsdPrim[] | null = null;
+
   private async shadeEyes(model: CharacterModel): Promise<void> {
     // Re-fetched rather than plumbed through the loader. The browser has the
     // file in cache from the load that just happened, so this is cheap, and it
@@ -433,6 +444,14 @@ export class RiserApp {
       // The same bytes carry the polygons the artist modelled, and reading
       // them here means one fetch and one parse rather than two.
       this.attachAuthoredTopology(model, source);
+
+      // And the same bytes are what the USD tab shows.
+      try {
+        const prims = inspectUsd(source);
+        this.usdPrims = prims.length > 0 ? prims : null;
+      } catch {
+        this.usdPrims = null;
+      }
 
       const looks = readEyeLooks(source);
       if (looks.length === 0) return;
@@ -567,6 +586,7 @@ export class RiserApp {
     // every raycast for the life of this character - see acceleration.ts.
     accelerate(model.root);
 
+    this.usdPrims = null;
     void this.shadeEyes(model);
     this.scene.setCharacter(model.meshes);
 

@@ -29,6 +29,9 @@ export function OutlinerPanel(): JSX.Element {
   const app = useApp();
   const characterName = useUiStore((s) => s.characterName);
   const [search, setSearch] = useState('');
+  // Open by default: the pieces are the reason to come here, and a collapsed
+  // list would hide the visibility toggles that make it worth having.
+  const [piecesOpen, setPiecesOpen] = useState(true);
   // Selection and visibility live on the three.js side. This redraws the list
   // after a change rather than keeping a second copy that could disagree with
   // what is on screen.
@@ -96,12 +99,45 @@ export function OutlinerPanel(): JSX.Element {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-3">
-        {shown.map((item) => {
+        {/* The ACTOR.
+
+            A character is one thing to work on and 33 things in the file, and
+            both are true. This row is the thing: it is what the character is
+            called, it is what gets exported, and it is what a person means by
+            "Gary". The pieces fold under it rather than being the top level,
+            the way a skeletal mesh consolidates its sections.
+
+            Nothing is given up to get it. Every piece keeps its own prim path,
+            which is what a marker binds to and what the worker resolves
+            against, and the USD tab shows the source in full. This is a view
+            of the same data, not a replacement for it. */}
+        <button
+          type="button"
+          data-testid="actor-row"
+          onClick={() => setPiecesOpen(!piecesOpen)}
+          className="flex w-full items-center gap-2 rounded-control px-1.5 py-1.5 text-left text-ink hover:bg-panel-lighter"
+        >
+          <Icon
+            name={piecesOpen ? 'chevronDown' : 'chevronRight'}
+            size={13}
+            className="shrink-0 text-ink-faint"
+          />
+          <Icon name="layers" size={14} className="shrink-0 text-accent" />
+          <span className="min-w-0 flex-1 truncate font-medium">
+            {characterName}
+          </span>
+          <span className="shrink-0 font-mono text-[10px] text-ink-faint">
+            {items.length}
+          </span>
+        </button>
+
+        {piecesOpen &&
+          shown.map((item) => {
           const isSelected = item.primPath === selected;
           return (
             <div
               key={item.primPath}
-              className={`group flex items-center gap-1 rounded-control pr-1 ${
+              className={`group ml-4 flex items-center gap-1 rounded-control pr-1 ${
                 isSelected ? 'bg-accent-soft' : 'hover:bg-panel-lighter'
               }`}
             >
@@ -155,7 +191,7 @@ export function OutlinerPanel(): JSX.Element {
           );
         })}
 
-        {shown.length === 0 && (
+        {piecesOpen && shown.length === 0 && (
           <p className="px-3 py-6 text-center text-ink-faint">
             Nothing matches &ldquo;{search}&rdquo;.
           </p>

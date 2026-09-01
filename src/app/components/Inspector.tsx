@@ -26,18 +26,20 @@ import type { RiserApp } from '../RiserApp';
 import { useUiStore } from '../state';
 import { Button, SegmentedControl } from './ui/Button';
 import { AnimationPanel } from './AnimationPanel';
+import { UsdPanel } from './UsdPanel';
 import { BlendShapePanel } from './BlendShapePanel';
 import { OutlinerPanel } from './OutlinerPanel';
 import { curveDef, getTemplate, guideDef } from '../../templates';
 import * as M from '../../doc/mutations';
 import { documentToWorld } from '../../viewport/space';
 
-type InspectorTab = 'details' | 'scene' | 'animation';
+type InspectorTab = 'details' | 'scene' | 'animation' | 'usd';
 
 const TABS = [
   { value: 'details' as const, label: 'Details', icon: 'sliders' as const },
   { value: 'scene' as const, label: 'Scene', icon: 'list' as const },
-  { value: 'animation' as const, label: 'Animation', icon: 'play' as const }
+  { value: 'animation' as const, label: 'Animation', icon: 'play' as const },
+  { value: 'usd' as const, label: 'USD', icon: 'layers' as const }
 ];
 
 export function Inspector(): JSX.Element {
@@ -59,6 +61,7 @@ export function Inspector(): JSX.Element {
         {tab === 'details' && <Details />}
         {tab === 'scene' && <OutlinerPanel />}
         {tab === 'animation' && <AnimationPanel />}
+        {tab === 'usd' && <UsdPanel />}
       </div>
     </div>
   );

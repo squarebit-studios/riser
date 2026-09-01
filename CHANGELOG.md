@@ -2,6 +2,12 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.9.1] - 2026-08-31
+
+### Added
+- USD tab, showing the character's source file as the file describes itself: every prim, its type, and its attributes with their values. Searchable, and read-only, because Riser writes a layer that references the character and never modifies it
+- The Scene tab now leads with the actor, the character as one thing, with its pieces folded underneath. Nothing is given up for it: every piece keeps the prim path a marker binds to and the worker resolves against
+
 ## [0.9.0] - 2026-08-31
 
 ### Changed
