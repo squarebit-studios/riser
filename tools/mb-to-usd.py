@@ -414,6 +414,79 @@ def process_texture(source, out_dir, max_size):
 # USD post-process
 # --------------------------------------------------------------------------
 
+def write_blend_shape_layer(stage, shapes, out_path, source, skip=None):
+    """Write the blend shapes to a layer of their own, beside the character.
+
+    WHY A SEPARATE FILE. The shapes are three times the size of the character
+    that carries them: 6.5MB becomes 21.8MB with them packed in, and most
+    people placing markers never open the blend shape panel. In one file there
+    is nothing to defer - a browser fetching a .usdz fetches all of it, and
+    USD's own `payload` defers COMPOSITION rather than download, so it does not
+    help across HTTP either.
+
+    Two files also make opting in cheap in the way that matters: the shapes are
+    added to the character already on screen, rather than replacing it. Nobody
+    loses their camera, or their markers, to turn a feature on.
+
+    STAMPED, because the risk two files carry is drifting apart. A sidecar
+    exported from a different session than its base would have point indices
+    that no longer mean the same points, and would put a smile somewhere across
+    the ear with nothing to say it had gone wrong. So each mesh records the
+    number of points it was built against, and a consumer that finds a
+    different number must refuse the shape rather than apply it.
+    """
+    from pxr import Sdf, Usd, UsdSkel, Vt
+
+    layer = Usd.Stage.CreateNew(out_path)
+    written = 0
+
+    for prim in stage.Traverse():
+        mine = shapes.get(prim.GetName())
+        if not mine:
+            continue
+        # Helper meshes are pruned from the character, so shapes for them
+        # describe a mesh that is not there: bytes nobody can use, carrying a
+        # stamp that can never match anything.
+        if skip and prim.GetName() in skip:
+            continue
+
+        points = prim.GetAttribute("points").Get() if prim.HasAttribute("points") else None
+        over = layer.OverridePrim(prim.GetPath())
+
+        names, paths = [], []
+        for shape in mine:
+            child = prim.GetPath().AppendChild(
+                Tf_valid_identifier(shape["name"]))
+            blend = UsdSkel.BlendShape.Define(layer, child)
+            blend.CreateOffsetsAttr(Vt.Vec3fArray(
+                [tuple(o) for o in shape["offsets"]]))
+            blend.CreatePointIndicesAttr(Vt.IntArray(shape["indices"]))
+            names.append(shape["name"])
+            paths.append(child)
+            written += 1
+
+        binding = UsdSkel.BindingAPI.Apply(over)
+        binding.CreateBlendShapesAttr(Vt.TokenArray(names))
+        binding.CreateBlendShapeTargetsRel().SetTargets(paths)
+
+        # What these indices were counted against.
+        over.CreateAttribute("riser:blendShapes:pointCount",
+                             Sdf.ValueTypeNames.Int,
+                             custom=True).Set(len(points) if points else 0)
+
+    root = layer.OverridePrim("/")
+    root.SetMetadata("comment",
+                     "Squarebit Riser blend shape layer for %s" % source)
+    layer.GetRootLayer().Save()
+    return written
+
+
+def Tf_valid_identifier(name):
+    """A prim name from a Maya alias, which may carry characters USD will not."""
+    from pxr import Tf
+    return Tf.MakeValidIdentifier(name)
+
+
 def author_blend_shapes(stage, shapes):
     """Write the sparse deltas as real UsdSkel BlendShape prims.
 
@@ -460,7 +533,8 @@ def author_blend_shapes(stage, shapes):
 
 
 def postprocess(target, tex_dir_name, max_size, eye_looks, unit_scale,
-                helper_names, want_materials, blend_shapes=None):
+                helper_names, want_materials, blend_shapes=None,
+                blend_shape_layer=None, sidecar_shapes=None, source=None):
     """Localise textures, kill the black fallbacks, and write the eye look."""
     from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade, Vt
 
@@ -469,6 +543,16 @@ def postprocess(target, tex_dir_name, max_size, eye_looks, unit_scale,
     if blend_shapes:
         print("  blend shape targets authored: %d" % author_blend_shapes(
             stage, blend_shapes))
+
+    if blend_shape_layer and sidecar_shapes:
+        # Written from the base stage so the paths match exactly, and written
+        # BEFORE the scaffolding prune so the meshes are all still here.
+        written = write_blend_shape_layer(
+            stage, sidecar_shapes, blend_shape_layer, source or target,
+            helper_names)
+        size = os.path.getsize(blend_shape_layer) / 1e6
+        print("  blend shape layer: %d targets, %.1f MB -> %s" % (
+            written, size, blend_shape_layer))
 
     # 0. Drop the rig scaffolding meshes. Removing a Mesh prim leaves the
     #    Skeleton and every other mesh's binding to it untouched.
@@ -756,6 +840,13 @@ def main() -> int:
     parser.add_argument("--blend-shapes", action="store_true",
                         help="Export blend shapes. A face rig's worth of them is "
                              "tens of MB, so this is off by default for the web.")
+    parser.add_argument("--blend-shape-layer", default=None,
+                        help="Write the blend shapes to this .usdc BESIDE the "
+                             "character instead of inside it. Only worth it "
+                             "for an asset served over the web, where the "
+                             "shapes triple the download for everyone who "
+                             "never opens them. A character somebody loads off "
+                             "their own disk should stay one file.")
     parser.add_argument("--keep-rig-helpers", action="store_true",
                         help="Keep bind planes and projection spheres")
     args = parser.parse_args()
@@ -886,7 +977,9 @@ def main() -> int:
     unit_scale = 0.01 if cmds.currentUnit(q=True, linear=True) == "cm" else 1.0
     print("Post-process:")
     postprocess(target, tex_dir_name, args.texture_size, eye_looks,
-                unit_scale, helper_names, want_materials, blend_shape_data)
+                unit_scale, helper_names, want_materials,
+                None if args.blend_shape_layer else blend_shape_data,
+                args.blend_shape_layer, blend_shape_data, source)
     print("Wrote %s (%.1f MB)" % (target, os.path.getsize(target) / 1e6))
     if args.usdz:
         write_usdz(target, os.path.abspath(args.usdz))
