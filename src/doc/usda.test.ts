@@ -320,3 +320,32 @@ describe('PATHS', () => {
     expect(PATHS.character).toBe('/Riser/Character');
   });
 });
+
+describe('curves as USD describes them', () => {
+  it('uses a basis that passes THROUGH the control vertices', () => {
+    // A B-spline is pulled towards its control points and passes through none
+    // of them. Riser's control vertices are bound to triangles of the
+    // character and ARE the curve, so exporting them as B-spline control
+    // points described a different curve from the one on screen.
+    const usda = writeUsda(sampleDoc());
+    expect(usda).toContain('uniform token basis = "catmullRom"');
+    expect(usda).not.toContain('bspline');
+  });
+
+  it('repeats the ends of an open curve, so every vertex is on it', () => {
+    // A cubic non-periodic curve spends its first and last points as tangents.
+    // Without the repeat, five control vertices draw two segments between the
+    // second and fourth.
+    const doc = sampleDoc();
+    const usda = writeUsda(doc);
+    const authored = doc.curves[0]!.points.length;
+    expect(usda).toContain(`int[] curveVertexCounts = [${authored + 2}]`);
+    expect(usda).toContain('bool riser:curve:endsDuplicated = true');
+  });
+
+  it('gives back the vertices that were authored, not the format’s extras', () => {
+    const doc = sampleDoc();
+    const back = readUsda(writeUsda(doc));
+    expect(back.curves[0]!.points.length).toBe(doc.curves[0]!.points.length);
+  });
+});

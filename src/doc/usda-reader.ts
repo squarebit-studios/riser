@@ -223,7 +223,20 @@ function readCurves(specs: Specs): Curve[] {
     const id = asString(attrValue(specs, path, 'riser:curve:id'));
     if (!id) continue;
 
-    const positions = groupVec3(asNumberArray(attrValue(specs, path, 'points')));
+    // An open curve repeats its first and last point, because a cubic USD
+    // curve spends those as tangents rather than positions. Those two are the
+    // format's, not the user's, and everything else here is indexed per
+    // authored vertex.
+    const duplicated = asBool(
+      attrValue(specs, path, 'riser:curve:endsDuplicated')
+    );
+    const rawPositions = groupVec3(
+      asNumberArray(attrValue(specs, path, 'points'))
+    );
+    const positions =
+      duplicated && rawPositions.length > 2
+        ? rawPositions.slice(1, -1)
+        : rawPositions;
     const normals = groupVec3(
       asNumberArray(attrValue(specs, path, 'riser:curve:normals'))
     );

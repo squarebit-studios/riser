@@ -313,6 +313,17 @@ def _read_character_ref(stage: Usd.Stage) -> str:
 
 def _read_curve(prim: Usd.Prim, curve_id: str) -> Curve:
     points = [_vec3(p) for p in (_attr(prim, "points") or [])]
+
+    # An open curve repeats its first and last point.
+    #
+    # A cubic USD curve spends those two as tangents rather than positions, so
+    # without the repeat a five vertex curve draws two segments between the
+    # second and fourth and passes through none of the ends. The duplicates
+    # belong to the format, not to the person who placed the vertices, and
+    # every other array here is one entry per authored vertex, so they come off
+    # before anything is indexed.
+    if bool(_attr(prim, "riser:curve:endsDuplicated")) and len(points) > 2:
+        points = points[1:-1]
     normals = [_vec3(n) for n in (_attr(prim, "riser:curve:normals") or [])]
     bind_prims = [str(p) for p in (_attr(prim, "riser:curve:bindPrims") or [])]
     face_indices = [int(i) for i in (_attr(prim, "riser:curve:faceIndices") or [])]

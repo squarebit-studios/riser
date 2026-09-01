@@ -2,6 +2,13 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.13.0] - 2026-09-01
+
+### Fixed
+- An exported curve described a different shape from the one on screen. It was written as a B-spline, whose control points the curve is pulled towards and passes through none of. Riser's control vertices are bound to triangles of the character and are the curve itself, so it is now written with the basis that interpolates them
+- Every control vertex is on the exported curve. A cubic USD curve spends its first and last points as tangents rather than positions, so five vertices drew two segments between the second and fourth. The ends are repeated, giving one segment per span you placed
+- The worker and the reader both give back the vertices that were placed rather than the two extra the format needs
+
 ## [0.12.7] - 2026-09-01
 
 ### Fixed

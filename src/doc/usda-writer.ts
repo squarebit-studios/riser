@@ -229,14 +229,34 @@ function writeCurve(L: Lines, curve: Curve): void {
   L.push(2, '{');
 
   // A real BasisCurves prim, so the curve is renderable by any USD tool.
+  //
+  // CATMULL-ROM, NOT B-SPLINE, and the difference is the whole curve. A
+  // B-spline's control points are not on the curve: it is pulled towards them
+  // and passes through none of them. Riser's control vertices are bound to
+  // triangles of the character and ARE the curve, which is what the tool draws
+  // and what the worker re-evaluates, so the basis has to be the interpolating
+  // one. Opened in any USD tool, the old prim described a different curve from
+  // the one on screen.
+  //
+  // THE ENDS ARE DUPLICATED for an open curve, which is what makes every
+  // authored vertex land on it. A cubic non-periodic curve spends its first
+  // and last points as tangents rather than positions, so five control
+  // vertices drew two segments between the second and fourth. Repeating each
+  // end gives one segment per authored span, and the duplicates are flagged
+  // below so reading it back returns the vertices that were authored rather
+  // than two extra ones.
+  const written = curve.closed
+    ? points
+    : [points[0] as (typeof points)[number], ...points, points[points.length - 1] as (typeof points)[number]];
+
   L.push(3, 'uniform token type = "cubic"');
-  L.push(3, 'uniform token basis = "bspline"');
+  L.push(3, 'uniform token basis = "catmullRom"');
   L.push(3, `uniform token wrap = ${quote(curve.closed ? 'periodic' : 'nonperiodic')}`);
-  L.push(3, `int[] curveVertexCounts = [${points.length}]`);
+  L.push(3, `int[] curveVertexCounts = [${written.length}]`);
   L.push(
     3,
     `point3f[] points = ${arrayLiteral(
-      points.map((p) => fmtVec3(p.position)),
+      written.map((p) => fmtVec3(p.position)),
       indent
     )}`
   );
@@ -244,6 +264,9 @@ function writeCurve(L: Lines, curve: Curve): void {
   L.push(3, 'uniform token[] primvars:widths:interpolation = ["constant"]');
   L.blank();
 
+  // Says that the first and last points repeat, so a reader returns the
+  // vertices somebody placed rather than the two extra the curve needs.
+  L.push(3, `bool riser:curve:endsDuplicated = ${curve.closed ? 'false' : 'true'}`);
   L.push(3, `uniform token riser:curve:id = ${quote(curve.id)}`);
   L.push(3, `uniform token riser:curve:group = ${quote(curve.group)}`);
   L.push(3, `bool riser:curve:closed = ${curve.closed ? 'true' : 'false'}`);
