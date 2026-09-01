@@ -77,6 +77,8 @@ interface MeshShapes {
   /** The authored faces, for computing normals the way the file means them. */
   faceVertexCounts: Uint32Array;
   faceVertexIndices: Uint32Array;
+  /** Per point normals at rest, for measuring how far the surface has turned. */
+  restPointNormals: Float32Array | null;
   /**
    * Render vertices per authored point, flattened.
    *
@@ -121,6 +123,14 @@ export class SparseBlendShapes {
    * every moved vertex. It cannot do everything the CPU pass does, so it does
    * not replace it: see the note on `settle`.
    */
+  /**
+   * Whether shading should follow a shape, at the cost of computing it.
+   *
+   * Off by default because the faithful answer is free and the computed one is
+   * not. See `shadeAfterMoving` for what each costs.
+   */
+  recomputeNormals = false;
+
   private gpu: BlendShapeGpu | null = null;
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
   /** Set while the GPU is showing a pose the CPU has not caught up with. */
@@ -183,6 +193,7 @@ export class SparseBlendShapes {
           : null,
         faceVertexCounts: cage.faceVertexCounts,
         faceVertexIndices: cage.faceVertexIndices,
+        restPointNormals: null,
         vertexStart: map.start,
         vertexOf: map.vertices,
         pointOfVertex: map.pointOfVertex,
@@ -329,6 +340,11 @@ export class SparseBlendShapes {
     this.gpuAhead = false;
   }
 
+  /** Re-apply the current pose, for when the shading rule changes. */
+  reshade(): void {
+    this.applyAll(this.weights);
+  }
+
   reset(): void {
     this.weights.clear();
     this.settleNow();
@@ -431,7 +447,7 @@ export class SparseBlendShapes {
       this.dirty.set(entry, touched);
       this.dirtyPoints.set(entry, touchedPoints);
       position.needsUpdate = true;
-      this.shadeAfterMoving(entry);
+      this.shadeAfterMoving(entry, active.length > 0);
       entry.mesh.geometry.computeBoundingSphere();
 
       // And the surface built from those points, if one is on screen.
@@ -472,10 +488,86 @@ export class SparseBlendShapes {
    * and this panel exists for checking that markers still sit right on a face
    * that moves, not for judging its lighting.
    */
-  private shadeAfterMoving(entry: MeshShapes): void {
+  private shadeAfterMoving(entry: MeshShapes, deformed: boolean): void {
     const normals = entry.mesh.geometry.getAttribute('normal');
     if (!normals || !entry.restNormals) return;
-    (normals.array as Float32Array).set(entry.restNormals);
+    const out = normals.array as Float32Array;
+
+    if (!deformed || !this.recomputeNormals) {
+      out.set(entry.restNormals);
+      normals.needsUpdate = true;
+      return;
+    }
+
+    // ROTATED, NOT REBUILT.
+    //
+    // The surface's own normal at a point turns by some amount when a shape
+    // moves it. Applying that same turn to each authored normal at that point
+    // is what Unreal does, and it is the only approach here that survives
+    // contact with a real character:
+    //
+    //   Rebuilding smooth normals per point erases every hard edge, because a
+    //   file gives split vertices DIFFERENT normals precisely where it wants a
+    //   crease. Rotating moves each of those independently, so the crease
+    //   turns with the surface instead of being averaged away.
+    //
+    //   The winding problem disappears too. Newell's sign follows the face
+    //   order, which a file need not match, and getting it wrong lit this
+    //   character inside out. Here the sign appears in the rest normal and the
+    //   deformed one alike, so it cancels.
+    const rest = entry.restPointNormals ?? pointNormals(entry, entry.restPoints);
+    entry.restPointNormals = rest;
+    const now = pointNormals(entry, entry.points);
+
+    const points = rest.length / 3;
+    for (let point = 0; point < points; point++) {
+      const ax = rest[point * 3] ?? 0;
+      const ay = rest[point * 3 + 1] ?? 0;
+      const az = rest[point * 3 + 2] ?? 0;
+      const bx = now[point * 3] ?? 0;
+      const by = now[point * 3 + 1] ?? 0;
+      const bz = now[point * 3 + 2] ?? 0;
+
+      const from = entry.vertexStart[point] ?? 0;
+      const to = entry.vertexStart[point + 1] ?? from;
+      const dot = ax * bx + ay * by + az * bz;
+
+      // Barely turned, or degenerate: leave the authored normals alone rather
+      // than pushing them through a rotation that is mostly rounding error.
+      if (dot > 0.999999 || !Number.isFinite(dot)) {
+        for (let v = from; v < to; v++) {
+          const at = (entry.vertexOf[v] ?? 0) * 3;
+          out[at] = entry.restNormals[at] ?? 0;
+          out[at + 1] = entry.restNormals[at + 1] ?? 0;
+          out[at + 2] = entry.restNormals[at + 2] ?? 0;
+        }
+        continue;
+      }
+
+      // Rodrigues, about the axis between the two.
+      let kx = ay * bz - az * by;
+      let ky = az * bx - ax * bz;
+      let kz = ax * by - ay * bx;
+      const klen = Math.hypot(kx, ky, kz);
+      if (klen < 1e-9) continue;
+      kx /= klen;
+      ky /= klen;
+      kz /= klen;
+      const angle = Math.acos(Math.min(1, Math.max(-1, dot)));
+      const c = Math.cos(angle);
+      const sn = Math.sin(angle);
+
+      for (let v = from; v < to; v++) {
+        const at = (entry.vertexOf[v] ?? 0) * 3;
+        const nx = entry.restNormals[at] ?? 0;
+        const ny = entry.restNormals[at + 1] ?? 0;
+        const nz = entry.restNormals[at + 2] ?? 0;
+        const kd = kx * nx + ky * ny + kz * nz;
+        out[at] = nx * c + (ky * nz - kz * ny) * sn + kx * kd * (1 - c);
+        out[at + 1] = ny * c + (kz * nx - kx * nz) * sn + ky * kd * (1 - c);
+        out[at + 2] = nz * c + (kx * ny - ky * nx) * sn + kz * kd * (1 - c);
+      }
+    }
     normals.needsUpdate = true;
   }
 
@@ -485,11 +577,63 @@ export class SparseBlendShapes {
       if (!position) continue;
       (position.array as Float32Array).set(entry.rest);
       position.needsUpdate = true;
-      this.shadeAfterMoving(entry);
+      this.shadeAfterMoving(entry, false);
       entry.points.set(entry.restPoints);
       this.onPointsMoved?.(entry.mesh, entry.points);
     }
   }
+}
+
+/**
+ * One normal per authored point, from the faces around it.
+ *
+ * Newell's method, which is right for an n-gon and for a face that is not
+ * quite planar. The sign follows winding order and is not corrected here on
+ * purpose: this is only ever used to compare a rest normal with a deformed
+ * one, and a sign present in both cancels.
+ */
+function pointNormals(entry: MeshShapes, points: Float32Array): Float32Array {
+  const counts = entry.faceVertexCounts;
+  const indices = entry.faceVertexIndices;
+  const out = new Float32Array(points.length);
+
+  let corner = 0;
+  for (let f = 0; f < counts.length; f++) {
+    const n = counts[f] ?? 0;
+    let nx = 0;
+    let ny = 0;
+    let nz = 0;
+    for (let i = 0; i < n; i++) {
+      const a = (indices[corner + i] ?? 0) * 3;
+      const b = (indices[corner + ((i + 1) % n)] ?? 0) * 3;
+      const ax = points[a] ?? 0;
+      const ay = points[a + 1] ?? 0;
+      const az = points[a + 2] ?? 0;
+      const bx = points[b] ?? 0;
+      const by = points[b + 1] ?? 0;
+      const bz = points[b + 2] ?? 0;
+      nx += (ay - by) * (az + bz);
+      ny += (az - bz) * (ax + bx);
+      nz += (ax - bx) * (ay + by);
+    }
+    for (let i = 0; i < n; i++) {
+      const at = (indices[corner + i] ?? 0) * 3;
+      out[at] = (out[at] ?? 0) + nx;
+      out[at + 1] = (out[at + 1] ?? 0) + ny;
+      out[at + 2] = (out[at + 2] ?? 0) + nz;
+    }
+    corner += n;
+  }
+
+  for (let i = 0; i < out.length; i += 3) {
+    const length = Math.hypot(out[i] ?? 0, out[i + 1] ?? 0, out[i + 2] ?? 0);
+    if (length > 1e-12) {
+      out[i] = (out[i] ?? 0) / length;
+      out[i + 1] = (out[i + 1] ?? 0) / length;
+      out[i + 2] = (out[i + 2] ?? 0) / length;
+    }
+  }
+  return out;
 }
 
 /**

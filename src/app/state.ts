@@ -72,6 +72,7 @@ interface PersistedUi {
   /** Whether smoothing is on. Separate from the level, so level 0 is a
    *  real choice: the unrefined mesh, drawn as quads. */
   smoothing: boolean;
+  blendNormals: boolean;
   placementMode: PlacementMode;
   /** Which lighting environment the viewport uses. */
   environment: EnvironmentId;
@@ -119,6 +120,9 @@ function loadLayout(): Partial<PersistedUi> {
     }
     if (typeof parsed.smoothing === 'boolean') {
       out.smoothing = parsed.smoothing;
+    }
+    if (typeof parsed.blendNormals === 'boolean') {
+      out.blendNormals = parsed.blendNormals;
     }
     if (
       typeof parsed.subdivLevel === 'number' &&
@@ -235,6 +239,15 @@ export interface UiState {
    * never looks again.
    */
   blendShapeCount: number;
+  /**
+   * Whether shading should follow a blend shape.
+   *
+   * Off by default: keeping the file's own normals is free and exactly what
+   * the artist shaded, and recomputing costs real time on a dense character.
+   * On, the normals are rotated by how far the surface turned, so a shape
+   * lights as though it moved rather than as though it had not.
+   */
+  blendNormals: boolean;
   characterHasSkeleton: boolean;
   loading: string | null;
   /** How far a character load has got, or null when nothing is loading. */
@@ -275,6 +288,7 @@ export interface UiState {
   bumpDoc: (dirty: boolean) => void;
   setCharacter: (name: string | null, hasSkeleton: boolean) => void;
   setBlendShapeCount: (count: number) => void;
+  toggleBlendNormals: () => void;
   setLoading: (message: string | null) => void;
   setLoadProgress: (progress: LoadStatus | null) => void;
   setError: (message: string | null) => void;
@@ -319,6 +333,7 @@ export const useUiStore = create<UiState>((set) => ({
 
   characterName: null,
   blendShapeCount: 0,
+  blendNormals: false,
   characterHasSkeleton: false,
   loading: null,
   loadProgress: null,
@@ -394,6 +409,7 @@ export const useUiStore = create<UiState>((set) => ({
     // A new character has none until its file has been read again.
     set({ characterName, characterHasSkeleton, blendShapeCount: 0 }),
   setBlendShapeCount: (blendShapeCount) => set({ blendShapeCount }),
+  toggleBlendNormals: () => set((s) => ({ blendNormals: !s.blendNormals })),
   setLoading: (loading) =>
     // Clearing the message clears the progress with it, so a finished load
     // cannot leave a stale bar behind.
@@ -421,6 +437,7 @@ useUiStore.subscribe((state, previous) => {
     state.viewMode !== previous.viewMode ||
     state.subdivLevel !== previous.subdivLevel ||
     state.smoothing !== previous.smoothing ||
+    state.blendNormals !== previous.blendNormals ||
     state.placementMode !== previous.placementMode ||
     state.environment !== previous.environment ||
     state.useHdri !== previous.useHdri;
@@ -436,6 +453,7 @@ useUiStore.subscribe((state, previous) => {
     viewMode: state.viewMode,
     subdivLevel: state.subdivLevel,
     smoothing: state.smoothing,
+    blendNormals: state.blendNormals,
     placementMode: state.placementMode,
     environment: state.environment,
     useHdri: state.useHdri

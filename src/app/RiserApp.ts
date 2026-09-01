@@ -480,6 +480,8 @@ export class RiserApp {
           // was. Without this a shape moves the character and leaves its
           // wireframe behind in the old pose.
           this.blendShapes.onSettled = () => this.viewModes?.rebuildWireframes();
+          this.blendShapes.recomputeNormals =
+            useUiStore.getState().blendNormals;
           // Tell the panel they exist. It is built before this finishes, so
           // without a signal it lists an empty set and never looks again.
           useUiStore
@@ -1518,6 +1520,12 @@ export class RiserApp {
       state.useHdri !== previous.useHdri
     ) {
       void this.viewport.setEnvironment(state.environment, state.useHdri);
+    }
+    if (state.blendNormals !== previous.blendNormals) {
+      this.blendShapes.recomputeNormals = state.blendNormals;
+      // Re-shade whatever is currently posed, so the switch is visible at once
+      // rather than at the next thing that moves a weight.
+      this.blendShapes.reshade();
     }
     if (state.viewMode !== previous.viewMode) {
       this.viewModes?.setMode(state.viewMode);

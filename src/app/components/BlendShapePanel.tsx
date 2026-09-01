@@ -37,6 +37,7 @@ export function BlendShapePanel(): JSX.Element | null {
   // fetching its file back. Without this the list is built from an empty set
   // and never rebuilt, so a character full of shapes shows no panel at all.
   const blendShapeCount = useUiStore((s) => s.blendShapeCount);
+  const blendNormals = useUiStore((s) => s.blendNormals);
   const [search, setSearch] = useState('');
   // Weights live on the three.js meshes, not in React. This is bumped to
   // redraw the sliders after a change; keeping the values themselves in React
@@ -109,6 +110,28 @@ export function BlendShapePanel(): JSX.Element | null {
         Fire a shape to check your markers still sit right when the face moves.
         Nothing here changes the document.
       </p>
+
+      {/* Shading a shape costs something, so it is a choice rather than a
+          default. Off, the character keeps the normals its file shipped with,
+          which is exactly what the artist shaded but does not follow a strong
+          shape. On, those normals are turned by however far the surface turned,
+          which is what Unreal does and what makes a bulge light like one. */}
+      <label className="mb-2 flex cursor-pointer items-center gap-2 text-[11px] text-ink-dim">
+        <input
+          type="checkbox"
+          checked={blendNormals}
+          data-testid="blend-normals"
+          onChange={() => {
+            useUiStore.getState().toggleBlendNormals();
+            redraw();
+          }}
+          className="accent-accent"
+        />
+        <span>Recompute normals</span>
+        <span className="text-ink-faint">
+          {blendNormals ? 'shading follows the shape' : 'faster, shading stays put'}
+        </span>
+      </label>
 
       {/* A face rig can carry a hundred shapes; a list that long needs a filter. */}
       {shapes.length > 8 && (

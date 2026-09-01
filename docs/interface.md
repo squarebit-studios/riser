@@ -178,6 +178,18 @@ bytes are still arriving, because once they are all here there is nothing left
 to stop. Cancelling leaves whatever character you already had alone and reports
 nothing: it is a decision, not a failure.
 
+**Recompute normals** decides whether shading follows a shape. Off, the
+character keeps the normals its file came with: free, and exactly what the
+artist shaded, but a strong shape is lit as though it had not moved. On, each
+normal is turned by however far the surface turned under it, so a bulge lights
+like a bulge. Turning it on roughly triples the cost of firing a shape, which
+is why it is a choice.
+
+The turn is applied to the normals the file authored rather than replacing
+them. That matters because a file gives split vertices different normals
+wherever it wants a hard edge, and rebuilding smooth normals from scratch
+erases every crease on the character.
+
 ### USD
 
 What the character's source file contains, as the file describes itself:

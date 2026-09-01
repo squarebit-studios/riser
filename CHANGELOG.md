@@ -2,6 +2,12 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.12.6] - 2026-09-01
+
+### Added
+- **Recompute normals**, in the blend shape panel. Off, a character keeps the shading its file shipped with, which is free and exactly what the artist authored but does not follow a strong shape. On, the normals are turned by however far the surface turned, so a bulge lights like one. The same choice Unreal makes for shapes that drive normals
+- The turn is applied to each authored normal rather than replacing it, so hard edges survive: a file gives split vertices different normals where it wants a crease, and rebuilding smooth normals erases every one of them
+
 ## [0.12.5] - 2026-09-01
 
 ### Fixed
