@@ -2,6 +2,12 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.12.4] - 2026-09-01
+
+### Fixed
+- Firing a blend shape left the character permanently faceted, its triangulation showing through as hard flat faces. Shading was being derived with a method that averages across vertices, and a renderer's geometry shares none of them, so every normal came out per triangle. It was most obvious at level 0, where you are looking at that mesh rather than at a smoothed surface built from it
+- Clearing a shape now puts the file's own normals back exactly, and a shape that is applied is shaded smoothly across the faces the file authored
+
 ## [0.12.3] - 2026-09-01
 
 ### Fixed

@@ -177,3 +177,56 @@ describe('sparse blend shapes', () => {
     expect(positions(mesh)).toEqual(rest);
   });
 });
+
+describe('shading', () => {
+  it('never derives normals with three, which would facet an unwelded mesh', () => {
+    // The bug this exists for. A renderer's geometry is unwelded: this
+    // character is 152,928 vertices for 25,490 points, split at every UV and
+    // normal seam. `computeVertexNormals` averages across VERTICES, so with
+    // none shared it yields one normal per triangle. Firing a single shape
+    // took the character from smooth to 80% faceted, permanently, and made its
+    // triangulation visible at level 0.
+    const mesh = splitMesh();
+    const normals = new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]);
+    mesh.geometry.setAttribute(
+      'normal',
+      new THREE.BufferAttribute(normals.slice(), 3)
+    );
+
+    const shapes = new SparseBlendShapes();
+    shapes.setCharacter(
+      [mesh],
+      new Map([['face', [shape('jaw_open', [1], [0, -1, 0])]]])
+    );
+
+    shapes.setWeight('jaw_open', 1);
+    shapes.setWeight('jaw_open', 0);
+
+    // Back to exactly what the file shaded it with, not to something derived.
+    const after = mesh.geometry.getAttribute('normal').array as Float32Array;
+    expect([...after]).toEqual([...normals]);
+  });
+
+  it('keeps the two halves of a split point shaded the same', () => {
+    // What smooth means here: a point split into several render vertices has
+    // to get ONE normal written to all of them, or the seam shows as a crease
+    // that nobody authored.
+    const mesh = splitMesh();
+    mesh.geometry.setAttribute(
+      'normal',
+      new THREE.BufferAttribute(new Float32Array(12), 3)
+    );
+    const shapes = new SparseBlendShapes();
+    shapes.setCharacter(
+      [mesh],
+      new Map([['jaw', [shape('jaw', [1], [0, -1, 0])]]])
+    );
+    shapes.setWeight('jaw', 1);
+
+    const n = mesh.geometry.getAttribute('normal').array as Float32Array;
+    // Vertices 1 and 2 are the same authored point.
+    expect(n[3]).toBeCloseTo(n[6]!, 10);
+    expect(n[4]).toBeCloseTo(n[7]!, 10);
+    expect(n[5]).toBeCloseTo(n[8]!, 10);
+  });
+});
