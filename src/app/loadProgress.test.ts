@@ -54,3 +54,39 @@ describe('load progress', () => {
     expect(useUiStore.getState().loadProgress?.cancel).toBeUndefined();
   });
 });
+
+describe('the smooth toggle', () => {
+  it('actually smooths when it is switched on', () => {
+    // It did not. The level defaulted to 0 and the toggle only flipped the
+    // flag, so the effective level stayed 0: the button lit up and the
+    // character did not move, which reads as a broken control.
+    const store = useUiStore.getState();
+    store.setSmoothing(false);
+    store.setSubdivLevel(0);
+    store.setSmoothing(false);
+
+    useUiStore.getState().toggleSmoothing();
+    const after = useUiStore.getState();
+    expect(after.smoothing).toBe(true);
+    expect(after.subdivLevel).toBeGreaterThan(0);
+  });
+
+  it('returns to the level you last chose', () => {
+    const store = useUiStore.getState();
+    store.setSubdivLevel(3);
+    useUiStore.getState().toggleSmoothing();
+    expect(useUiStore.getState().smoothing).toBe(false);
+    useUiStore.getState().toggleSmoothing();
+    expect(useUiStore.getState().subdivLevel).toBe(3);
+  });
+
+  it('leaves level 0 alone when it was chosen from the menu', () => {
+    // Smoothing on at level 0 is a real state: the mesh as authored, drawn as
+    // quads. Choosing it says something; arriving there by pressing Smooth
+    // does not.
+    const store = useUiStore.getState();
+    store.setSubdivLevel(0);
+    expect(useUiStore.getState().smoothing).toBe(true);
+    expect(useUiStore.getState().subdivLevel).toBe(0);
+  });
+});

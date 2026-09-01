@@ -202,7 +202,9 @@ adjusting something you cannot see.
 ## The subdivision preview
 
 Riser displays your character as a smooth Catmull-Clark surface, at the level
-set by the **Subdiv** slider (0 to 3, default 2). Level 0 shows the raw mesh.
+turned on with the **Smooth** button, at a level chosen from the menu beside
+it (0 to 3). Smoothing is off when a character arrives, so you see the mesh
+as its file describes it before anything is applied to it.
 
 | Subdiv 0, the control cage | Subdiv 3, the limit surface |
 |---|---|
@@ -212,7 +214,7 @@ The point is not that it looks better, although it does. It is that placing an
 eye corner on a faceted blockout means aiming at a flat plane that is nowhere
 near where the eye corner really is.
 
-**Changing the slider never moves a marker you have already placed.** This is
+**Changing the level never moves a marker you have already placed.** This is
 worth being clear about, because it looks as though it should.
 
 A binding always names a triangle of the original mesh, never of the smooth

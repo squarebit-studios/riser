@@ -2,6 +2,16 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.9.5] - 2026-08-31
+
+### Fixed
+- The Smooth button did nothing on its own. The level it applied defaulted to 0, so turning smoothing on lit the button and left the character exactly as it was. It now goes to level 1, and level 0 stays reachable by choosing it from the menu, where picking it means something
+- The concepts page still described a subdivision slider defaulting to level 2. It has been a button and a menu since 0.8.1, and smoothing is off when a character arrives
+
+### Changed
+- Blend shapes can ship beside a character instead of inside it, which keeps a hosted character at 6.5MB rather than 21.8MB. One file stays what a person handles: splitting only helps an asset served over the web
+- The converter exports what is under the model group and nothing else, so rig scaffolding cannot reach the file even when somebody invents a new kind of it
+
 ## [0.9.4] - 2026-08-31
 
 ### Fixed

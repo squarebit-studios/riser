@@ -338,7 +338,19 @@ export const useUiStore = create<UiState>((set) => ({
     // a dead control.
     set({ subdivLevel, smoothing: true }),
   setSmoothing: (smoothing) => set({ smoothing }),
-  toggleSmoothing: () => set((s) => ({ smoothing: !s.smoothing })),
+  toggleSmoothing: () =>
+    set((s) => {
+      if (s.smoothing) return { smoothing: false };
+      // Turning smoothing ON at level 0 smooths nothing: the effective level
+      // is the chosen one, and 0 means the cage. The button lit up and the
+      // character did not move, which reads as a broken control rather than
+      // as a subtlety about levels.
+      //
+      // Level 0 stays reachable, but by CHOOSING it from the menu, where
+      // picking it says something. Arriving there by pressing a button called
+      // Smooth does not.
+      return { smoothing: true, subdivLevel: s.subdivLevel > 0 ? s.subdivLevel : 1 };
+    }),
   setViewMode: (viewMode) => set({ viewMode }),
   setPlacementMode: (placementMode) => set({ placementMode }),
   setEnvironment: (environment) => set({ environment }),
