@@ -434,3 +434,35 @@ describe('replacing the cage', () => {
     expect(set.currentLevel).toBe(0);
   });
 });
+
+describe('moving the cage under a wireframe', () => {
+  it('updates the quads at level 0, where they are what is drawn', () => {
+    // The bug this exists for. Above level 0 a wireframe follows a deforming
+    // cage because the refined surface is re-evaluated from it by the stencil
+    // product. At level 0 there is no refined surface: the quads come from the
+    // cage's own mesh, cached from the points at rest, and nothing was moving
+    // them. So a blend shape moved the character and left its wireframe behind
+    // at level 0 only, which is a strange enough symptom to be worth pinning.
+    const set = new SubdivSet([gridMesh(4)]);
+    set.setLevel(0);
+
+    const before = set.quadWireframe(set.displayedMeshes()[0]!);
+    expect(before).not.toBeNull();
+    const first = before!.getAttribute('position').array as Float32Array;
+    const sample = [...first.slice(0, 9)];
+
+    // Move every control point, the way a shape does.
+    const surface = set.surfacesForTest?.()[0];
+    const cage = set.displayedMeshes()[0]!;
+    const moved = Float32Array.from(
+      cage.geometry.getAttribute('position').array as Float32Array
+    );
+    for (let i = 1; i < moved.length; i += 3) moved[i] = (moved[i] ?? 0) + 5;
+    set.refreshFrom(cage, moved);
+
+    const after = set.quadWireframe(cage);
+    const second = after!.getAttribute('position').array as Float32Array;
+    expect([...second.slice(0, 9)]).not.toEqual(sample);
+    void surface;
+  });
+});

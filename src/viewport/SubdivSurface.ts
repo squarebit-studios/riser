@@ -436,6 +436,19 @@ export class SubdivSurface {
    * rather than a re-refine.
    */
   refresh(cagePositions?: Float32Array): void {
+    // The cage's own quads move first, and they move whether or not a refined
+    // surface exists.
+    //
+    // At level 0 that IS what is drawn: the quad wireframe comes from this
+    // mesh, cached from the authored points at rest, and nothing was updating
+    // it. So a shape moved the character and its wireframe stayed behind at
+    // level 0 only, while every other level followed, because those are
+    // re-evaluated from the cage by the stencil product below.
+    if (cagePositions && this.cageSubdiv) {
+      const cage = this.cageSubdiv.positions;
+      if (cage.length === cagePositions.length) cage.set(cagePositions);
+    }
+
     const active = this.active;
     if (!active) return;
 

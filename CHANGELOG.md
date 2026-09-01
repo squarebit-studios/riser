@@ -2,6 +2,11 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.12.7] - 2026-09-01
+
+### Fixed
+- The wireframe followed a blend shape at every smoothing level except 0. Above 0 it is drawn from a surface that gets re-evaluated when the cage moves; at 0 it is drawn from the cage's own quads, which were cached at rest and never moved
+
 ## [0.12.6] - 2026-09-01
 
 ### Added
