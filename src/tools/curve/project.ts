@@ -21,6 +21,7 @@
 
 import * as THREE from 'three';
 import type { Vec3 } from '../../doc/types';
+import { resampleCurve, type CurveDegree } from './geometry';
 
 /**
  * How far to search either side of a sample, as a fraction of character
@@ -192,6 +193,44 @@ export function interpolateNormals(
     out[i] = [n.x, n.y, n.z];
   }
   return out;
+}
+
+/**
+ * Search directions for every sample, through the SAME basis as the positions.
+ *
+ * The direction a sample searches along has to belong to that sample. Deriving
+ * it separately means two parameterisations that have to agree by argument
+ * rather than by construction, and they stopped agreeing the moment the drawn
+ * curve changed degree: `interpolateNormals` spreads the control normals
+ * assuming the cubic's layout, where an open curve has one fewer span than it
+ * has points and every tenth sample sits exactly on a control vertex. A
+ * quadratic has a span per point and sits on none of them, so each sample was
+ * handed a normal from slightly the wrong place along the curve.
+ *
+ * The error is small, and on a gently curved surface it disappears entirely
+ * because a slightly wrong normal still points at the same skin. Around an eye
+ * or a lip, where the surface turns fast and there is another surface just
+ * behind it, a slightly wrong direction finds a different piece of the
+ * character. The samples that miss snap somewhere else and the drawn curve
+ * zig-zags between the two.
+ *
+ * Running the control normals through the same resampler as the positions
+ * removes the class of bug rather than this instance of it: whatever basis the
+ * positions are drawn with, the directions are built by it too, so sample i's
+ * direction is always sample i's.
+ */
+export function sampleDirections(
+  controlNormals: readonly Vec3[],
+  closed: boolean,
+  samplesPerSegment: number,
+  degree: CurveDegree
+): Vec3[] {
+  // Interpolating a direction gives a vector that is short in the turns and
+  // is not a direction until it is normalised.
+  return resampleCurve(controlNormals, closed, samplesPerSegment, degree).map((n) => {
+    const length = Math.hypot(n[0], n[1], n[2]);
+    return (length < 1e-12 ? n : [n[0] / length, n[1] / length, n[2] / length]) as Vec3;
+  });
 }
 
 /**

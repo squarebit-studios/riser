@@ -70,7 +70,7 @@ import {
 } from '../tools/curve/geometry';
 import {
   controlVertexSampleIndices,
-  interpolateNormals,
+  sampleDirections,
   projectSamplesToSurface,
   SEARCH_FRACTION
 } from '../tools/curve/project';
@@ -1309,7 +1309,15 @@ export class RiserApp {
 
     return projectSamplesToSurface(
       samples,
-      interpolateNormals(worldNormals, samples.length, closed),
+      // Built by the same resampler as `samples`, so a sample and the
+      // direction it searches along are the same point on the curve. Deriving
+      // them separately let the two drift apart when the degree changed.
+      sampleDirections(
+        worldNormals,
+        closed,
+        DEFAULT_SAMPLES_PER_SEGMENT,
+        DEFAULT_CURVE_DEGREE
+      ),
       this.character.meshes,
       this.projectionRaycaster,
       {
