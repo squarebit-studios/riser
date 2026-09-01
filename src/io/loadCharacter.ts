@@ -81,19 +81,110 @@ export interface LoadOptions {
 }
 
 /** Load from a URL. */
+/** Where a load has got to, for something to show a person. */
+export interface LoadProgress {
+  /** What is happening now: downloading, or working on what arrived. */
+  stage: 'downloading' | 'parsing' | 'building';
+  /** Bytes received so far. */
+  received: number;
+  /**
+   * Total bytes, when the server said. Null when it did not, which happens
+   * with chunked transfer encoding and means no percentage can be honest.
+   */
+  total: number | null;
+}
+
+export interface UrlLoadOptions extends LoadOptions {
+  onProgress?: (progress: LoadProgress) => void;
+  /** Aborts the download. A cancelled load throws `CancelledError`. */
+  signal?: AbortSignal;
+}
+
+/** Thrown when a load is cancelled, so a caller can tell it from a failure. */
+export class CancelledError extends Error {
+  constructor() {
+    super('Loading cancelled');
+    this.name = 'CancelledError';
+  }
+}
+
 export async function loadCharacterFromUrl(
   url: string,
-  options: LoadOptions = {}
+  options: UrlLoadOptions = {}
 ): Promise<CharacterModel> {
   const format = formatForExtension(extensionOf(url));
   if (!format) throw new Error(`Unsupported character format: ${url}`);
 
-  const response = await fetch(url);
+  const { onProgress, signal, ...rest } = options;
+  const buffer = await download(url, onProgress, signal);
+
+  // Parsing a character is seconds of synchronous work on a big asset, and it
+  // is the half a person cannot see happening. Saying so is the difference
+  // between a progress bar that stops at 100% and one that explains itself.
+  onProgress?.({ stage: 'parsing', received: buffer.byteLength, total: buffer.byteLength });
+  const model = buildModel(buffer, url, format, rest);
+  onProgress?.({ stage: 'building', received: buffer.byteLength, total: buffer.byteLength });
+  return model;
+}
+
+/**
+ * Fetch a character, reporting progress and stopping when asked.
+ *
+ * Streamed rather than `response.arrayBuffer()` because a 20MB character on a
+ * slow connection is a long time to show nothing, and because a download
+ * nobody can stop is a trap: the only way out was to reload the page and lose
+ * the document.
+ */
+async function download(
+  url: string,
+  onProgress?: (progress: LoadProgress) => void,
+  signal?: AbortSignal
+): Promise<ArrayBuffer> {
+  const response = await fetch(url, { signal });
   if (!response.ok) {
     throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
   }
-  const buffer = await response.arrayBuffer();
-  return buildModel(buffer, url, format, options);
+
+  const declared = response.headers.get('content-length');
+  const total = declared ? Number(declared) : null;
+
+  // No stream to read means no progress to report, which is the case in
+  // jsdom and in any browser old enough to lack ReadableStream on a response.
+  if (!response.body) {
+    const buffer = await response.arrayBuffer();
+    onProgress?.({ stage: 'downloading', received: buffer.byteLength, total });
+    return buffer;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+
+  onProgress?.({ stage: 'downloading', received: 0, total: Number.isFinite(total) ? total : null });
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      chunks.push(value);
+      received += value.byteLength;
+      onProgress?.({ stage: 'downloading', received, total: Number.isFinite(total) ? total : null });
+    }
+    if (signal?.aborted) {
+      // Releasing the lock lets the browser tear the connection down rather
+      // than leaving it draining in the background.
+      await reader.cancel().catch(() => undefined);
+      throw new CancelledError();
+    }
+  }
+
+  const buffer = new Uint8Array(received);
+  let at = 0;
+  for (const chunk of chunks) {
+    buffer.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return buffer.buffer;
 }
 
 /** Load from a File chosen in a picker or dropped on the viewport. */

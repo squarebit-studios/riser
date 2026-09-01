@@ -489,7 +489,26 @@ export class RiserApp {
 
   async loadFromUrl(url: string): Promise<void> {
     this.characterUrl = url;
-    await this.withLoading(`Loading ${basename(url)}`, () => loadCharacterFromUrl(url));
+    const controller = new AbortController();
+    await this.withLoading(
+      `Loading ${basename(url)}`,
+      () =>
+        loadCharacterFromUrl(url, {
+          signal: controller.signal,
+          onProgress: (progress) =>
+            useUiStore.getState().setLoadProgress({
+              ...progress,
+              // Only offered while there is something to stop. Once the bytes
+              // are in and parsing has started, aborting the fetch would do
+              // nothing, and a button that does nothing is worse than none.
+              cancel:
+                progress.stage === 'downloading'
+                  ? () => controller.abort()
+                  : undefined
+            })
+        }),
+      controller
+    );
   }
 
   async loadFromFile(file: File): Promise<void> {
@@ -555,7 +574,8 @@ export class RiserApp {
 
   private async withLoading(
     message: string,
-    load: () => Promise<CharacterModel>
+    load: () => Promise<CharacterModel>,
+    controller?: AbortController
   ): Promise<void> {
     const ui = useUiStore.getState();
     ui.setLoading(message);
@@ -563,7 +583,15 @@ export class RiserApp {
     try {
       this.setCharacter(await load());
     } catch (err) {
-      ui.setError(err instanceof Error ? err.message : String(err));
+      // Cancelling is a decision, not a failure, and reporting it as an error
+      // would put a red banner over something the user just chose to do.
+      const cancelled =
+        controller?.signal.aborted ||
+        (err instanceof Error &&
+          (err.name === 'CancelledError' || err.name === 'AbortError'));
+      if (!cancelled) {
+        ui.setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       useUiStore.getState().setLoading(null);
     }

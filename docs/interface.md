@@ -165,6 +165,19 @@ Selection is driven from this list rather than by clicking the viewport,
 because a click there already means "place a marker" and that is the job the
 viewport is for.
 
+### While a character loads
+
+A character can be tens of megabytes, so loading one shows its progress: how
+much has arrived out of how much there is, and then that it has moved on to
+reading the file and building the character. Those last two are synchronous and
+can take a moment on a heavy asset, which is why they say so rather than
+leaving the bar sitting at 100%.
+
+**Cancel** stops a download you did not mean to start. It appears only while
+bytes are still arriving, because once they are all here there is nothing left
+to stop. Cancelling leaves whatever character you already had alone and reports
+nothing: it is a decision, not a failure.
+
 ### USD
 
 What the character's source file contains, as the file describes itself:

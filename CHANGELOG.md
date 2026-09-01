@@ -2,6 +2,15 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.9.3] - 2026-08-31
+
+### Added
+- Loading a character shows what it is doing: how much has arrived out of how much there is, then that it is reading the file and building the character. A big asset is a long time to show a word and a full stop
+- A load can be cancelled while it is downloading. Until now the only way out of one you did not mean to start was reloading the page, which threw the document away with it
+
+### Changed
+- Cancelling is treated as a decision rather than a failure, so it puts up no error
+
 ## [0.9.2] - 2026-08-31
 
 ### Fixed

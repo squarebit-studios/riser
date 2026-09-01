@@ -15,6 +15,21 @@
 // ==========================================================================
 
 import { create } from 'zustand';
+
+/**
+ * What a character load is doing, for the progress bar.
+ *
+ * Declared here rather than imported from `io/loadCharacter` so the store does
+ * not depend on the loader, and so the cancel handler has somewhere to live
+ * that the chrome can reach without reaching into the viewport.
+ */
+export interface LoadStatus {
+  stage: 'downloading' | 'parsing' | 'building';
+  received: number;
+  total: number | null;
+  /** Stops the load. Present only while there is still something to stop. */
+  cancel?: () => void;
+}
 import type { ToolId } from '../tools/types';
 import type { ControlVertexRef } from '../tools/curve/CurveLayer';
 import { DEFAULT_TEMPLATE_ID } from '../templates';
@@ -213,6 +228,8 @@ export interface UiState {
   characterName: string | null;
   characterHasSkeleton: boolean;
   loading: string | null;
+  /** How far a character load has got, or null when nothing is loading. */
+  loadProgress: LoadStatus | null;
   error: string | null;
   notice: string | null;
 
@@ -249,6 +266,7 @@ export interface UiState {
   bumpDoc: (dirty: boolean) => void;
   setCharacter: (name: string | null, hasSkeleton: boolean) => void;
   setLoading: (message: string | null) => void;
+  setLoadProgress: (progress: LoadStatus | null) => void;
   setError: (message: string | null) => void;
   setNotice: (message: string | null) => void;
 }
@@ -292,6 +310,7 @@ export const useUiStore = create<UiState>((set) => ({
   characterName: null,
   characterHasSkeleton: false,
   loading: null,
+  loadProgress: null,
   error: null,
   notice: null,
 
@@ -350,7 +369,11 @@ export const useUiStore = create<UiState>((set) => ({
   bumpDoc: (dirty) => set((s) => ({ docRevision: s.docRevision + 1, dirty })),
   setCharacter: (characterName, characterHasSkeleton) =>
     set({ characterName, characterHasSkeleton }),
-  setLoading: (loading) => set({ loading }),
+  setLoading: (loading) =>
+    // Clearing the message clears the progress with it, so a finished load
+    // cannot leave a stale bar behind.
+    set(loading === null ? { loading, loadProgress: null } : { loading }),
+  setLoadProgress: (loadProgress) => set({ loadProgress }),
   setError: (error) => set({ error }),
   setNotice: (notice) => set({ notice })
 }));
