@@ -11,7 +11,7 @@
 // ==========================================================================
 
 import * as THREE from 'three';
-import { Viewport } from '../viewport/Viewport';
+import { Viewport, LAYER_OVERLAY } from '../viewport/Viewport';
 import { CameraRig } from '../viewport/CameraRig';
 import { SurfacePicker, resolveBindingWorld } from '../viewport/Picker';
 import { Overlays } from '../viewport/Overlays';
@@ -66,7 +66,7 @@ import { getTemplate } from '../templates';
 import { placeGuidesFromSkeleton } from '../tools/autoplace/fromSkeleton';
 import { placeGuidesFromProportions } from '../tools/autoplace/fromProportions';
 import { placeGuidesFromQuadruped } from '../tools/autoplace/fromQuadruped';
-import { DRAG_THRESHOLD_PX, ToolManager } from '../tools/ToolManager';
+import { ToolManager } from '../tools/ToolManager';
 import { pointOnCameraPlane } from '../tools/placement';
 import { bindAtPosition } from '../tools/rebind';
 import { aimAtScreen } from '../viewport/Picker';
@@ -142,6 +142,18 @@ function samePointList(a: readonly Vec3[], b: readonly Vec3[]): boolean {
   }
   return true;
 }
+
+/**
+ * A thing in the viewport a menu can be opened on.
+ *
+ * A curve point is called out separately from its curve because the two want
+ * different actions: one is "remove this vertex", the other is "mirror the
+ * whole curve", and collapsing them would offer the wrong one.
+ */
+export type OverlayTarget =
+  | { kind: 'guide'; id: string }
+  | { kind: 'curve'; id: string }
+  | { kind: 'curvePoint'; curveId: string; index: number };
 
 export class RiserApp {
   readonly viewport: Viewport;
@@ -301,9 +313,6 @@ export class RiserApp {
         viewport: this.viewport,
         tools: () => [markerTool, curveTool],
         marquee: {
-          // Same distance that separates a click from a tumble everywhere
-          // else, so a press on empty space behaves consistently.
-          threshold: DRAG_THRESHOLD_PX,
           show: (rect) => useUiStore.getState().setMarqueeRect(rect),
           select: (rect, add) => this.selectInRect(rect, add),
           clear: () =>
@@ -1335,6 +1344,51 @@ export class RiserApp {
     this.curveTool?.mirrorCurve(curveId);
   }
 
+  /**
+   * What the menu is being opened ON, given a point on the page.
+   *
+   * A menu that always says the same thing makes somebody go and find the
+   * marker again in a list before they can act on it, and on a tablet there is
+   * no right button to say "this one" with in the first place: a long press is
+   * the only way to point at a thing and ask for its actions.
+   *
+   * Page coordinates rather than canvas ones, because the caller is a menu and
+   * menus are positioned in page space. Converting here keeps every caller
+   * from having to know where the canvas is.
+   *
+   * The overlay layers are asked in the order a person would expect to win:
+   * the control vertex is smaller than the marker and drawn on top of it, so
+   * where they overlap it is the more deliberate target.
+   */
+  /** Abandon whatever the pointer was doing, because something else took it. */
+  cancelGesture(): void {
+    this.toolManager?.cancelGesture();
+  }
+
+  overlayAtClient(clientX: number, clientY: number): OverlayTarget | null {
+    const canvas = this.viewport.renderer.domElement;
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
+
+    const { width, height } = this.viewport.size;
+    aimAtScreen(this.overlayRaycaster, this.viewport.camera, x, y, width, height);
+
+    const vertex = this.curveLayer.hitTestControlVertex(this.overlayRaycaster);
+    if (vertex) {
+      return { kind: 'curvePoint', curveId: vertex.curveId, index: vertex.index };
+    }
+
+    const guideId = this.markerLayer.hitTest(this.overlayRaycaster);
+    if (guideId) return { kind: 'guide', id: guideId };
+
+    const curveId = this.curveLayer.hitTestCurve(this.overlayRaycaster);
+    if (curveId) return { kind: 'curve', id: curveId };
+
+    return null;
+  }
+
   // -----------------------------------------------------------------------
   // Box selection
   // -----------------------------------------------------------------------
@@ -1755,6 +1809,13 @@ export class RiserApp {
    */
   /** Held so the interface can ask the curve tool to mirror a curve. */
   private curveTool: CurveTool | null = null;
+
+  /** Owned rather than allocated per query: menus and hovers both use it. */
+  private readonly overlayRaycaster = (() => {
+    const raycaster = new THREE.Raycaster();
+    raycaster.layers.set(LAYER_OVERLAY);
+    return raycaster;
+  })();
 
   /** Owned rather than allocated per move: a group drag fires every frame. */
   private readonly selectionRaycaster = new THREE.Raycaster();

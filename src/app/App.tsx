@@ -23,6 +23,10 @@ import { ContextMenu, MenuItem, MenuLabel, MenuSeparator } from './components/ui
 import { useViewportMenu } from './components/ui/useViewportMenu';
 import { VIEW_MODES } from '../viewport/ViewModes';
 import { useUiStore } from './state';
+import * as M from '../doc/mutations';
+import { curveDef, getTemplate, guideDef } from '../templates';
+import type { TemplateDef } from '../doc/types';
+import type { OverlayTarget, RiserApp } from './RiserApp';
 
 export function App(): JSX.Element {
   return (
@@ -81,14 +85,114 @@ function Shell(): JSX.Element {
   );
 }
 
+
+/**
+ * The part of the viewport menu that belongs to the thing you pressed on.
+ *
+ * Named after that thing, so the menu says which marker or curve it is about
+ * before offering to change it. On a tablet this is the only way to reach any
+ * of these: there is no right button, and the inspector needs the thing
+ * selected first, which is the very step a long press is replacing.
+ */
+function TargetItems({
+  target,
+  template,
+  app
+}: {
+  target: OverlayTarget;
+  template: TemplateDef;
+  app: RiserApp;
+}): JSX.Element | null {
+  if (target.kind === 'guide') {
+    const def = guideDef(template, target.id);
+    return (
+      <>
+        <MenuLabel>{def?.label ?? target.id}</MenuLabel>
+        <MenuItem
+          label="Focus"
+          shortcut="F"
+          onSelect={() => {
+            useUiStore.getState().setSelectedGuideId(target.id);
+            app.frameSelection();
+          }}
+        />
+        <MenuItem
+          label="Remove"
+          icon="trash"
+          onSelect={() =>
+            app.store.apply(
+              (d) => M.removeGuide(d, target.id),
+              `Remove ${def?.label ?? target.id}`
+            )
+          }
+        />
+        <MenuSeparator />
+      </>
+    );
+  }
+
+  const curveId = target.kind === 'curve' ? target.id : target.curveId;
+  const def = curveDef(template, curveId);
+  const label = def?.label ?? curveId;
+
+  return (
+    <>
+      <MenuLabel>{label}</MenuLabel>
+      {target.kind === 'curvePoint' && (
+        <MenuItem
+          label="Remove point"
+          onSelect={() =>
+            app.store.apply(
+              (d) => M.removeCurvePoint(d, curveId, target.index),
+              `Remove ${label} point`
+            )
+          }
+        />
+      )}
+      <MenuItem
+        label="Mirror"
+        onSelect={() => {
+          useUiStore.getState().setActiveCurveId(curveId);
+          app.mirrorCurve(curveId);
+        }}
+      />
+      <MenuItem
+        label="Clear"
+        onSelect={() => {
+          app.store.apply((d) => M.removeCurve(d, curveId), `Clear ${label}`);
+          useUiStore.getState().setActiveCurveId(curveId);
+          useUiStore.getState().setActiveTool('curve');
+        }}
+      />
+      <MenuItem
+        label="Remove"
+        icon="trash"
+        onSelect={() =>
+          app.store.apply((d) => M.removeCurve(d, curveId), `Remove ${label}`)
+        }
+      />
+      <MenuSeparator />
+    </>
+  );
+}
 /**
  * The viewport, and the menu you get by right-clicking it.
  *
  * The menu carries what someone is likely to want without travelling to the
- * top of the screen: framing, shading, and getting a hidden thing back. It
- * deliberately does not try to act on whatever was under the cursor - a
- * right-click that sometimes means "this marker" and sometimes means "the
- * view" is a menu you have to read every time.
+ * top of the screen: framing, shading, and getting a hidden thing back.
+ *
+ * It also acts on whatever the press landed on, which this deliberately did
+ * NOT do at first, on the reasoning that a menu meaning different things on
+ * different presses is a menu you have to read every time. That reasoning
+ * holds for a mouse, where the thing under the cursor can be clicked directly
+ * and the menu is a convenience. It does not hold for a tablet, where there is
+ * no right button and a long press is the ONLY way to point at a marker and
+ * ask what can be done with it.
+ *
+ * The compromise is that the general items never move. What the press landed
+ * on is added ABOVE them under its own name, so the menu grows a section
+ * rather than changing meaning, and the items somebody has learned the
+ * position of stay where they were.
  */
 function ViewportArea(): JSX.Element {
   const app = useApp();
@@ -96,6 +200,18 @@ function ViewportArea(): JSX.Element {
   // also pans the camera, so a press that moved has to be told from one that
   // did not. See useViewportMenu.
   const menu = useViewportMenu();
+  const template = getTemplate(useUiStore((s) => s.templateId));
+  // Resolved when the menu opens rather than watched continuously: it is a
+  // raycast, and the answer only has to be true for the press that asked.
+  const target = menu.point
+    ? app.overlayAtClient(menu.point.x, menu.point.y)
+    : null;
+  // A long press opens this menu without the finger having moved, which the
+  // tools would otherwise read as a click on release: in curve mode that adds
+  // a control vertex under the menu that was just opened.
+  useEffect(() => {
+    if (menu.point) app.cancelGesture();
+  }, [menu.point, app]);
   const viewMode = useUiStore((s) => s.viewMode);
   const showGeometry = useUiStore((s) => s.showGeometry);
   const showMarkers = useUiStore((s) => s.showMarkers);
@@ -107,6 +223,8 @@ function ViewportArea(): JSX.Element {
       <Viewport3D />
 
       <ContextMenu point={menu.point} onClose={menu.close} label="Viewport">
+        {target && <TargetItems target={target} template={template} app={app} />}
+
         <MenuItem
           label="Frame character"
           icon="frame"
