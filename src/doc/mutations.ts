@@ -8,6 +8,8 @@
 // mutations pure is also what makes them testable without a renderer.
 // ==========================================================================
 
+import { getTemplate } from '../templates';
+import { centreGuide, isCentreGuide } from './centreLine';
 import type {
   Curve,
   CurvePoint,
@@ -18,7 +20,22 @@ import type {
 } from './types';
 
 /** Insert or replace a guide, keeping the document's guide order stable. */
+/**
+ * Hold a guide on the centre plane when the template says it belongs there.
+ *
+ * Applied HERE rather than at the places a guide is placed or dragged, and
+ * that is the point: there are four of those in the marker tool alone, plus
+ * automatic placement from a skeleton, plus placement from measured
+ * proportions, and a rule that every one of them has to remember is a rule
+ * that will be forgotten. A spine that drifts sideways is nearly invisible in
+ * the viewport and very visible in a rig built from it.
+ */
+function held(doc: RiserDocument, guide: Guide): Guide {
+  return isCentreGuide(getTemplate(doc.templateId), guide.id) ? centreGuide(guide) : guide;
+}
+
 export function placeGuide(doc: RiserDocument, guide: Guide): RiserDocument {
+  guide = held(doc, guide);
   const index = doc.guides.findIndex((g) => g.id === guide.id);
   const guides =
     index === -1
@@ -84,7 +101,14 @@ export function moveGuide(
     ...doc,
     guides: doc.guides.map((g) =>
       g.id === id
-        ? { ...g, position, normal, binding, source: 'user' as const, confidence: 1 }
+        ? held(doc, {
+            ...g,
+            position,
+            normal,
+            binding,
+            source: 'user' as const,
+            confidence: 1
+          })
         : g
     )
   };
@@ -181,6 +205,25 @@ export function moveCurvePoint(
     ...curve,
     points: curve.points.map((p, i) => (i === index ? point : p))
   }));
+}
+
+/**
+ * Replace a curve's points wholesale.
+ *
+ * For operations that rewrite a curve rather than edit it a point at a time:
+ * mirroring one side onto the other, holding a centre curve on its plane.
+ * Doing it as one mutation is what makes it one undo, which is what a person
+ * expects from one button.
+ */
+export function setCurvePoints(
+  doc: RiserDocument,
+  id: string,
+  points: CurvePoint[]
+): RiserDocument {
+  return {
+    ...doc,
+    curves: doc.curves.map((c) => (c.id === id ? { ...c, points } : c))
+  };
 }
 
 export function setCurveClosed(

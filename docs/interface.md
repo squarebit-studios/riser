@@ -81,6 +81,10 @@ If the ray never comes back out - an open mesh, or a click right on the
 silhouette - Riser places the marker at an estimated depth and says so in the
 status bar. That is the one case where it is guessing, so it tells you.
 
+**Mirror** makes a curve symmetric, in whichever sense it needs. A left or right curve rebuilds its counterpart from itself. A curve drawn across the centre line, like a lip or a jawline, keeps the half you drew, rebuilds the other half as its reflection and puts the middle point on the line. A curve drawn along the centre line, like a spine, is held on it.
+
+Guides on the centre line stay there on their own: root, pelvis, spine, chest, neck and head cannot be dragged off the plane, because a spine that drifts sideways is nearly invisible here and very visible in a rig built from it.
+
 **Clear** empties a curve and leaves it selected, so the next click on the character starts it again from nothing. **Remove** deletes it outright.
 
 Curves are drawn through the points you place and are not pulled onto the surface. Between two points the line takes the shortest smooth path, so on a strongly curved feature it can sit slightly inside or outside the skin; another point fixes it. Riser used to re-seat the line on the surface automatically, and around an eye that read as the curve leaving the points it was drawn from and wrapping the eyeball, so it no longer does.

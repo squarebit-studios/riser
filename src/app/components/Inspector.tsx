@@ -351,6 +351,16 @@ function CurveDetails({
               {curve.closed ? 'Open' : 'Close'}
             </Button>
             <Button
+              title={
+                curveDef(template, curve.id)?.mirror
+                  ? 'Rebuild the other side from this one'
+                  : 'Make the two halves match, and put the middle on the centre line'
+              }
+              onClick={() => app.mirrorCurve(curve.id)}
+            >
+              Mirror
+            </Button>
+            <Button
               onClick={() => {
                 // Clear and redraw, which is one action rather than two:
                 // removing the curve and leaving it selected means the next

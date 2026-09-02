@@ -276,6 +276,7 @@ export class RiserApp {
 
     const markerTool = new MarkerTool(this.markerToolDeps());
     const curveTool = new CurveTool(this.curveToolDeps());
+    this.curveTool = curveTool;
     this.toolManager.register(markerTool);
     this.toolManager.register(curveTool);
     // Select borrows its dragging from the other two rather than owning any.
@@ -1287,6 +1288,17 @@ export class RiserApp {
     return Math.max(this.character.bounds.getSize(new THREE.Vector3()).y, 1e-3);
   }
 
+  /**
+   * Make a curve symmetric: its counterpart, its two halves, or its plane.
+   *
+   * The tool owns this because mirroring needs the picker: every rebuilt point
+   * is re-bound by casting at it, never by reflecting a binding, since the
+   * triangle on the far side is a different triangle.
+   */
+  mirrorCurve(curveId: string): void {
+    this.curveTool?.mirrorCurve(curveId);
+  }
+
   private projectCurve(
     worldPoints: Vec3[],
     normals: Vec3[],
@@ -1510,6 +1522,9 @@ export class RiserApp {
    * moves the points it is built from, so a projection taken before either is
    * describing a shape that is no longer there.
    */
+  /** Held so the interface can ask the curve tool to mirror a curve. */
+  private curveTool: CurveTool | null = null;
+
   private surfaceRevision = 0;
 
   /**

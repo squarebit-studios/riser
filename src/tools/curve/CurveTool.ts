@@ -25,7 +25,7 @@ import * as THREE from 'three';
 import type { CharacterModel } from '../../io/CharacterModel';
 import type { DocumentStore } from '../../doc/history';
 import * as M from '../../doc/mutations';
-import type { Curve, CurvePoint, TemplateDef } from '../../doc/types';
+import type { Curve, CurvePoint, TemplateDef, Vec3 } from '../../doc/types';
 import {
   aimAtScreen,
   bindingFromPick,
@@ -36,7 +36,13 @@ import {
 import { LAYER_OVERLAY, type Viewport } from '../../viewport/Viewport';
 import { worldToDocument } from '../../viewport/space';
 import { curveDef } from '../../templates';
-import { mirrorPick } from '../mirror';
+import {
+  centreCurveAlong,
+  curveSymmetry,
+  reflectAcrossCentre,
+  symmetricTargets
+} from '../../doc/centreLine';
+import { mirrorPick, pickAtDocumentPoint } from '../mirror';
 import {
   localUnitsPerWorldUnit,
   needsVolume,
@@ -342,6 +348,140 @@ export class CurveTool implements Tool {
       characterHeight: this.characterHeight()
     });
     return mirrored ? this.curvePointFromPick(mirrored) : null;
+  }
+
+  // -----------------------------------------------------------------------
+  // Mirroring
+  // -----------------------------------------------------------------------
+
+  /**
+   * Make a curve symmetric, in whichever sense the curve calls for.
+   *
+   * Three shapes, and they want three different things:
+   *
+   *   a side curve      Rebuild its counterpart on the other side from it, so
+   *                     a brow traced once gives both brows.
+   *   across the line   A lip, a jawline. The half that was drawn is kept and
+   *                     the other half is rebuilt as its reflection, with the
+   *                     middle point put exactly on the plane.
+   *   along the line    A spine, a belly. Every point is held on the plane.
+   *
+   * Every rebuilt point is RE-BOUND by casting at its target, never by
+   * reflecting the original binding. A binding names a triangle, and the
+   * triangle on the far side is a different one: triangulation is not mirror
+   * symmetric even when the shape is. A point whose ray finds nothing is left
+   * where it is and reported, rather than given a binding that does not exist.
+   */
+  mirrorCurve(curveId: string): { moved: number; missed: number } {
+    const doc = this.deps.store.document;
+    const curve = doc.curves.find((c) => c.id === curveId);
+    const template = this.deps.getTemplate();
+    if (!curve || curve.points.length === 0) return { moved: 0, missed: 0 };
+
+    const def = curveDef(template, curveId);
+    const label = this.curveLabel(curveId);
+    const kind = curveSymmetry(template, curve);
+
+    // Along the line: no ray needed. Holding a point on the plane moves the
+    // offset, not the triangle, so the binding stays exactly as it was.
+    if (kind === 'along') {
+      const points = centreCurveAlong(curve.points);
+      this.deps.store.apply(
+        (d) => M.setCurvePoints(d, curveId, points),
+        `Centre ${label}`
+      );
+      return { moved: points.length, missed: 0 };
+    }
+
+    if (kind === 'spanning') {
+      const targets = symmetricTargets(curve.points);
+      const rebuilt: CurvePoint[] = [];
+      let missed = 0;
+      for (let i = 0; i < curve.points.length; i++) {
+        const original = curve.points[i] as CurvePoint;
+        const target = targets[i] as Vec3;
+        if (
+          target[0] === original.position[0] &&
+          target[1] === original.position[1] &&
+          target[2] === original.position[2]
+        ) {
+          rebuilt.push(original);
+          continue;
+        }
+        // The middle point only slides along x, so it keeps its own normal;
+        // a reflected point takes the reflection of its partner's.
+        const source = curve.points[curve.points.length - 1 - i] as CurvePoint;
+        const normal: Vec3 =
+          target[0] === 0 && curve.points.length % 2 === 1
+            ? original.normal
+            : [-source.normal[0], source.normal[1], source.normal[2]];
+        const point = this.pointAt(target, normal);
+        if (point) rebuilt.push(point);
+        else {
+          rebuilt.push(original);
+          missed++;
+        }
+      }
+      this.deps.store.apply(
+        (d) => M.setCurvePoints(d, curveId, rebuilt),
+        `Mirror ${label}`
+      );
+      return { moved: rebuilt.length - missed, missed };
+    }
+
+    // A side curve: its counterpart is rebuilt from it entirely.
+    const mirrorId = def?.mirror;
+    if (!mirrorId) return { moved: 0, missed: 0 };
+    const mirrorDef = curveDef(template, mirrorId);
+
+    const points: CurvePoint[] = [];
+    let missed = 0;
+    for (const point of curve.points) {
+      const target = reflectAcrossCentre(point.position);
+      const normal: Vec3 = [-point.normal[0], point.normal[1], point.normal[2]];
+      const made = this.pointAt(target, normal);
+      if (made) points.push(made);
+      else missed++;
+    }
+    if (points.length === 0) {
+      this.deps.onNotice?.(
+        `Could not find a surface on the other side for ${label}.`
+      );
+      return { moved: 0, missed };
+    }
+
+    this.deps.store.apply(
+      (d) => {
+        const next = M.removeCurve(d, mirrorId);
+        return M.addCurve(next, {
+          id: mirrorId,
+          group: mirrorDef?.group ?? curve.group,
+          closed: mirrorDef?.closed ?? curve.closed,
+          width: curve.width,
+          points
+        });
+      },
+      `Mirror ${label}`
+    );
+    if (missed > 0) {
+      this.deps.onNotice?.(
+        `Mirrored ${label}, but ${missed} point${missed === 1 ? '' : 's'} had no surface on the other side.`
+      );
+    }
+    return { moved: points.length, missed };
+  }
+
+  /** A bound curve point at a document-space target, or null if nothing is there. */
+  private pointAt(target: Vec3, normal: Vec3): CurvePoint | null {
+    const character = this.deps.getCharacter();
+    if (!character) return null;
+    const pick = pickAtDocumentPoint(target, normal, {
+      picker: this.deps.picker,
+      characterRoot: this.deps.getDocumentRoot(),
+      meshes: character.meshes,
+      characterHeight: this.characterHeight()
+    });
+    return pick ? this.curvePointFromPick(pick) : null;
   }
 
   // -----------------------------------------------------------------------
