@@ -2,6 +2,16 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.18.0] - 2026-09-02
+
+### Fixed
+- **A tap on a tablet is a tap again.** A press counts as a drag once it travels past a threshold, and that threshold was four pixels for every kind of pointer. Four is a mouse number: a mouse rests on a desk and a click moves it by nothing, while a finger lands, rolls and lifts. So on a tablet nearly every tap was read as a drag, the camera tumbled, and the tap that was meant to place a marker or add a curve point did nothing at all. Touch now gets the room a finger needs, and a mouse keeps the tight number it wants
+- A curve sets its line width when its points change, not only on the next frame. A line whose width is stale is not merely the wrong thickness, it is not drawn, so a curve could be one frame away from invisible at the moment it first appeared
+
+### Added
+- A long press on a marker or a curve opens the viewport menu with that thing's own actions at the top: focus and remove for a marker, mirror, clear and remove for a curve, and remove point when the press landed on a control vertex. On a tablet there is no right button, so a long press is the only way to point at something and ask what can be done with it. The general items keep their positions, so the menu grows a section rather than changing meaning
+- The press that opens the menu no longer does anything else. Without that, a long press in curve mode opened the menu and added a control vertex underneath it
+
 ## [0.17.1] - 2026-09-02
 
 ### Fixed

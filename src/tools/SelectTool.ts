@@ -30,6 +30,7 @@
 
 import type * as THREE from 'three';
 import type { Tool, ToolId, ToolPointerEvent } from './types';
+import { dragThresholdFor } from './ToolManager';
 
 export interface SelectToolDeps {
   viewport: { renderer: THREE.WebGLRenderer };
@@ -53,8 +54,6 @@ export interface SelectToolDeps {
    * way would mean handing this class most of the application.
    */
   marquee: {
-    /** Pixels the pointer must travel before a press becomes a box. */
-    readonly threshold: number;
     /** Draw the band, or clear it with null. */
     show(rect: Rect | null): void;
     /** Take everything inside, replacing the selection unless adding. */
@@ -166,7 +165,7 @@ export class SelectTool implements Tool {
     if (this.bandFrom) {
       const from = this.bandFrom;
       const travelled = Math.hypot(event.x - from.x, event.y - from.y);
-      if (!this.banding && travelled < this.deps.marquee.threshold) {
+      if (!this.banding && travelled < dragThresholdFor(event.native?.pointerType)) {
         // Still short enough to be a click or the beginning of a tumble.
         // Claiming it here would make the camera unusable in this mode.
         //

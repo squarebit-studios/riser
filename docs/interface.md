@@ -365,6 +365,10 @@ something you can see means every stray click leaves a new thing behind. In
 Select a press that lands on nothing belongs to the camera, so you can orbit,
 frame and adjust without adding anything.
 
+Long press a marker or a curve to open the viewport menu with that thing's own actions at the top: focus and remove for a marker, mirror, clear and remove for a curve, and remove point when the press landed on a control vertex. Right click does the same on a desktop. The general items keep their positions, so the menu grows a section rather than changing meaning.
+
+On a touch screen a tap is a tap: the distance a press may travel and still count as a tap is wider for a finger than for a mouse, so an ordinary tap places a marker or adds a curve point instead of tumbling the view.
+
 Drag on empty space to draw a box and select everything inside it: markers, and the control vertices of the curve you are working on. Hold `shift` to add to the selection, and click empty space to clear it. Dragging any selected item then moves the whole selection together, following the pointer, with every item re-bound to the surface as it goes.
 
 A press on empty space belongs to the camera until it has moved far enough to be a deliberate drag, so orbiting still works exactly as it did.

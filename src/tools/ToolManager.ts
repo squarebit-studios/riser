@@ -8,15 +8,39 @@
 // DCC does - a press that moves is a drag, a press that does not is a click -
 // so the tool only acts on release, and only if the pointer stayed put.
 //
-// DRAG_THRESHOLD_PX is the whole trick. Too small and a shaky hand tumbles
-// instead of placing; too large and a deliberate small drag registers as a
-// click. Four CSS pixels is the value DCC apps have converged on.
+// The threshold is the whole trick. Too small and a shaky hand tumbles instead
+// of placing; too large and a deliberate small drag registers as a click.
+//
+// AND IT CANNOT BE ONE NUMBER, which is what it was. Four CSS pixels is the
+// value DCC apps have converged on, and that is a value for a MOUSE: a mouse
+// rests on a desk and a click moves it by nothing. A finger is not a mouse. A
+// tap lands, rolls slightly and lifts, and four pixels of that is an ordinary
+// tap rather than an attempt to drag anything.
+//
+// So on a tablet every tap was being read as a drag. The camera tumbled and
+// the tool never got its click, which meant taps that were meant to place a
+// marker or add a control vertex did nothing at all while the view span
+// underneath them. Touch gets the slop a touch platform actually uses.
 // ==========================================================================
 
 import type { CameraRig } from '../viewport/CameraRig';
 import type { Tool, ToolId, ToolPointerEvent } from './types';
 
 export const DRAG_THRESHOLD_PX = 4;
+
+/**
+ * The same idea for a finger, which is a far blunter instrument.
+ *
+ * Ten to twelve points is what touch platforms treat as a tap rather than a
+ * drag, and it is roughly the width of the contact patch: below this, nobody
+ * moved anything on purpose.
+ */
+export const TOUCH_DRAG_THRESHOLD_PX = 12;
+
+/** How far this kind of pointer may travel and still count as a click. */
+export function dragThresholdFor(pointerType: string | undefined): number {
+  return pointerType === 'touch' ? TOUCH_DRAG_THRESHOLD_PX : DRAG_THRESHOLD_PX;
+}
 
 export class ToolManager {
   private tools = new Map<ToolId, Tool>();
@@ -28,6 +52,8 @@ export class ToolManager {
   private lastX = 0;
   private lastY = 0;
   private movedBeyondThreshold = false;
+  /** Set from the pointer that started the gesture, since it depends on it. */
+  private threshold = DRAG_THRESHOLD_PX;
   /** True while the active tool has claimed the current press. */
   private consuming = false;
 
@@ -92,6 +118,22 @@ export class ToolManager {
     return event;
   }
 
+  /**
+   * Abandon the gesture in progress, so its release does nothing.
+   *
+   * For when something outside the tools takes the gesture over. A long press
+   * opens the viewport menu, and the finger that opened it has not moved, so
+   * without this the release still reads as a click: in curve mode that means
+   * the menu opens AND a control vertex is added underneath it.
+   */
+  cancelGesture(): void {
+    if (!this.down) return;
+    this.down = false;
+    this.consuming = false;
+    this.movedBeyondThreshold = false;
+    this.cameraRig.setEnabled(true);
+  }
+
   private handleDown(e: PointerEvent): void {
     const rect = this.canvas.getBoundingClientRect();
     this.down = true;
@@ -100,6 +142,7 @@ export class ToolManager {
     this.lastX = this.downX;
     this.lastY = this.downY;
     this.movedBeyondThreshold = false;
+    this.threshold = dragThresholdFor(e.pointerType);
     this.consuming = false;
 
     // Focus so keyboard shortcuts reach the canvas rather than the page.
@@ -124,7 +167,7 @@ export class ToolManager {
 
     if (this.down && !this.movedBeyondThreshold) {
       const dist = Math.hypot(x - this.downX, y - this.downY);
-      if (dist > DRAG_THRESHOLD_PX) this.movedBeyondThreshold = true;
+      if (dist > this.threshold) this.movedBeyondThreshold = true;
     }
 
     if (!this.active) {
