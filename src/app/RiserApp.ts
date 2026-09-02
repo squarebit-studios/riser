@@ -2023,6 +2023,11 @@ export class RiserApp {
     if (state.xray !== previous.xray) {
       this.markerLayer.setXray(state.xray);
       this.curveLayer.setXray(state.xray);
+      // The skeleton follows the same switch. It used to be pinned to always
+      // drawing through the character, which meant the one control that says
+      // "show me what is actually behind the surface" did not apply to the
+      // thing most often behind it.
+      this.skeletonView.setXray(state.xray);
     }
     if (state.showMarkers !== previous.showMarkers) {
       this.markerLayer.setVisible(state.showMarkers);
@@ -2094,6 +2099,7 @@ export class RiserApp {
     this.overlays?.setSymmetryVisible(ui.symmetry);
     this.markerLayer.setXray(ui.xray);
     this.curveLayer.setXray(ui.xray);
+    this.skeletonView.setXray(ui.xray);
     this.markerLayer.setVisible(ui.showMarkers);
     this.curveLayer.setVisible(ui.showCurves);
     this.viewModes?.setSurfaceVisible(ui.showGeometry);

@@ -53,6 +53,8 @@ Left to right.
 | **Placement** | Where a click lands: on the surface, inside the volume, or free. See below. |
 | **Auto-place** | Fills in markers automatically: from the character's own skeleton when it has one, otherwise by measuring its shape. Disabled until a character is loaded. Never overwrites anything you placed. |
 | **Shading** | How the character is drawn: Lit, Flat, Wire or Lit wire. See below. |
+| **X-ray** | Whether markers, curves and the skeleton are drawn through the character. On by default, because a marker inside a limb and a skeleton inside a body are invisible without it. Turn it off to see which of them are really behind the surface. |
+| **Skeleton** | Shows the character's own rig, one octahedral bone per joint link, the way Blender and Unreal draw one. Deliberately not the same shape as a marker: it is the one overlay you did not place. |
 | **Show** | What is drawn: the character, markers, curves, the skeleton, the ground grid, and whether markers show through the body. The button turns amber and counts what is hidden, so nothing can be invisible without the interface saying so. |
 | **Smooth** | Turns smoothing on and off, accent blue while it is on. The three-dot button beside it chooses the level, 0 to 3. Display only: it never moves a marker you have placed. See below. |
 | **Undo** / **Redo** | Steps the document history. The tooltip names the step, for example *Undo Place Chest*. |
