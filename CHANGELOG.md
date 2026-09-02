@@ -2,6 +2,13 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.14.2] - 2026-09-01
+
+### Fixed
+- A drawn curve goes through the points you placed again. It had become a quadratic, which approaches its middle control vertices rather than touching them, so the line visibly missed the points it was drawn from. That was a workaround for eyelids coming out as a wobble, and the wobble had a different cause which is now fixed, so the interpolating curve is back and the quadratic remains available
+- Re-seating a curve onto the surface no longer drags it off the points. The search either side of the curve was a fraction of the whole character, which is centimetres, while a lid is traced with points a couple of millimetres apart and an eye directly behind it. The search is now the smaller of what the character allows and half the gap between the points, so a wide jawline is unaffected and a tight trace is corrected by tight amounts
+- Placed points are held still while the rest of the curve is re-seated, which follows from the interpolating curve having a sample sitting on each one
+
 ## [0.14.1] - 2026-09-01
 
 ### Fixed
