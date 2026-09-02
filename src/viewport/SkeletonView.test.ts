@@ -28,6 +28,13 @@ function unriggedCharacter(): THREE.Object3D {
   return root;
 }
 
+/** The instanced bones, which is the only mesh the view draws. */
+function bones(view: SkeletonView): THREE.InstancedMesh | undefined {
+  return view.object.children.find(
+    (c) => (c as THREE.InstancedMesh).isInstancedMesh
+  ) as THREE.InstancedMesh | undefined;
+}
+
 describe('showing a character its own skeleton', () => {
   it('finds a rig and reports it', () => {
     const view = new SkeletonView();
@@ -64,34 +71,100 @@ describe('showing a character its own skeleton', () => {
     expect(view.object.visible).toBe(false);
   });
 
-  it('draws a joint for every bone', () => {
+  it('draws a bone per link, not a dot per joint', () => {
+    // Two joints make ONE bone between them. Counting joints instead was what
+    // made the rig read as a scatter of markers rather than a skeleton.
     const view = new SkeletonView();
     view.setCharacter(riggedCharacter());
 
-    const instanced = view.object.children.find(
-      (c) => (c as THREE.InstancedMesh).isInstancedMesh
-    ) as THREE.InstancedMesh | undefined;
+    const instanced = bones(view);
     expect(instanced).toBeDefined();
-    expect(instanced!.count).toBe(2);
+    expect(instanced!.count).toBe(1);
   });
 
-  it('puts the joints where the bones are', () => {
-    const character = riggedCharacter();
+  it('runs the bone from its head to its tail', () => {
     const view = new SkeletonView();
-    view.setCharacter(character);
+    view.setCharacter(riggedCharacter());
     view.setVisible(true);
     view.update();
 
-    const instanced = view.object.children.find(
-      (c) => (c as THREE.InstancedMesh).isInstancedMesh
-    ) as THREE.InstancedMesh;
+    const matrix = new THREE.Matrix4();
+    bones(view)!.getMatrixAt(0, matrix);
+
+    // The geometry is a unit bone along +Y, so the instance starts at the
+    // parent joint and its Y scale is the distance to the child.
+    const head = new THREE.Vector3().setFromMatrixPosition(matrix);
+    expect(head.y).toBeCloseTo(0, 5);
+
+    const scale = new THREE.Vector3().setFromMatrixScale(matrix);
+    expect(scale.y).toBeCloseTo(1, 5);
+
+    // And it points at the child rather than merely being the right length.
+    const tail = new THREE.Vector3(0, 1, 0).applyMatrix4(matrix);
+    expect(tail.y).toBeCloseTo(1, 5);
+    expect(tail.x).toBeCloseTo(0, 5);
+    expect(tail.z).toBeCloseTo(0, 5);
+  });
+
+  it('is much thinner than it is long, so it reads as a bone', () => {
+    // Measured on the geometry in world space, not on the scale vector. The
+    // unit bone is already a tenth as wide as it is long, so equal scale
+    // components are correct and comparing them proves nothing.
+    const view = new SkeletonView();
+    view.setCharacter(riggedCharacter());
+    view.update();
+
+    const mesh = bones(view)!;
+    const matrix = new THREE.Matrix4();
+    mesh.getMatrixAt(0, matrix);
+
+    const position = mesh.geometry.getAttribute('position');
+    const vertex = new THREE.Vector3();
+    let widest = 0;
+    let longest = 0;
+    for (let i = 0; i < position.count; i++) {
+      vertex.fromBufferAttribute(position, i).applyMatrix4(matrix);
+      widest = Math.max(widest, Math.hypot(vertex.x, vertex.z));
+      longest = Math.max(longest, vertex.y);
+    }
+    expect(longest).toBeCloseTo(1, 5);
+    expect(widest).toBeLessThan(longest * 0.2);
+    expect(widest).toBeGreaterThan(0);
+  });
+
+  it('follows the x-ray switch instead of always drawing through', () => {
+    const view = new SkeletonView();
+    view.setCharacter(riggedCharacter());
+    const material = bones(view)!.material as THREE.Material;
+
+    view.setXray(true);
+    expect(material.depthTest).toBe(false);
+    // Turning it off is the whole point of the control: it is how you see
+    // which bones are actually behind the surface.
+    view.setXray(false);
+    expect(material.depthTest).toBe(true);
+  });
+
+  it('does not fall over when two joints share a position', () => {
+    // A zero length bone has no direction, so the matrix that would aim it is
+    // degenerate. It must collapse rather than produce NaN.
+    const root = new THREE.Group();
+    const a = new THREE.Bone();
+    const b = new THREE.Bone();
+    a.add(b); // b sits exactly on a
+    const mesh = new THREE.SkinnedMesh(new THREE.BoxGeometry(1, 1, 1));
+    mesh.add(a);
+    mesh.bind(new THREE.Skeleton([a, b]));
+    root.add(mesh);
+
+    const view = new SkeletonView();
+    view.setCharacter(root);
+    view.setVisible(true);
+    expect(() => view.update()).not.toThrow();
 
     const matrix = new THREE.Matrix4();
-    const position = new THREE.Vector3();
-    instanced.getMatrixAt(1, matrix);
-    position.setFromMatrixPosition(matrix);
-    // The child bone sits one unit up from its parent.
-    expect(position.y).toBeCloseTo(1, 5);
+    bones(view)!.getMatrixAt(0, matrix);
+    for (const value of matrix.elements) expect(Number.isFinite(value)).toBe(true);
   });
 
   it('is never pickable', () => {

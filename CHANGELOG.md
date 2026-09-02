@@ -2,6 +2,12 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.18.1] - 2026-09-02
+
+### Changed
+- **The skeleton is drawn as bones instead of dots.** A sphere at every joint is exactly what a marker is, in a scene whose whole subject is markers, so the one overlay you did not place looked like the ones you did. It said less, too: a dot has no direction, so a chain of them cannot show which way a joint faces or where one bone ends and the next begins, which at a spine or a finger is the only question worth asking. It is now an octahedron per bone running head to tail, the shape every rig is drawn with in Blender and Unreal, and it cannot be mistaken for a marker. The faces are shaded by hand rather than by a light, so it stays readable whatever the scene lighting is doing
+- **X-ray applies to the skeleton.** The toggle already existed and the skeleton ignored it, always drawing through the character, which meant the one control that says "show me what is really behind the surface" did not apply to the thing most often behind it
+
 ## [0.18.0] - 2026-09-02
 
 ### Fixed
