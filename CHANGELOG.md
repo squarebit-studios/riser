@@ -2,6 +2,15 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.16.0] - 2026-09-02
+
+### Added
+- **Mirror** on a selected curve, which does whichever kind of symmetry the curve has. A brow rebuilds the other brow from itself. A lip or a jawline keeps the half you drew, rebuilds the other half as its reflection, and puts the middle point exactly on the centre line. A spine or belly curve, drawn along the centre line rather than across it, is held on it. Which one a curve is, is judged by how far its points actually spread sideways rather than by asking
+- Every mirrored point is re-bound by casting at it, never by reflecting a binding, because the triangle on the far side is a different triangle: triangulation is not mirror symmetric even when the shape is. A point with no surface on the other side is left alone and reported rather than given a binding that does not exist
+
+### Fixed
+- Guides on the centre line can no longer drift off it. Root, pelvis, spine, chest, neck and head are on the plane, not near it, and a millimetre either way is always a mistake: nearly invisible in the viewport, very visible in a rig built from it that leans. They are held there by the document itself, so placing, dragging and every kind of automatic placement get it without having to remember to. The binding underneath is not disturbed, because holding the position moves the offset by the same amount and leaves the bound triangle alone
+
 ## [0.15.0] - 2026-09-02
 
 ### Changed
