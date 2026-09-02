@@ -18,8 +18,12 @@ import { Overlays } from '../viewport/Overlays';
 import { SubdivSet } from '../viewport/SubdivSurface';
 import { ViewModeController } from '../viewport/ViewModes';
 import { SkeletonView } from '../viewport/SkeletonView';
-import { documentToWorld, documentToWorldDirection } from '../viewport/space';
-import { nearestPointOnMeshes } from '../viewport/nearest';
+import {
+  documentToWorld,
+  documentToWorldDirection,
+  worldToDocument
+} from '../viewport/space';
+import { nearestPointOnMeshes, offsetToTarget } from '../viewport/nearest';
 import { withDoubleSided } from '../viewport/Picker';
 import {
   accelerate,
@@ -46,7 +50,12 @@ import {
 } from '../io/loadCharacter';
 import { DocumentStore } from '../doc/history';
 import * as M from '../doc/mutations';
-import { createDocument, type RiserDocument, type Vec3 } from '../doc/types';
+import {
+  createDocument,
+  type RiserDocument,
+  type SurfaceBinding,
+  type Vec3
+} from '../doc/types';
 import {
   LocalStorageDocuments,
   StorageError,
@@ -57,9 +66,12 @@ import { getTemplate } from '../templates';
 import { placeGuidesFromSkeleton } from '../tools/autoplace/fromSkeleton';
 import { placeGuidesFromProportions } from '../tools/autoplace/fromProportions';
 import { placeGuidesFromQuadruped } from '../tools/autoplace/fromQuadruped';
-import { ToolManager } from '../tools/ToolManager';
+import { DRAG_THRESHOLD_PX, ToolManager } from '../tools/ToolManager';
+import { pointOnCameraPlane } from '../tools/placement';
+import { aimAtScreen } from '../viewport/Picker';
+import type { ControlVertexRef } from '../tools/curve/CurveLayer';
 import { MarkerLayer } from '../tools/marker/MarkerLayer';
-import { SelectTool } from '../tools/SelectTool';
+import { SelectTool, type Rect } from '../tools/SelectTool';
 import { MarkerTool } from '../tools/marker/MarkerTool';
 import { CurveLayer } from '../tools/curve/CurveLayer';
 import { CurveTool } from '../tools/curve/CurveTool';
@@ -286,7 +298,26 @@ export class RiserApp {
     this.toolManager.register(
       new SelectTool({
         viewport: this.viewport,
-        tools: () => [markerTool, curveTool]
+        tools: () => [markerTool, curveTool],
+        marquee: {
+          // Same distance that separates a click from a tumble everywhere
+          // else, so a press on empty space behaves consistently.
+          threshold: DRAG_THRESHOLD_PX,
+          show: (rect) => useUiStore.getState().setMarqueeRect(rect),
+          select: (rect, add) => this.selectInRect(rect, add),
+          clear: () =>
+            useUiStore.getState().setMarquee({ guideIds: [], points: [] }),
+          count: () => {
+            const m = useUiStore.getState().marquee;
+            return m.guideIds.length + m.points.length;
+          },
+          covers: (x, y) => this.selectionCovers(x, y),
+          moveTo: (x, y) => this.moveSelectionTo(x, y),
+          endMove: () => {
+            this.selectionDragFrom = null;
+            this.selectionDragStep++;
+          }
+        }
       })
     );
     this.toolManager.setActive(useUiStore.getState().activeTool);
@@ -1201,7 +1232,11 @@ export class RiserApp {
         id: guide.id,
         position: this.resolveWorld(guide.position, guide.binding),
         state:
-          guide.id === ui.selectedGuideId || guide.id === ui.activeGuideId
+          // Caught by a box counts as selected, so a person can see what a
+          // drag is about to move before they start moving it.
+          ui.marquee.guideIds.includes(guide.id) ||
+          guide.id === ui.selectedGuideId ||
+          guide.id === ui.activeGuideId
             ? 'active'
             : // A guess the app made reads differently from a position the
               // user stood behind.
@@ -1297,6 +1332,207 @@ export class RiserApp {
    */
   mirrorCurve(curveId: string): void {
     this.curveTool?.mirrorCurve(curveId);
+  }
+
+  // -----------------------------------------------------------------------
+  // Box selection
+  // -----------------------------------------------------------------------
+
+  /**
+   * Everything the box caught, as ids rather than objects.
+   *
+   * Markers, and the control vertices of the ACTIVE curve. Not every curve's
+   * points: only the active curve shows its control vertices, and a box that
+   * silently caught things nobody can see would move geometry off screen.
+   *
+   * Screen space, because that is the space the box was drawn in. A point is
+   * in or out by where it appears, which is what somebody dragging a rectangle
+   * over a picture means, and it needs no decision about depth.
+   */
+  private selectInRect(rect: Rect, add: boolean): void {
+    const ui = useUiStore.getState();
+    const previous = ui.marquee;
+
+    const guideIds = add ? [...previous.guideIds] : [];
+    const points = add ? [...previous.points] : [];
+
+    for (const guide of this.store.document.guides) {
+      if (!this.projectsInto(this.resolveWorld(guide.position, guide.binding), rect))
+        continue;
+      if (!guideIds.includes(guide.id)) guideIds.push(guide.id);
+    }
+
+    const activeCurveId = ui.activeCurveId;
+    const curve = activeCurveId
+      ? this.store.document.curves.find((c) => c.id === activeCurveId)
+      : undefined;
+    if (curve) {
+      curve.points.forEach((point, index) => {
+        if (!this.projectsInto(this.resolveWorld(point.position, point.binding), rect))
+          return;
+        if (!points.some((p) => p.curveId === curve.id && p.index === index))
+          points.push({ curveId: curve.id, index });
+      });
+    }
+
+    ui.setMarquee({ guideIds, points });
+  }
+
+  /** Whether a document-space position lands inside a canvas rectangle. */
+  private projectsInto(world: THREE.Vector3, rect: Rect): boolean {
+    const projected = world.clone().project(this.viewport.camera);
+    // Behind the camera comes back projected as if in front of it, so it has
+    // to be rejected explicitly rather than by the bounds test.
+    if (projected.z > 1) return false;
+
+    const { width, height } = this.viewport.size;
+    const x = ((projected.x + 1) / 2) * width;
+    const y = ((1 - projected.y) / 2) * height;
+    return (
+      x >= rect.x &&
+      x <= rect.x + rect.width &&
+      y >= rect.y &&
+      y <= rect.y + rect.height
+    );
+  }
+
+  /** Whether the pointer is over something the box already caught. */
+  private selectionCovers(x: number, y: number): boolean {
+    // A small square around the pointer rather than an exact hit: these are
+    // drawn as dots a few pixels across, and asking somebody to press the
+    // exact centre of one to move a group is asking them to miss.
+    const reach = 8;
+    const rect: Rect = { x: x - reach, y: y - reach, width: reach * 2, height: reach * 2 };
+    const { guideIds, points } = useUiStore.getState().marquee;
+
+    for (const id of guideIds) {
+      const guide = this.store.document.guides.find((g) => g.id === id);
+      if (guide && this.projectsInto(this.resolveWorld(guide.position, guide.binding), rect))
+        return true;
+    }
+    for (const ref of points) {
+      const curve = this.store.document.curves.find((c) => c.id === ref.curveId);
+      const point = curve?.points[ref.index];
+      if (point && this.projectsInto(this.resolveWorld(point.position, point.binding), rect))
+        return true;
+    }
+    return false;
+  }
+
+  /**
+   * Drag everything selected, together, following the pointer.
+   *
+   * One world delta applied to all of them, measured on a plane through the
+   * selection's centre. Moving each item to the pointer independently would
+   * pile them all on top of each other; moving each on its own depth plane
+   * would spread them, because a pixel is worth more distance further away.
+   * A single plane keeps the shape of what was selected.
+   *
+   * Every moved item is re-bound to the nearest surface, carrying the rest as
+   * offset, exactly as a free drag of a single marker does. The binding is the
+   * thing the worker evaluates, so a move that left it behind would look right
+   * and resolve somewhere else.
+   */
+  private moveSelectionTo(x: number, y: number): void {
+    const character = this.character;
+    if (!character) return;
+    const { guideIds, points } = useUiStore.getState().marquee;
+    if (guideIds.length + points.length === 0) return;
+
+    const centre = this.selectionCentre(guideIds, points);
+    if (!centre) return;
+
+    const { width, height } = this.viewport.size;
+    aimAtScreen(this.selectionRaycaster, this.viewport.camera, x, y, width, height);
+    const target = pointOnCameraPlane(
+      this.selectionRaycaster,
+      this.viewport.camera,
+      centre
+    );
+    if (!target) return;
+
+    if (!this.selectionDragFrom) {
+      // Where the pointer grabbed, so the selection moves BY the drag rather
+      // than jumping so its centre sits under the cursor.
+      this.selectionDragFrom = target.clone();
+      return;
+    }
+    const delta = target.clone().sub(this.selectionDragFrom);
+    if (delta.lengthSq() === 0) return;
+
+    const step = this.selectionDragStep;
+    this.store.apply(
+      (doc) => {
+        let next = doc;
+        for (const id of guideIds) {
+          const guide = next.guides.find((g) => g.id === id);
+          if (!guide) continue;
+          const moved = this.rebindMoved(guide.position, delta, character);
+          if (moved)
+            next = M.moveGuide(next, id, moved.position, guide.normal, moved.binding);
+        }
+        for (const ref of points) {
+          const curve = next.curves.find((c) => c.id === ref.curveId);
+          const point = curve?.points[ref.index];
+          if (!point) continue;
+          const moved = this.rebindMoved(point.position, delta, character);
+          if (moved) {
+            next = M.moveCurvePoint(next, ref.curveId, ref.index, {
+              ...point,
+              position: moved.position,
+              binding: moved.binding
+            });
+          }
+        }
+        return next;
+      },
+      `Move ${guideIds.length + points.length} items`,
+      { coalesceKey: `marquee:${step}` }
+    );
+    this.selectionDragFrom = target.clone();
+  }
+
+  /** The centre of the selection in world space, for the drag plane. */
+  private selectionCentre(
+    guideIds: readonly string[],
+    points: readonly ControlVertexRef[]
+  ): THREE.Vector3 | null {
+    const sum = new THREE.Vector3();
+    let count = 0;
+    for (const id of guideIds) {
+      const guide = this.store.document.guides.find((g) => g.id === id);
+      if (!guide) continue;
+      sum.add(this.resolveWorld(guide.position, guide.binding));
+      count++;
+    }
+    for (const ref of points) {
+      const curve = this.store.document.curves.find((c) => c.id === ref.curveId);
+      const point = curve?.points[ref.index];
+      if (!point) continue;
+      sum.add(this.resolveWorld(point.position, point.binding));
+      count++;
+    }
+    return count === 0 ? null : sum.divideScalar(count);
+  }
+
+  /** A position shifted by a world delta, re-bound to the nearest surface. */
+  private rebindMoved(
+    position: Vec3,
+    delta: THREE.Vector3,
+    character: CharacterModel
+  ): { position: Vec3; binding: SurfaceBinding } | null {
+    const world = documentToWorld(this.documentRoot, position).add(delta);
+    const nearest = nearestPointOnMeshes(character.meshes, world);
+    if (!nearest) return null;
+    return {
+      position: worldToDocument(this.documentRoot, world.clone()),
+      binding: {
+        primPath: nearest.primPath,
+        faceIndex: nearest.faceIndex,
+        barycentric: nearest.barycentric,
+        offset: offsetToTarget(nearest, world)
+      }
+    };
   }
 
   private projectCurve(
@@ -1524,6 +1760,13 @@ export class RiserApp {
    */
   /** Held so the interface can ask the curve tool to mirror a curve. */
   private curveTool: CurveTool | null = null;
+
+  /** Owned rather than allocated per move: a group drag fires every frame. */
+  private readonly selectionRaycaster = new THREE.Raycaster();
+  /** Where the last group drag sample landed, so a move is relative. */
+  private selectionDragFrom: THREE.Vector3 | null = null;
+  /** Bumped per drag, so one gesture is one undo and the next is another. */
+  private selectionDragStep = 0;
 
   private surfaceRevision = 0;
 

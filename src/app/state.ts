@@ -167,6 +167,25 @@ export interface UiState {
 
   activeCurveId: string | null;
   selectedPoint: ControlVertexRef | null;
+  /**
+   * Everything picked out by a box, as opposed to the one thing clicked.
+   *
+   * Kept beside the single selection rather than replacing it. They answer
+   * different questions: the single selection is what the inspector is
+   * showing you the properties of, and this is what a drag is about to move.
+   * Collapsing the two would mean either an inspector that cannot decide what
+   * to display, or a box that can only ever catch one thing.
+   */
+  marquee: { guideIds: string[]; points: ControlVertexRef[] };
+  /**
+   * The box currently being dragged, in canvas pixels, or null.
+   *
+   * Held in the store because the band is drawn by React over the canvas
+   * rather than inside the scene: it is interface, it wants crisp pixel edges
+   * and the page's own colours, and drawing it in the renderer would mean a
+   * screen space overlay in a scene that has no other use for one.
+   */
+  marqueeRect: { x: number; y: number; width: number; height: number } | null;
 
   symmetry: boolean;
   xray: boolean;
@@ -261,6 +280,10 @@ export interface UiState {
   setSelectedGuideId: (id: string | null) => void;
   setActiveCurveId: (id: string | null) => void;
   setSelectedPoint: (ref: ControlVertexRef | null) => void;
+  setMarquee: (marquee: { guideIds: string[]; points: ControlVertexRef[] }) => void;
+  setMarqueeRect: (
+    rect: { x: number; y: number; width: number; height: number } | null
+  ) => void;
   toggleSymmetry: () => void;
   toggleXray: () => void;
   setSubdivLevel: (level: number) => void;
@@ -303,6 +326,8 @@ export const useUiStore = create<UiState>((set) => ({
   selectedGuideId: null,
   activeCurveId: null,
   selectedPoint: null,
+  marquee: { guideIds: [], points: [] },
+  marqueeRect: null,
 
   symmetry: true,
   xray: true,
@@ -347,12 +372,16 @@ export const useUiStore = create<UiState>((set) => ({
       // guides the new template has never heard of.
       activeGuideId: null,
       selectedGuideId: null,
+      marquee: { guideIds: [], points: [] },
+      marqueeRect: null,
       activeCurveId: null,
       selectedPoint: null
     }),
   setActiveTool: (activeTool) => set({ activeTool }),
   setActiveGuideId: (activeGuideId) => set({ activeGuideId }),
   setSelectedGuideId: (selectedGuideId) => set({ selectedGuideId }),
+  setMarquee: (marquee) => set({ marquee }),
+  setMarqueeRect: (marqueeRect) => set({ marqueeRect }),
   setActiveCurveId: (activeCurveId) => set({ activeCurveId, selectedPoint: null }),
   setSelectedPoint: (selectedPoint) => set({ selectedPoint }),
 
