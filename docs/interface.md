@@ -81,6 +81,10 @@ If the ray never comes back out - an open mesh, or a click right on the
 silhouette - Riser places the marker at an estimated depth and says so in the
 status bar. That is the one case where it is guessing, so it tells you.
 
+**Clear** empties a curve and leaves it selected, so the next click on the character starts it again from nothing. **Remove** deletes it outright.
+
+Curves are drawn through the points you place and are not pulled onto the surface. Between two points the line takes the shortest smooth path, so on a strongly curved feature it can sit slightly inside or outside the skin; another point fixes it. Riser used to re-seat the line on the surface automatically, and around an eye that read as the curve leaving the points it was drawn from and wrapping the eyeball, so it no longer does.
+
 Curves take the same modes. Curves are usually surface features, so **Auto**
 leaves them on the skin; **Centre of volume** is how you run a spine curve
 through the torso rather than down the back. A curve placed inside the body is
@@ -372,6 +376,7 @@ it.
 | **Id** | The guide's id in the document, such as `chest`. |
 | **Group** | Its checklist group. |
 | **Placement** | Shown for interior guides only, as a reminder that alt-drag sets depth. |
+
 | **Source** | *placed by you*, or the automatic source with its confidence. |
 | **Position** | The resolved position, in the character's own space. |
 | **Bound to** | The USD prim path of the mesh it is bound to, or *nothing - free in space*. |

@@ -351,6 +351,24 @@ function CurveDetails({
               {curve.closed ? 'Open' : 'Close'}
             </Button>
             <Button
+              onClick={() => {
+                // Clear and redraw, which is one action rather than two:
+                // removing the curve and leaving it selected means the next
+                // click on the character starts it again from nothing. Losing
+                // the selection here would make somebody hunt for it in the
+                // checklist before they could draw, which is the moment they
+                // wanted to be drawing.
+                app.store.apply(
+                  (d) => M.removeCurve(d, curve.id),
+                  `Clear ${def.label}`
+                );
+                useUiStore.getState().setActiveCurveId(curve.id);
+                useUiStore.getState().setActiveTool('curve');
+              }}
+            >
+              Clear
+            </Button>
+            <Button
               variant="danger"
               icon="trash"
               aria-label={`Remove ${def.label}`}
