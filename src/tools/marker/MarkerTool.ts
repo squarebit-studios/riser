@@ -16,9 +16,9 @@
 //
 // Mirroring deserves a note. Reflecting a position across the symmetry plane
 // gives a point in SPACE, which is not enough: a binding has to name a
-// triangle. So the mirrored point is turned back into a real surface pick by
-// casting a ray at it along the mirrored normal. If that misses - an asymmetric
-// character, an arm behind the back - the mirror is skipped rather than
+// triangle. So the mirrored point is bound to the triangle NEAREST it, which
+// records where it is without being able to move it. If there is no geometry
+// at all to bind to, the mirror is skipped rather than
 // guessed, because a guide bound to the wrong triangle is worse than one the
 // user places by hand.
 // ==========================================================================
@@ -37,13 +37,13 @@ import {
 } from '../../viewport/Picker';
 import { LAYER_OVERLAY, type Viewport } from '../../viewport/Viewport';
 import { documentToWorld, worldToDocument } from '../../viewport/space';
-import { mirrorPick, mirrorPosition } from '../mirror';
+import { bindAtPosition } from '../rebind';
+import { reflectAcrossCentre } from '../../doc/centreLine';
 import {
   localUnitsPerWorldUnit,
   needsVolume,
   pointOnCameraPlane,
   resolvePlacement,
-  volumeCentreFor,
   type PlacementMode
 } from '../placement';
 import { nearestPointOnMeshes, offsetToTarget } from '../../viewport/nearest';
@@ -195,28 +195,39 @@ export class MarkerTool implements Tool {
     ];
 
     // Mirror before committing, so both guides land in one undo step.
+    //
+    // The mirrored guide is the near one REFLECTED, and nothing else. It used
+    // to be resolved by firing a ray at the reflected point along the
+    // reflected normal and keeping whatever that found, which is a question
+    // with the wrong shape for a mirror: it asks what surface lies in a
+    // direction, and answers with whatever is in the way. A ray belongs to
+    // PLACING, where the direction is the thing being asked about. Mirroring
+    // has no direction to get wrong.
+    //
+    // Reflecting also fixes the depth of an interior joint for free. The near
+    // guide already carries its measured depth, so the far one inherits it
+    // exactly, instead of being measured again down a different chord.
     if (this.deps.isSymmetryEnabled() && def.mirror) {
       const mirrorDef = guideDef(template, def.mirror);
-      const mirrored = this.mirrorPick(pick);
-      if (mirrored && mirrorDef) {
-        // The near side's placement, REFLECTED - not an independent
-        // measurement of the other arm. Measuring both meant two rays with
-        // different directions cutting different chords through the limb, and
-        // a symmetric pair landing centimetres apart in depth.
-        const nearCentre = volumeCentreFor(through, this.characterHeight());
-        guides.push(
-          this.guideFromPick(
-            def.mirror,
-            mirrorDef.group,
-            mirrored,
-            !!mirrorDef.interior,
-            undefined,
-            nearCentre ? this.reflectWorld(nearCentre) : null
-          )
-        );
+      const near = guides[0] as Guide;
+      const bound = bindAtPosition(
+        reflectAcrossCentre(near.position),
+        this.deps.getDocumentRoot(),
+        character.meshes
+      );
+      if (bound && mirrorDef) {
+        guides.push({
+          id: def.mirror,
+          group: mirrorDef.group,
+          position: bound.position,
+          normal: [-near.normal[0], near.normal[1], near.normal[2]],
+          binding: bound.binding,
+          source: 'user',
+          confidence: 1
+        });
       } else if (mirrorDef) {
         this.deps.onNotice?.(
-          `Placed ${def.label}, but could not find a surface for ${mirrorDef.label}. Place it by hand.`
+          `Placed ${def.label}, but there was no geometry to bind ${mirrorDef.label} to. Place it by hand.`
         );
       }
     }
@@ -463,29 +474,6 @@ export class MarkerTool implements Tool {
     if (!character) return null;
     const { width, height } = this.deps.viewport.size;
     return this.deps.picker.pick(x, y, width, height, character.meshes);
-  }
-
-  /**
-   * Reflect a pick across the character's symmetry plane and turn it back into
-   * a real surface pick. Delegates to the shared helper so the marker and
-   * curve tools mirror identically.
-   */
-  /** Reflect a world point across the character's symmetry plane. */
-  private reflectWorld(world: THREE.Vector3): THREE.Vector3 {
-    const root = this.deps.getDocumentRoot();
-    const local = worldToDocument(root, world.clone());
-    return documentToWorld(root, mirrorPosition(local));
-  }
-
-  private mirrorPick(pick: SurfacePick): SurfacePick | null {
-    const character = this.deps.getCharacter();
-    if (!character) return null;
-    return mirrorPick(pick, {
-      picker: this.deps.picker,
-      characterRoot: this.deps.getDocumentRoot(),
-      meshes: character.meshes,
-      characterHeight: this.characterHeight()
-    });
   }
 
   /** Pick position plus off-surface offset, in document space. */

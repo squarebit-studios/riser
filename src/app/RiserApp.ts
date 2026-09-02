@@ -23,7 +23,7 @@ import {
   documentToWorldDirection,
   worldToDocument
 } from '../viewport/space';
-import { nearestPointOnMeshes, offsetToTarget } from '../viewport/nearest';
+import { nearestPointOnMeshes } from '../viewport/nearest';
 import { withDoubleSided } from '../viewport/Picker';
 import {
   accelerate,
@@ -68,6 +68,7 @@ import { placeGuidesFromProportions } from '../tools/autoplace/fromProportions';
 import { placeGuidesFromQuadruped } from '../tools/autoplace/fromQuadruped';
 import { DRAG_THRESHOLD_PX, ToolManager } from '../tools/ToolManager';
 import { pointOnCameraPlane } from '../tools/placement';
+import { bindAtPosition } from '../tools/rebind';
 import { aimAtScreen } from '../viewport/Picker';
 import type { ControlVertexRef } from '../tools/curve/CurveLayer';
 import { MarkerLayer } from '../tools/marker/MarkerLayer';
@@ -1515,24 +1516,18 @@ export class RiserApp {
     return count === 0 ? null : sum.divideScalar(count);
   }
 
-  /** A position shifted by a world delta, re-bound to the nearest surface. */
+  /** A position shifted by a world delta, re-bound where it lands. */
   private rebindMoved(
     position: Vec3,
     delta: THREE.Vector3,
     character: CharacterModel
   ): { position: Vec3; binding: SurfaceBinding } | null {
     const world = documentToWorld(this.documentRoot, position).add(delta);
-    const nearest = nearestPointOnMeshes(character.meshes, world);
-    if (!nearest) return null;
-    return {
-      position: worldToDocument(this.documentRoot, world.clone()),
-      binding: {
-        primPath: nearest.primPath,
-        faceIndex: nearest.faceIndex,
-        barycentric: nearest.barycentric,
-        offset: offsetToTarget(nearest, world)
-      }
-    };
+    return bindAtPosition(
+      worldToDocument(this.documentRoot, world.clone()),
+      this.documentRoot,
+      character.meshes
+    );
   }
 
   private projectCurve(

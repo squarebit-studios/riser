@@ -2,6 +2,13 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.17.1] - 2026-09-02
+
+### Fixed
+- Mirroring puts a point at its reflection, exactly, instead of hunting for one. It used to fire a ray along the mirrored normal and keep whatever that found, which is the wrong question for a mirror: a ray asks what surface lies in a direction, and for a traced eyelid the answer was the lashes in front of it, the nose beside it, or nothing at all, depending on which way the reflected normal happened to point. Mirroring the left lids gave right lids with points scattered onto the nose. A mirror has no direction to get wrong, so it no longer has one
+- The same for markers. A mirrored marker is the near one reflected, which also fixes the depth of an interior joint for free: the far side inherits the depth that was measured on the near side rather than being measured again down a different chord through the limb
+- Rays still do the job they are right for, which is placing on the surface or in the centre of a volume, where the direction is the thing being asked about
+
 ## [0.17.0] - 2026-09-02
 
 ### Added
