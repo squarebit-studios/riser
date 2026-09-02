@@ -16,7 +16,7 @@
 import type { CameraRig } from '../viewport/CameraRig';
 import type { Tool, ToolId, ToolPointerEvent } from './types';
 
-const DRAG_THRESHOLD_PX = 4;
+export const DRAG_THRESHOLD_PX = 4;
 
 export class ToolManager {
   private tools = new Map<ToolId, Tool>();

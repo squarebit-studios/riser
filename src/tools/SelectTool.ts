@@ -42,6 +42,51 @@ export interface SelectToolDeps {
    * for when the two are on top of each other.
    */
   tools: () => readonly Tool[];
+
+  /**
+   * Everything the box needs that lives in the scene rather than in a gesture.
+   *
+   * The tool owns WHEN a box is drawn and what the pointer is doing; it owns
+   * none of what is inside the box, because that means projecting every marker
+   * and control vertex through the camera, and the app already holds the
+   * document, the character and the camera together. Splitting it the other
+   * way would mean handing this class most of the application.
+   */
+  marquee: {
+    /** Pixels the pointer must travel before a press becomes a box. */
+    readonly threshold: number;
+    /** Draw the band, or clear it with null. */
+    show(rect: Rect | null): void;
+    /** Take everything inside, replacing the selection unless adding. */
+    select(rect: Rect, add: boolean): void;
+    /** Drop the selection entirely. */
+    clear(): void;
+    /** How many things are selected. */
+    count(): number;
+    /** Whether the pointer is over something already in the selection. */
+    covers(x: number, y: number): boolean;
+    /** Move everything selected to follow the pointer. */
+    moveTo(x: number, y: number): void;
+    /** The drag is over; the next one starts its own undo step. */
+    endMove(): void;
+  };
+}
+
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** The box two corners make, normalised so width and height are positive. */
+function rectBetween(ax: number, ay: number, bx: number, by: number): Rect {
+  return {
+    x: Math.min(ax, bx),
+    y: Math.min(ay, by),
+    width: Math.abs(bx - ax),
+    height: Math.abs(by - ay)
+  };
 }
 
 export class SelectTool implements Tool {
@@ -56,6 +101,12 @@ export class SelectTool implements Tool {
    */
   private delegate: Tool | null = null;
 
+  /** Where a press that grabbed nothing began, until it becomes a box. */
+  private bandFrom: { x: number; y: number } | null = null;
+  private banding = false;
+  /** True while the whole selection is being dragged as one. */
+  private movingSelection = false;
+
   constructor(private readonly deps: SelectToolDeps) {}
 
   activate(): void {
@@ -66,23 +117,72 @@ export class SelectTool implements Tool {
 
   deactivate(): void {
     this.delegate = null;
+    this.bandFrom = null;
+    this.banding = false;
+    this.movingSelection = false;
+    // The band is drawn by the interface, so leaving the mode has to take it
+    // down; nothing else will.
+    this.deps.marquee.show(null);
   }
 
   onPointerDown(event: ToolPointerEvent): boolean {
+    if (event.button !== 0) return false;
+
+    // Pressing on something that is already part of a box selection moves the
+    // whole selection. Asked BEFORE the tools are offered the press, because
+    // they only know how to move the one thing under the pointer, and the
+    // point of selecting several was to move them together.
+    if (this.deps.marquee.count() > 1 && this.deps.marquee.covers(event.x, event.y)) {
+      this.movingSelection = true;
+      return true;
+    }
+
     for (const tool of this.deps.tools()) {
       if (tool === this) continue;
       if (tool.onPointerDown(event)) {
         this.delegate = tool;
+        // Grabbing one thing is a statement that the box is finished with.
+        this.deps.marquee.clear();
         return true;
       }
     }
-    // Nothing under the pointer, so the camera takes it. This is what makes
-    // the mode feel like navigation with grabbing available, rather than a
-    // mode you have to leave to look at the character.
+
+    // Nothing under the pointer. This might become a box and it might be the
+    // camera, and which it is cannot be known yet: both start as a press on
+    // empty space. So the press is remembered and nothing is claimed until it
+    // has travelled far enough to be a deliberate drag, which is the same
+    // rule that separates a click from a tumble everywhere else.
+    this.bandFrom = { x: event.x, y: event.y };
+    this.banding = false;
     return false;
   }
 
   onPointerMove(event: ToolPointerEvent): boolean {
+    if (this.movingSelection) {
+      this.deps.marquee.moveTo(event.x, event.y);
+      return true;
+    }
+
+    if (this.bandFrom) {
+      const from = this.bandFrom;
+      const travelled = Math.hypot(event.x - from.x, event.y - from.y);
+      if (!this.banding && travelled < this.deps.marquee.threshold) {
+        // Still short enough to be a click or the beginning of a tumble.
+        // Claiming it here would make the camera unusable in this mode.
+        //
+        // Hover still goes through: the press has not become anything yet, so
+        // as far as the person is concerned they are still just moving over
+        // the character and things under the pointer should still light up.
+        for (const tool of this.deps.tools()) {
+          if (tool !== this) tool.onPointerMove(event);
+        }
+        return false;
+      }
+      this.banding = true;
+      this.deps.marquee.show(rectBetween(from.x, from.y, event.x, event.y));
+      return true;
+    }
+
     if (this.delegate) return this.delegate.onPointerMove(event);
 
     // No drag in progress: let every tool update its own hover highlight so a
@@ -95,6 +195,32 @@ export class SelectTool implements Tool {
   }
 
   onPointerUp(event: ToolPointerEvent): boolean {
+    if (this.movingSelection) {
+      this.movingSelection = false;
+      this.deps.marquee.endMove();
+      return true;
+    }
+
+    const from = this.bandFrom;
+    const banding = this.banding;
+    this.bandFrom = null;
+    this.banding = false;
+
+    if (banding && from) {
+      this.deps.marquee.show(null);
+      // Shift adds to what is already selected, which is the one convention
+      // every tool with a box shares.
+      this.deps.marquee.select(
+        rectBetween(from.x, from.y, event.x, event.y),
+        event.shiftKey
+      );
+      return true;
+    }
+
+    // A press on empty space that never became a box is a click on nothing,
+    // and a click on nothing means "select nothing".
+    if (from && event.isClick && !event.shiftKey) this.deps.marquee.clear();
+
     const delegate = this.delegate;
     this.delegate = null;
     // Only the tool that claimed the press gets the release, so no other tool

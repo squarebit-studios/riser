@@ -63,6 +63,7 @@ export function Viewport3D(): JSX.Element {
       <div ref={containerRef} className="h-full w-full" />
 
       <ModeBanner />
+      <SelectionBox />
 
       {dragOver && (
         <div className="pointer-events-none absolute inset-4 flex items-center justify-center rounded-lg border-2 border-dashed border-guide-placed/70 bg-guide-placed/5">
@@ -89,7 +90,31 @@ export function Viewport3D(): JSX.Element {
   );
 }
 
+/**
+ * The box being dragged in Select mode.
+ *
+ * Drawn here rather than in the scene because it is interface, not geometry:
+ * it wants crisp pixel edges at any zoom and the page's own accent colour, and
+ * putting it in the renderer would mean maintaining a screen space overlay in
+ * a scene that has no other use for one. It is one absolutely positioned div
+ * that appears for the length of a drag.
+ */
+function SelectionBox(): JSX.Element | null {
+  const rect = useUiStore((s) => s.marqueeRect);
+  if (!rect) return null;
 
+  return (
+    <div
+      className="pointer-events-none absolute border border-accent bg-accent/10"
+      style={{
+        left: rect.x,
+        top: rect.y,
+        width: rect.width,
+        height: rect.height
+      }}
+    />
+  );
+}
 /**
  * Which mode the next click is in, in the corner of the thing it acts on.
  *

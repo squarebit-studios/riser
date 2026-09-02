@@ -2,6 +2,15 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.17.0] - 2026-09-02
+
+### Added
+- Box select in Select mode. Drag on empty space to draw a box and take everything inside it: markers, and the control vertices of the curve you are working on. Hold shift to add to what is already selected, and click empty space to select nothing
+- Dragging anything in that selection moves all of it together, freely, following the pointer. Every item is re-bound to the surface as it goes, exactly as dragging one marker freely already did, so the bindings the exporter writes stay true
+
+### Changed
+- A press on empty space in Select mode is still the camera's until it has travelled far enough to be a deliberate drag, the same distance that separates a click from a tumble everywhere else. Orbiting and boxing both start as a press on nothing, and which one it is cannot be known at the moment the button goes down
+
 ## [0.16.0] - 2026-09-02
 
 ### Added

@@ -365,6 +365,10 @@ something you can see means every stray click leaves a new thing behind. In
 Select a press that lands on nothing belongs to the camera, so you can orbit,
 frame and adjust without adding anything.
 
+Drag on empty space to draw a box and select everything inside it: markers, and the control vertices of the curve you are working on. Hold `shift` to add to the selection, and click empty space to clear it. Dragging any selected item then moves the whole selection together, following the pointer, with every item re-bound to the surface as it goes.
+
+A press on empty space belongs to the camera until it has moved far enough to be a deliberate drag, so orbiting still works exactly as it did.
+
 Where a marker and a control vertex overlap on screen, which happens often
 around the eyes and mouth, the marker takes the drag.
 

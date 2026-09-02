@@ -42,6 +42,7 @@ keyboard focus. Clicking in the viewport gives it focus.
 | Key | Action |
 |---|---|
 | `Delete` or `Backspace` | Remove the selected marker or control vertex |
+| `Shift` while boxing | Add what the box catches to the selection |
 
 ### Marker tool
 
