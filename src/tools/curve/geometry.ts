@@ -50,10 +50,22 @@ export type CurveDegree = 1 | 2 | 3;
 
 /**
  * Annotated rather than inferred, so this stays a choice between three
- * degrees instead of narrowing to the literal 2 and making every comparison
+ * degrees instead of narrowing to a literal and making every comparison
  * against it look like dead code to the compiler.
+ *
+ * Three, which is the interpolating cubic, because a curve has to pass
+ * through the points somebody placed. This was briefly two, to stop traced
+ * eyelids coming out as a wobble, and that worked by hiding the wobble rather
+ * than removing it: the real cause was every sample searching for the surface
+ * along a normal taken from somewhere else on the curve, which is fixed. What
+ * the quadratic left behind was a curve that visibly missed the points it was
+ * drawn from, because approaching its middle control vertices instead of
+ * touching them is exactly what a quadratic does.
+ *
+ * Two is still here and still tested, for anyone who wants the containment it
+ * buys and can live with that trade.
  */
-export const DEFAULT_CURVE_DEGREE: CurveDegree = 2;
+export const DEFAULT_CURVE_DEGREE: CurveDegree = 3;
 
 export function toVector3(v: Vec3): THREE.Vector3 {
   return new THREE.Vector3(v[0], v[1], v[2]);

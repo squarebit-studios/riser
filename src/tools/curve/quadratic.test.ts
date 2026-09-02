@@ -29,8 +29,27 @@ const near = (a: Vec3, b: Vec3, tol = 1e-9): boolean =>
   Math.abs(a[2] - b[2]) < tol;
 
 describe('the default curve degree', () => {
-  it('is two', () => {
-    expect(DEFAULT_CURVE_DEGREE).toBe(2);
+  it('interpolates, because a curve must go through the points placed', () => {
+    // Stated as the property rather than the number. The default was briefly
+    // two, to stop traced eyelids wobbling, and that turned out to be hiding a
+    // different fault: the samples were searching for the surface along
+    // normals taken from elsewhere on the curve. With that fixed, what the
+    // quadratic left was a curve visibly missing the points it was drawn from.
+    expect(DEFAULT_CURVE_DEGREE).toBe(3);
+
+    const points: Vec3[] = [
+      [0, 0, 0],
+      [1, 1, 0],
+      [2, 0, 0],
+      [3, 1, 0]
+    ];
+    const drawn = resampleCurve(points, false, 12, DEFAULT_CURVE_DEGREE);
+    for (const cv of points) {
+      const nearest = Math.min(
+        ...drawn.map((s) => Math.hypot(s[0] - cv[0], s[1] - cv[1], s[2] - cv[2]))
+      );
+      expect(nearest).toBeLessThan(1e-9);
+    }
   });
 
   it('starts and ends exactly on the first and last control vertex', () => {

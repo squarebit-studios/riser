@@ -72,7 +72,7 @@ import {
   controlVertexSampleIndices,
   sampleDirections,
   projectSamplesToSurface,
-  SEARCH_FRACTION
+  searchDistanceFor
 } from '../tools/curve/project';
 import {
   clearSession,
@@ -1321,7 +1321,10 @@ export class RiserApp {
       this.character.meshes,
       this.projectionRaycaster,
       {
-        searchDistance: Math.max(height * SEARCH_FRACTION, 1e-4),
+        // Sized by the curve as well as the character, so re-seating a lid
+        // traced with millimetre steps cannot reach across to the eye behind
+        // it. See searchDistanceFor.
+        searchDistance: searchDistanceFor(worldPoints, height),
         // Control vertices are already bound to a triangle, so holding them
         // still is what keeps the drawn curve honest about its bindings.
         //

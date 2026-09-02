@@ -30,6 +30,53 @@ import { resampleCurve, type CurveDegree } from './geometry';
  */
 export const SEARCH_FRACTION = 0.03;
 
+/**
+ * How far a sample may be re-seated, relative to the gap between control
+ * vertices.
+ *
+ * The search exists to correct a smooth curve that sags off a surface between
+ * the points it was drawn through, and that sag is small: for points a gap `d`
+ * apart on a surface of radius `R` it is about `d*d/(8R)`, always a small
+ * fraction of `d` itself. So a search wider than the gap is not buying
+ * accuracy, it is buying the chance to find something else entirely.
+ *
+ * That is what a traced eyelid ran into. Sizing the search off the CHARACTER
+ * gives centimetres, and a lid is traced with points a couple of millimetres
+ * apart with an eyeball right behind it, so the correction had licence to
+ * travel many times the distance between the points and drag the curve
+ * somewhere nobody put it.
+ */
+export const SEARCH_GAP_FRACTION = 0.5;
+
+/**
+ * How far to search either side of a curve, given the character and the curve.
+ *
+ * The smaller of what the character allows and what the curve's own spacing
+ * justifies, so a jawline drawn with wide steps still gets a useful search and
+ * a lid traced with tight ones gets a tight one.
+ */
+export function searchDistanceFor(
+  points: readonly Vec3[],
+  characterHeight: number
+): number {
+  const byCharacter = characterHeight * SEARCH_FRACTION;
+
+  const gaps: number[] = [];
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1] as Vec3;
+    const b = points[i] as Vec3;
+    gaps.push(Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]));
+  }
+  if (gaps.length === 0) return Math.max(byCharacter, 1e-4);
+
+  // The median rather than the mean: one deliberately long step across a gap
+  // in the mesh should not license a wide search for the whole curve.
+  gaps.sort((x, y) => x - y);
+  const median = gaps[Math.floor(gaps.length / 2)] as number;
+
+  return Math.max(Math.min(byCharacter, median * SEARCH_GAP_FRACTION), 1e-4);
+}
+
 const _origin = new THREE.Vector3();
 const _direction = new THREE.Vector3();
 const _sample = new THREE.Vector3();
