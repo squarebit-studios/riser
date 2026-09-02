@@ -17,7 +17,6 @@
 
 import * as THREE from 'three';
 import type { PickResult, SurfacePick, SurfacePicker } from '../viewport/Picker';
-import type { Vec3 } from '../doc/types';
 import {
   documentToWorld,
   documentToWorldDirection,
@@ -61,34 +60,6 @@ export function mirrorPick(pick: SurfacePick, ctx: MirrorContext): SurfacePick |
     reflectedNormal,
     characterHeight
   );
-  return picker.pickAlongRay(origin, direction, meshes, reach * 2);
-}
-
-/**
- * Resolve a pick at a point the caller already knows, in document space.
- *
- * `mirrorPick` reflects a pick that came from a live click. Mirroring a curve
- * that was drawn earlier has no click to reflect: it has stored positions and
- * normals, and needs the same treatment applied to those. Both end up in the
- * same place, which is a ray fired back at the target from outside the mesh,
- * because a stored position is only a point in space until something binds it
- * to a triangle.
- *
- * Returns null rather than a fabricated binding when the ray finds nothing,
- * which is the honest answer for a character whose far side is not the same
- * shape as its near one.
- */
-export function pickAtDocumentPoint(
-  target: Vec3,
-  normal: Vec3,
-  ctx: MirrorContext
-): SurfacePick | null {
-  const { picker, characterRoot, meshes, characterHeight } = ctx;
-  if (meshes.length === 0) return null;
-
-  const world = documentToWorld(characterRoot, target);
-  const worldNormal = documentToWorldDirection(characterRoot, normal);
-  const { origin, direction, reach } = mirrorRay(world, worldNormal, characterHeight);
   return picker.pickAlongRay(origin, direction, meshes, reach * 2);
 }
 

@@ -42,7 +42,8 @@ import {
   reflectAcrossCentre,
   symmetricTargets
 } from '../../doc/centreLine';
-import { mirrorPick, pickAtDocumentPoint } from '../mirror';
+import { mirrorPick } from '../mirror';
+import { bindAtPosition } from '../rebind';
 import {
   localUnitsPerWorldUnit,
   needsVolume,
@@ -471,17 +472,29 @@ export class CurveTool implements Tool {
     return { moved: points.length, missed };
   }
 
-  /** A bound curve point at a document-space target, or null if nothing is there. */
+  /**
+   * A curve point AT a target position, bound but not moved.
+   *
+   * The point goes exactly where it was asked to go. This used to fire a ray
+   * along the mirrored normal and take whatever it found, which is a question
+   * with the wrong shape: it asks what is in a direction, and the answer for a
+   * mirrored eyelid was the lashes in front of it, the nose beside it, or
+   * nothing, depending on which way the reflected normal happened to point.
+   * A mirror does not have a direction to get wrong. It reflects, and that is
+   * the whole operation.
+   *
+   * The binding still has to be real, because it is what the exporter writes
+   * and the worker evaluates, so the nearest triangle is recorded along with
+   * how far off it the point sits. Nearest is a distance, not a projection:
+   * it cannot drag the point anywhere.
+   */
   private pointAt(target: Vec3, normal: Vec3): CurvePoint | null {
     const character = this.deps.getCharacter();
     if (!character) return null;
-    const pick = pickAtDocumentPoint(target, normal, {
-      picker: this.deps.picker,
-      characterRoot: this.deps.getDocumentRoot(),
-      meshes: character.meshes,
-      characterHeight: this.characterHeight()
-    });
-    return pick ? this.curvePointFromPick(pick) : null;
+    const bound = bindAtPosition(target, this.deps.getDocumentRoot(), character.meshes);
+    return bound
+      ? { position: bound.position, normal, binding: bound.binding }
+      : null;
   }
 
   // -----------------------------------------------------------------------
