@@ -2,6 +2,14 @@
 
 A summary of what is new in each release of Riser.
 
+## [0.15.0] - 2026-09-02
+
+### Changed
+- A curve is the curve through the points you placed, and nothing else. It is no longer pulled onto the character's surface. Re-seating exists for a real reason, that a smooth line between two points on a surface cuts inside a convex form and floats off a concave one, and around an eye it stopped reading as a correction: the line left the points it was drawn from and wrapped itself around the eyeball. Making the search smaller could not fix that, because the surface genuinely is there. Where the line now sits relative to the skin between two points is something you can see, and another point fixes it
+
+### Added
+- **Clear** on a selected curve, which empties it and leaves it selected so the next click on the character starts it again from nothing. Removing and then hunting for it in the checklist was two actions at the moment you wanted to be drawing
+
 ## [0.14.2] - 2026-09-01
 
 ### Fixed

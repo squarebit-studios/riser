@@ -1240,7 +1240,7 @@ export class RiserApp {
         ) {
           polyline = cached.polyline;
         } else {
-          polyline = hugsSurface(curve, this.characterHeight)
+          polyline = HUG_SURFACE && hugsSurface(curve, this.characterHeight)
             ? this.projectCurve(
                 points,
                 curve.points.map((p) => p.normal),
@@ -1858,6 +1858,34 @@ function basename(path: string): string {
  * already records. Cage-to-limit offsets from subdivision are a fraction of a
  * face; a centre placement is half a limb thick. The two are not close.
  */
+/**
+ * Whether a drawn curve is pulled onto the character's surface.
+ *
+ * Off. A curve is now drawn as the curve through the points somebody placed,
+ * and nothing else.
+ *
+ * Re-seating exists for a real reason: a smooth curve between two points on a
+ * surface takes the shortest path, which cuts inside a convex form and floats
+ * off a concave one, so a traced jawline can disappear into the head between
+ * the points it passes through. Correcting that is right in principle and it
+ * behaved badly in practice on exactly the curves this tool is for. Around an
+ * eye the correction stopped reading as a correction: the drawn line left the
+ * points it was drawn from and wrapped itself around the eyeball, which is a
+ * shape nobody asked for and cannot be argued with by making the search
+ * smaller, because the surface genuinely is there.
+ *
+ * So the honest default is to draw what was asked for. A point placed on the
+ * lid is on the lid, the line between two of them is a line between two points
+ * on the lid, and where that line sits relative to the skin in between is
+ * something a person can see and add another point to fix.
+ *
+ * Kept as a switch rather than deleted because the machinery behind it is
+ * sound and tested, and a jawline drawn with wide steps is the case it was
+ * right for. Turning it back on is one word, and it belongs to a per curve
+ * setting rather than to everything at once.
+ */
+const HUG_SURFACE: boolean = false;
+
 function hugsSurface(
   curve: { points: readonly { normal: Vec3; binding: { offset: Vec3 } | null }[] },
   characterHeight: number
